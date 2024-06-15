@@ -68,6 +68,10 @@ def download_m3u8(url, filename):
     command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}"'
     subprocess.run(command, shell=True, check=True)
 
+def day_to_chinese(day):
+    days = ["日", "一", "二", "三", "四", "五", "六"]
+    return days[day]
+
 def main():
     data = get_initial_data()
 
@@ -94,17 +98,18 @@ def main():
 
     for row in tqdm(rows, desc="Downloading videos"):
         month, date, day, jie, days, ppt_video, teacher_track, student_full = row
+        day_chinese = day_to_chinese(day)
 
         if ppt_video:
-            filename = f"{month + 1}月{date}日第{days}周星期{day}-pptVideo"
+            filename = f"{month + 1}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
             download_m3u8(ppt_video, filename)
 
         if teacher_track:
-            filename = f"{month + 1}月{date}日第{days}周星期{day}-teacherTrack"
+            filename = f"{month + 1}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
             download_m3u8(teacher_track, filename)
 
         if student_full:
-            filename = f"{month + 1}月{date}日第{days}周星期{day}-studentFull"
+            filename = f"{month + 1}月{date}日第{days}周星期{day_chinese}第{jie}节-studentFull"
             download_m3u8(student_full, filename)
 
     print("所有视频下载完成。")
