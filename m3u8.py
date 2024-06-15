@@ -46,7 +46,7 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track, student_full
 
 def download_m3u8(url, filename):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --download-retry-count 8'
+    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}"'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
