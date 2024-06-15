@@ -2,14 +2,14 @@ import requests
 import json
 import csv
 import urllib.parse
-import os
 import subprocess
 from tqdm import tqdm
 
 def get_initial_data():
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
     headers = {
-        "Cookie": "UID=9876"
+        "User-Agent": "Mozilla/5.0",
+        "Cookie": "UID=2"
     }
     data = {
         "liveId": "11740668"
@@ -22,6 +22,7 @@ def get_initial_data():
 def get_m3u8_links(live_id):
     url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2"
     headers = {
+        "User-Agent": "Mozilla/5.0",
         "Cookie": "UID=2"
     }
 
@@ -30,7 +31,7 @@ def get_m3u8_links(live_id):
     response_text = response.text
 
     url_start = response_text.find('info=')
-    if url_start == -1:
+    if (url_start == -1):
         raise ValueError("info parameter not found in the response")
 
     encoded_info = response_text[url_start + 5:]
@@ -45,8 +46,15 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track, student_full
 
 def download_m3u8(url, filename):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}"'
-    subprocess.run(command, shell=True, check=True)
+    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --download-retry-count 8'
+    try:
+        subprocess.run(command, shell=True, check=True)
+    except subprocess.CalledProcessError:
+        print(f"初次下载 {filename} 出错，重试中...")
+        try:
+            subprocess.run(command, shell=True, check=True)
+        except subprocess.CalledProcessError:
+            print(f"重试下载 {filename} 仍然出错，跳过此视频。")
 
 def day_to_chinese(day):
     days = ["日", "一", "二", "三", "四", "五", "六"]
