@@ -120,11 +120,19 @@ def main():
 
         if ppt_video:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
-            download_m3u8(ppt_video, filename, save_dir)
+            filepath = os.path.join(save_dir, f"{filename}.mp4")
+            if os.path.exists(filepath):
+                print(f"{filepath} 已存在，跳过下载。")
+            else:
+                download_m3u8(ppt_video, filename, save_dir)
 
         if teacher_track:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
-            download_m3u8(teacher_track, filename, save_dir)
+            filepath = os.path.join(save_dir, f"{filename}.mp4")
+            if os.path.exists(filepath):
+                print(f"{filepath} 已存在，跳过下载。")
+            else:
+                download_m3u8(teacher_track, filename, save_dir)
 
     print("所有视频下载完成。")
 
