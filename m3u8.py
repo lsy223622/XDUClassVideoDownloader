@@ -87,7 +87,7 @@ def main():
     save_dir = f"{year}年{course_code}{course_name}"
     os.makedirs(save_dir, exist_ok=True)
 
-    csv_filename = os.path.join(save_dir, f"{save_dir}.csv")
+    csv_filename = f"{year}年{course_code}{course_name}.csv"
 
     rows = []
     for entry in tqdm(data, desc="Processing entries"):
