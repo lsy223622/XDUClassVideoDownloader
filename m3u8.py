@@ -120,7 +120,7 @@ def main():
 
         if ppt_video:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
-            filepath = os.path.join(save_dir, f"{filename}.mp4")
+            filepath = os.path.join(save_dir, f"{filename}.ts")
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:
@@ -128,7 +128,7 @@ def main():
 
         if teacher_track:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
-            filepath = os.path.join(save_dir, f"{filename}.mp4")
+            filepath = os.path.join(save_dir, f"{filename}.ts")
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:
