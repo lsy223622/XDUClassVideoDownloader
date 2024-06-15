@@ -46,7 +46,7 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track
 
 def download_m3u8(url, filename):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --check-segments-count false --binary-merge True'
+    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --check-segments-count False --binary-merge True'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
@@ -76,11 +76,10 @@ def main():
 
     first_entry = data[0]
     start_time = first_entry["startTime"]["time"]
-    timezone_offset = first_entry["startTime"]["timezoneOffset"]
     course_code = first_entry["courseCode"]
     course_name = first_entry["courseName"]
 
-    start_time_unix = (start_time + timezone_offset * 60 * 1000) / 1000
+    start_time_unix = start_time / 1000
     start_time_struct = time.gmtime(start_time_unix)
     year = start_time_struct.tm_year
 
@@ -94,9 +93,9 @@ def main():
         jie = entry["jie"]
 
         start_time = entry["startTime"]["time"]
-        start_time_unix = (start_time + timezone_offset * 60 * 1000) / 1000
+        start_time_unix = start_time / 1000
         start_time_struct = time.gmtime(start_time_unix)
-        month = start_time_struct.tm_mon + 1
+        month = start_time_struct.tm_mon
         date = start_time_struct.tm_mday
 
         ppt_video, teacher_track = get_m3u8_links(live_id)
