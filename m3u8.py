@@ -5,6 +5,7 @@ import urllib.parse
 import subprocess
 import time
 from tqdm import tqdm
+import os
 
 def get_initial_data(input_live_id):
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
@@ -45,8 +46,8 @@ def get_m3u8_links(live_id):
 
     return ppt_video, teacher_track
 
-def download_m3u8(url, filename):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --check-segments-count False --binary-merge True'
+def download_m3u8(url, filename, save_dir):
+    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
@@ -83,7 +84,10 @@ def main():
     start_time_struct = time.gmtime(start_time_unix)
     year = start_time_struct.tm_year
 
-    csv_filename = f"{year}年{course_code}{course_name}.csv"
+    save_dir = f"{year}年{course_code}{course_name}"
+    os.makedirs(save_dir, exist_ok=True)
+
+    csv_filename = os.path.join(save_dir, f"{save_dir}.csv")
 
     rows = []
     for entry in tqdm(data, desc="Processing entries"):
@@ -116,11 +120,11 @@ def main():
 
         if ppt_video:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
-            download_m3u8(ppt_video, filename)
+            download_m3u8(ppt_video, filename, save_dir)
 
         if teacher_track:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
-            download_m3u8(teacher_track, filename)
+            download_m3u8(teacher_track, filename, save_dir)
 
     print("所有视频下载完成。")
 
