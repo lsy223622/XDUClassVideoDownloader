@@ -5,14 +5,14 @@ import urllib.parse
 import subprocess
 from tqdm import tqdm
 
-def get_initial_data():
+def get_initial_data(input_live_id):
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Cookie": "UID=2"
     }
     data = {
-        "liveId": "11740668"
+        "liveId": input_live_id
     }
 
     response = requests.post(url, headers=headers, data=data)
@@ -31,7 +31,7 @@ def get_m3u8_links(live_id):
     response_text = response.text
 
     url_start = response_text.find('info=')
-    if (url_start == -1):
+    if url_start == -1:
         raise ValueError("info parameter not found in the response")
 
     encoded_info = response_text[url_start + 5:]
@@ -46,7 +46,7 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track, student_full
 
 def download_m3u8(url, filename):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}"'
+    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --check-segments-count false'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
@@ -61,7 +61,14 @@ def day_to_chinese(day):
     return days[day]
 
 def main():
-    data = get_initial_data()
+    while True:
+        input_live_id = input("请输入 liveId：")
+        if input_live_id.isdigit() and len(input_live_id) <= 10:
+            break
+        else:
+            print("liveId 错误，请重新输入：")
+
+    data = get_initial_data(input_live_id)
 
     rows = []
     for entry in tqdm(data, desc="Processing entries"):
