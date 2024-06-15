@@ -9,17 +9,6 @@ from tqdm import tqdm
 def get_initial_data():
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Wayland; Linux x86_64; rv:120.1) Gecko/20100101 Firefox/120.1",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "en-US,en;q=0.7,ja;q=0.3",
-        "Accept-Encoding": "gzip, deflate",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        "Origin": "http://newesxidian.chaoxing.com",
-        "DNT": "1",
-        "Sec-GPC": "1",
-        "Connection": "keep-alive",
-        "Referer": "http://newesxidian.chaoxing.com/live/viewNewCourseLive1?isStudent=1",
         "Cookie": "UID=9876"
     }
     data = {
@@ -31,17 +20,8 @@ def get_initial_data():
     return response.json()
 
 def get_m3u8_links(live_id):
-    url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2&jie=&isStudent="
+    url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2"
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.7,ja;q=0.3",
-        "Accept-Encoding": "gzip, deflate",
-        "X-Requested-With": "XMLHttpRequest",
-        "DNT": "1",
-        "Sec-GPC": "1",
-        "Connection": "keep-alive",
-        "Referer": "http://newesxidian.chaoxing.com/live/viewNewCourseLive1?isStudent=1",
         "Cookie": "UID=2"
     }
 
