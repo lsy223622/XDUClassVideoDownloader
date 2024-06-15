@@ -3,6 +3,7 @@ import json
 import csv
 import urllib.parse
 import subprocess
+import time
 from tqdm import tqdm
 
 def get_initial_data(input_live_id):
@@ -41,12 +42,11 @@ def get_m3u8_links(live_id):
     video_paths = info_json.get('videoPath', {})
     ppt_video = video_paths.get('pptVideo', '')
     teacher_track = video_paths.get('teacherTrack', '')
-    student_full = video_paths.get('studentFull', '')
 
-    return ppt_video, teacher_track, student_full
+    return ppt_video, teacher_track
 
 def download_m3u8(url, filename):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --check-segments-count false'
+    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "m3u8" --save-name "{filename}" --check-segments-count false --binary-merge True'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
@@ -70,42 +70,58 @@ def main():
 
     data = get_initial_data(input_live_id)
 
+    if not data:
+        print("没有找到数据，请检查 liveId 是否正确。")
+        return
+
+    first_entry = data[0]
+    start_time = first_entry["startTime"]["time"]
+    timezone_offset = first_entry["startTime"]["timezoneOffset"]
+    course_code = first_entry["courseCode"]
+    course_name = first_entry["courseName"]
+
+    start_time_unix = (start_time + timezone_offset * 60 * 1000) / 1000
+    start_time_struct = time.gmtime(start_time_unix)
+    year = start_time_struct.tm_year
+
+    csv_filename = f"{year}年{course_code}{course_name}.csv"
+
     rows = []
     for entry in tqdm(data, desc="Processing entries"):
         live_id = entry["id"]
-        month = entry["startTime"]["month"]
-        date = entry["startTime"]["date"]
+        days = entry["days"]
         day = entry["startTime"]["day"]
         jie = entry["jie"]
-        days = entry["days"]
 
-        ppt_video, teacher_track, student_full = get_m3u8_links(live_id)
+        start_time = entry["startTime"]["time"]
+        start_time_unix = (start_time + timezone_offset * 60 * 1000) / 1000
+        start_time_struct = time.gmtime(start_time_unix)
+        month = start_time_struct.tm_mon + 1
+        date = start_time_struct.tm_mday
 
-        row = [month, date, day, jie, days, ppt_video, teacher_track, student_full]
+        ppt_video, teacher_track = get_m3u8_links(live_id)
+
+        row = [month, date, day, jie, days, ppt_video, teacher_track]
         rows.append(row)
 
-    with open('m3u8.csv', mode='w', newline='') as file:
+    with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['month', 'date', 'day', 'jie', 'days', 'pptVideo', 'teacherTrack', 'studentFull'])
+        writer.writerow(['month', 'date', 'day', 'jie', 'days', 'pptVideo', 'teacherTrack'])
         writer.writerows(rows)
 
-    print("m3u8.csv 文件已创建并写入数据。")
+    print(f"{csv_filename} 文件已创建并写入数据。")
 
     for row in tqdm(rows, desc="Downloading videos"):
-        month, date, day, jie, days, ppt_video, teacher_track, student_full = row
+        month, date, day, jie, days, ppt_video, teacher_track = row
         day_chinese = day_to_chinese(day)
 
         if ppt_video:
-            filename = f"{month + 1}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
             download_m3u8(ppt_video, filename)
 
         if teacher_track:
-            filename = f"{month + 1}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
             download_m3u8(teacher_track, filename)
-
-        if student_full:
-            filename = f"{month + 1}月{date}日第{days}周星期{day_chinese}第{jie}节-studentFull"
-            download_m3u8(student_full, filename)
 
     print("所有视频下载完成。")
 
