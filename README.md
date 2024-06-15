@@ -3,7 +3,7 @@
 ## 项目简介
 
 - 本项目是一个用于下载西安电子科技大学录直播平台课程视频的工具。
-- 只需输入任意一节课的 `liveId`，即可下载该课程的所有视频。
+- 只需输入任意一节课的 `liveId`，即可自动下载该课程的所有视频。
 
 > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到，如：`http://newesxidian.chaoxing.com/live/viewNewCourseLive1?liveId=12345678` 中的 `12345678`。
 
