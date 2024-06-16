@@ -45,7 +45,7 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s
 
 # 在 Linux 上下载一门课程的所有视频
-python XDUClassVideoDownloader.py 1234567890 -c 'N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
 ```
 
 ## 注意事项
