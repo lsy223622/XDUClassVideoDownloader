@@ -67,7 +67,7 @@ def day_to_chinese(day):
     days = ["日", "一", "二", "三", "四", "五", "六"]
     return days[day]
 
-def main(liveid_from_cli=None, command=''):
+def main(liveid_from_cli=None, command='', single=False):
     while True:
         if liveid_from_cli:
             input_live_id = liveid_from_cli
@@ -103,6 +103,8 @@ def main(liveid_from_cli=None, command=''):
     rows = []
     for entry in tqdm(data, desc="Processing entries"):
         live_id = entry["id"]
+        if single and str(live_id) != input_live_id:
+            continue
         days = entry["days"]
         day = entry["startTime"]["day"]
         jie = entry["jie"]
@@ -151,10 +153,11 @@ def parse_arguments():
     parser = ArgumentParser(description='用于下载西安电子科技大学录直播平台课程视频的工具')
     parser.add_argument('liveid', nargs='?', default=None, help='直播ID，不输入则采用交互式方式获取')
     parser.add_argument('-c', '--command', default='', help='自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记')
+    parser.add_argument('-s', '--single', default=False, action='store_true', help='仅下载单集视频')
 
     args = parser.parse_args()
     return args
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(liveid_from_cli=args.liveid, command=args.command)
+    main(liveid_from_cli=args.liveid, command=args.command, single=args.single)
