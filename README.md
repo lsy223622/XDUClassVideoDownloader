@@ -1,5 +1,19 @@
 # XDUClassVideoDownloader
 
+![GitHub repo size](https://img.shields.io/github/repo-size/lsy223622/XDUClassVideoDownloader)
+![GitHub Repo stars](https://img.shields.io/github/stars/lsy223622/XDUClassVideoDownloader)
+
+![Static Badge](https://img.shields.io/badge/QQ-2413282135-white?logo=tencentqq&logoColor=white&labelColor=blue)
+![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)
+![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)
+
+## 使用须知
+
+- 请先阅读此 README 再使用本项目。
+- 如果遇到问题可以联系上面的 QQ。
+- 欢迎提出建议和改进意见，能 PR 的话就更好啦。
+- 如果觉得好用请给个 Star 哦。
+
 ## 项目简介
 
 - 本项目是一个用于下载西安电子科技大学录直播平台课程视频的工具。
@@ -66,3 +80,4 @@ python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-di
 | --- | --- |
 | Python | [lsy223622/XDUClassVideoDownloader](https://github.com/lsy223622/XDUClassVideoDownloader) |
 | Rust | [canxin121/live_class_downloader](https://github.com/canxin121/live_class_downloader) |
+| Java | [NanCunChild/XDUClassVideoDownloader](https://github.com/NanCunChild/XDUClassVideoDownloader/tree/java-version) |
