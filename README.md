@@ -59,3 +59,10 @@ python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-di
 ## 使用的二进制文件
 
 - `N_m3u8DL-RE.exe` , `N_m3u8DL-RE` 来自 [nilaoda/N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE)
+
+## 各种语言的版本
+
+| 语言 | 项目地址 |
+| --- | --- |
+| Python | [lsy223622/XDUClassVideoDownloader](https://github.com/lsy223622/XDUClassVideoDownloader) |
+| Rust | [canxin121/live_class_downloader](https://github.com/canxin121/live_class_downloader) |
