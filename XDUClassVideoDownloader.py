@@ -107,7 +107,7 @@ def main(liveid_from_cli=None, command='', single=False):
     csv_filename = f"{year}年{course_code}{course_name}.csv"
 
     rows = []
-    for entry in tqdm(data, desc="Processing entries"):
+    for entry in tqdm(data, desc="获取视频链接"):
         live_id = entry["id"]
         if single and str(live_id) != input_live_id:
             continue
