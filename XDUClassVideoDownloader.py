@@ -49,12 +49,16 @@ def get_m3u8_links(live_id):
 
     return ppt_video, teacher_track
 
-def download_m3u8(url, filename, save_dir):
-    command = ""
-    if sys.platform.startswith('win32'):
-        command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+def download_m3u8(url, filename, save_dir, command=''):
+    # use a default command for Windows users
+    if not command:
+        if sys.platform.startswith('win32'):
+            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+        else:
+            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
-        command = f'N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+        command = command.format(url=url, filename=filename, save_dir=save_dir)
+
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
@@ -68,7 +72,7 @@ def day_to_chinese(day):
     days = ["日", "一", "二", "三", "四", "五", "六"]
     return days[day]
 
-def main(liveid_from_cli=None, single=False):
+def main(liveid_from_cli=None, command='', single=False):
     while True:
         if liveid_from_cli:
             input_live_id = liveid_from_cli
@@ -138,7 +142,7 @@ def main(liveid_from_cli=None, single=False):
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:
-                download_m3u8(ppt_video, filename, save_dir)
+                download_m3u8(ppt_video, filename, save_dir, command=command)
 
         if teacher_track:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
@@ -146,13 +150,14 @@ def main(liveid_from_cli=None, single=False):
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:
-                download_m3u8(teacher_track, filename, save_dir)
+                download_m3u8(teacher_track, filename, save_dir, command=command)
 
     print("所有视频下载完成。")
 
 def parse_arguments():
     parser = ArgumentParser(description='用于下载西安电子科技大学录直播平台课程视频的工具')
     parser.add_argument('liveid', nargs='?', default=None, help='直播ID，不输入则采用交互式方式获取')
+    parser.add_argument('-c', '--command', default='', help='自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记')
     parser.add_argument('-s', '--single', default=False, action='store_true', help='仅下载单集视频')
 
     args = parser.parse_args()
@@ -160,4 +165,4 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(liveid_from_cli=args.liveid, single=args.single)
+    main(liveid_from_cli=args.liveid, command=args.command, single=args.single)
