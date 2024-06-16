@@ -18,7 +18,7 @@
 ### 使用前的准备步骤
 
 1. 安装 `Python`（我用的 3.12）。
-2. 使用 `pip` 安装依赖：`requests` , `tqdm`。
+2. 使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
 3. 安装 `ffmpeg` 并将其添加到环境变量。
 
 ### 使用
@@ -36,4 +36,4 @@
 
 ## 使用的二进制文件
 
-- `N_m3u8DL-RE.exe` 来自 [nilaoda/N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE)
+- `N_m3u8DL-RE.exe` , `N_m3u8DL-RE` 来自 [nilaoda/N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE)
