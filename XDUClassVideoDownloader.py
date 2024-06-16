@@ -6,6 +6,7 @@ import subprocess
 import time
 from tqdm import tqdm
 import os
+import sys
 
 def get_initial_data(input_live_id):
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
@@ -51,7 +52,7 @@ def download_m3u8(url, filename, save_dir):
     if sys.platform.startswith('win32'):
         command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
-        command = f'ffmpeg -i "{url}" "{filename}.mp4"'
+        command = f'N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
