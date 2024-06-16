@@ -28,6 +28,26 @@
 3. 输入 `liveId` 并回车。
 4. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
 
+## 命令行参数
+
+```shell
+python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s BOOL]
+```
+
+- `LIVEID` (可选): 直播ID。如果不输入，将采用交互式方式获取。
+- `-c COMMAND` (可选): 自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
+- `-s BOOL` (可选): 仅下载单集视频。默认为 `False`。设置为 `True` 时，只下载一个视频。
+
+示例:
+
+```shell
+# 在 Windows 上
+python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s True
+
+# 在 Linux 上
+python XDUClassVideoDownloader.py 1234567890 -c 'N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True' -s True
+```
+
 ## 注意事项
 
 - 使用本项目下载的视频仅供个人学习使用，请勿传播或用于商业用途。
