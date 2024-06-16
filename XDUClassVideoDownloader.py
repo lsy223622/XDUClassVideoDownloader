@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!python
+
 import requests
 import json
 import csv
@@ -166,3 +167,4 @@ def parse_arguments():
 if __name__ == "__main__":
     args = parse_arguments()
     main(liveid_from_cli=args.liveid, command=args.command, single=args.single)
+    input("Press Enter to exit...")
