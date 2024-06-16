@@ -8,6 +8,7 @@ import time
 from tqdm import tqdm
 import os
 from argparse import ArgumentParser
+import sys
 
 def get_initial_data(input_live_id):
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
@@ -51,9 +52,13 @@ def get_m3u8_links(live_id):
 def download_m3u8(url, filename, save_dir, command=''):
     # use a default command for Windows users
     if not command:
-        command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+        if sys.platform.startswith('win32'):
+            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+        else:
+            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
+
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
