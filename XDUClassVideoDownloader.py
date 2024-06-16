@@ -47,7 +47,11 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track
 
 def download_m3u8(url, filename, save_dir):
-    command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+    command = ""
+    if sys.platform.startswith('win32'):
+        command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+    else:
+        command = f'ffmpeg -i "{url}" "{filename}.mp4"'
     try:
         subprocess.run(command, shell=True, check=True)
     except subprocess.CalledProcessError:
