@@ -24,7 +24,9 @@
 ### 使用
 
 1. 下载本项目。
-2. 运行 `XDUClassVideoDownloader.py`。
+2. 运行程序：
+   - Linux 用户：运行 `XDUClassVideoDownloader.py`。
+   - Windows 用户：双击 `windows_run.bat`。
 3. 输入 `liveId` 并回车。
 4. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
 
