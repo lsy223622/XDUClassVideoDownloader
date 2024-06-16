@@ -76,6 +76,8 @@ python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-di
 
 ## 各种语言的版本
 
+> 欢迎重写😋
+
 | 语言 | 项目地址 |
 | --- | --- |
 | Python | [lsy223622/XDUClassVideoDownloader](https://github.com/lsy223622/XDUClassVideoDownloader) |
