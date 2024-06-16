@@ -31,21 +31,21 @@
 ## 命令行参数
 
 ```shell
-python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s BOOL]
+python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 ```
 
-- `LIVEID` (可选): 直播ID。如果不输入，将采用交互式方式获取。
-- `-c COMMAND` (可选): 自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
-- `-s BOOL` (可选): 仅下载单集视频。默认为 `False`。设置为 `True` 时，只下载一个视频。
+- `LIVEID` （可选）：直播ID。如果不输入，将采用交互式方式获取。
+- `-c COMMAND` （可选）：自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
+- `-s` （可选）：仅下载单集视频。
 
 示例:
 
 ```shell
-# 在 Windows 上
-python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s True
+# 在 Windows 上仅下载单集视频
+python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s
 
-# 在 Linux 上
-python XDUClassVideoDownloader.py 1234567890 -c 'N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True' -s True
+# 在 Linux 上下载一门课程的所有视频
+python XDUClassVideoDownloader.py 1234567890 -c 'N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
 ```
 
 ## 注意事项
