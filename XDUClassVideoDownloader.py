@@ -11,12 +11,6 @@ import os
 from argparse import ArgumentParser
 import sys
 
-def resource_path(relative_path):
-    """获取资源文件的绝对路径，适用于开发和打包后的环境"""
-    # 获取打包后程序的临时目录路径
-    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base_path, relative_path)
-
 def get_initial_data(input_live_id):
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
     headers = {
@@ -57,14 +51,12 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track
 
 def download_m3u8(url, filename, save_dir, command=''):
-    # 使用 resource_path 函数获取 N_m3u8DL-RE.exe 的路径
-    n_m3u8dl_re_path = resource_path('N_m3u8DL-RE.exe')
-
+    # use a default command for Windows users
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'"{n_m3u8dl_re_path}" "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
         else:
-            command = f'./{n_m3u8dl_re_path} "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
