@@ -19,7 +19,7 @@
 - 本项目是一个用于下载西安电子科技大学录直播平台课程视频的工具。
 - 只需输入任意一节课的 `liveId`，即可自动下载该课程的所有视频。
 
-> `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到，如：`http://newesxidian.chaoxing.com/live/viewNewCourseLive1?liveId=12345678` 中的 `12345678`。
+   > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到。如：`http://newesxidian.chaoxing.com/live/viewNewCourseLive1?liveId=12345678` 中的 `12345678`。
 
 - 同时会保存所有视频的 `m3u8` 链接到对应的 `csv` 表格中，方便使用其他方式下载。
 - 下载时会自动检查之前是否下载过同一节课，如果已经下载则会跳过。所以可以在一学期中的多个时候随时下载新增的录播视频。
@@ -33,10 +33,11 @@
 
 1. 安装 `Python`（我用的 3.12）。[Python 官网下载页面](https://www.python.org/downloads/)
 2. 使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
+   - 在命令行输入以下命令并回车：
 
-```shell
-pip install requests tqdm
-```
+   ```shell
+   pip install requests tqdm
+   ```
 
 3. 安装 `ffmpeg` 并将其添加到环境变量。[ffmpeg(win64)下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip) [ffmpeg(linux64)下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl-shared.tar.xz)
 
@@ -44,8 +45,8 @@ pip install requests tqdm
 
 1. 下载本项目。
 2. 运行程序：
-   - Linux 用户：运行 `XDUClassVideoDownloader.py`。
    - Windows 用户：双击 `windows_run.bat`。
+   - Linux 用户：运行 `XDUClassVideoDownloader.py`。
 3. 输入 `liveId` 并回车。
 4. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
 
