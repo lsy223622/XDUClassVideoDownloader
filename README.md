@@ -4,8 +4,8 @@
 ![GitHub Repo stars](https://img.shields.io/github/stars/lsy223622/XDUClassVideoDownloader)
 
 ![Static Badge](https://img.shields.io/badge/QQ-2413282135-white?logo=tencentqq&logoColor=white&labelColor=blue)
-![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)
-![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)
+[![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
+[![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
 ## 使用须知
 
