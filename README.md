@@ -33,6 +33,7 @@
 
 1. 安装 `Python`（我用的 3.12）。[Python 官网下载页面](https://www.python.org/downloads/)
 2. 使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
+
    - 在命令行输入以下命令并回车：
 
    ```shell
