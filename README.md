@@ -31,9 +31,14 @@
 
 ### 使用前的准备步骤
 
-1. 安装 `Python`（我用的 3.12）。
+1. 安装 `Python`（我用的 3.12）。[Python 官网下载页面](https://www.python.org/downloads/)
 2. 使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
-3. 安装 `ffmpeg` 并将其添加到环境变量。
+
+```shell
+pip install requests tqdm
+```
+
+3. 安装 `ffmpeg` 并将其添加到环境变量。[ffmpeg(win64)下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip) [ffmpeg(linux64)下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl-shared.tar.xz)
 
 ### 使用
 
