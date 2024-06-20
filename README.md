@@ -29,6 +29,10 @@
 
 ## 使用方法
 
+### **Windows 用户看这里！**
+
+- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开后输入 `liveId` 即可
+
 ### 使用前的准备步骤
 
 1. 安装 `Python`（我用的 3.12）。[Python 官网下载页面](https://www.python.org/downloads/)
