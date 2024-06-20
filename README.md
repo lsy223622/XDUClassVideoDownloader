@@ -32,15 +32,15 @@
 ### 使用前的准备步骤
 
 1. 安装 `Python`（我用的 3.12）。[Python 官网下载页面](https://www.python.org/downloads/)
-2. 使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
-
-   - 在命令行输入以下命令并回车：
+2. 在命令行中输入以下命令来使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
 
    ```shell
    pip install requests tqdm
    ```
 
-3. 安装 `ffmpeg` 并将其添加到环境变量。[ffmpeg(win64)下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip) [ffmpeg(linux64)下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl-shared.tar.xz)
+3. 安装 `FFmpeg`
+   - Windows 用户：下载解压 `FFmpeg` 并将其中的 `bin` 文件夹添加到 `Path` 环境变量。[win64 下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip)
+   - Linux 用户：使用包管理器安装 `FFmpeg`。
 
 ### 使用
 
@@ -61,15 +61,19 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 - `-c COMMAND` （可选）：自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
 - `-s` （可选）：仅下载单集视频。
 
-示例:
+### 示例
 
-```shell
-# 在 Windows 上仅下载单集视频
-python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s
+- 在 Windows 上仅下载单集视频
 
-# 在 Linux 上下载一门课程的所有视频
-python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
-```
+   ```shell
+   python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s
+   ```
+
+- 在 Linux 上下载一门课程的所有视频
+
+   ```shell
+   python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+   ```
 
 ## 注意事项
 
