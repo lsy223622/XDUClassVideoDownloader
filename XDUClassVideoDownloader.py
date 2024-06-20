@@ -61,7 +61,7 @@ def download_m3u8(url, filename, save_dir, command=''):
 
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'"{n_m3u8dl_re_path}" "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'"{n_m3u8dl_re_path}" "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True --ffmpeg-binary-path "ffmpeg.exe"'
         else:
             command = f'./{n_m3u8dl_re_path} "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
