@@ -53,9 +53,9 @@ def get_m3u8_links(live_id):
 def download_m3u8(url, filename, save_dir, command=''):
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'vsd.exe save "{url}" -o "{os.path.join(save_dir, filename)}.ts" --retry-count 20'
+            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
         else:
-            command = f'./vsd save "{url}" -o "{os.path.join(save_dir, filename)}.ts" --retry-count 20'
+            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
