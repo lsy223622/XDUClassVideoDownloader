@@ -2,6 +2,7 @@
 
 ![GitHub repo size](https://img.shields.io/github/repo-size/lsy223622/XDUClassVideoDownloader)
 ![GitHub Tag](https://img.shields.io/github/v/tag/lsy223622/XDUClassVideoDownloader)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/lsy223622/XDUClassVideoDownloader/total)
 ![GitHub License](https://img.shields.io/github/license/lsy223622/XDUClassVideoDownloader)
 ![GitHub Repo stars](https://img.shields.io/github/stars/lsy223622/XDUClassVideoDownloader)
 
