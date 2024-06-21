@@ -51,12 +51,11 @@ def get_m3u8_links(live_id):
     return ppt_video, teacher_track
 
 def download_m3u8(url, filename, save_dir, command=''):
-    # use a default command for Windows users
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'vsd.exe save "{url}" -o "{os.path.join(save_dir, filename)}.ts" --retry-count 20'
         else:
-            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'./vsd save "{url}" -o "{os.path.join(save_dir, filename)}.ts" --retry-count 20'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
