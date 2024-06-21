@@ -1,6 +1,7 @@
 # XDUClassVideoDownloader
 
 ![GitHub repo size](https://img.shields.io/github/repo-size/lsy223622/XDUClassVideoDownloader)
+![GitHub Tag](https://img.shields.io/github/v/tag/lsy223622/XDUClassVideoDownloader)
 ![GitHub Repo stars](https://img.shields.io/github/stars/lsy223622/XDUClassVideoDownloader)
 
 ![Static Badge](https://img.shields.io/badge/QQ-2413282135-white?logo=tencentqq&logoColor=white&labelColor=blue)
