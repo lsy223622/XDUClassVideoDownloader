@@ -176,7 +176,7 @@ def main(liveid=None, command='', single=0):
 
     print(f"{csv_filename} 文件已创建并写入数据。")
 
-    for row in tqdm(rows, desc="Downloading videos"):
+    for row in tqdm(rows, desc="下载视频"):
         month, date, day, jie, days, ppt_video, teacher_track = row
         day_chinese = day_to_chinese(day)
 
