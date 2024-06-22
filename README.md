@@ -75,15 +75,17 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 - `-c COMMAND` （可选）：自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
 - `-s` （可选）：仅下载单节课视频，指定两次可以仅下载单集（半节课）视频。
 
+命令行参数对 Releases 中打包的 exe 程序也有效，在运行 exe 程序时可以直接在后面加上参数。
+
 ### 示例
 
-- 在 Windows 上仅下载单集视频
+- 在 Windows 上运行打包的 exe 使用默认的下载命令仅下载单节课视频
 
    ```shell
-   python XDUClassVideoDownloader.py 1234567890 -c "N_m3u8DL-RE.exe \"{url}\" --save-dir \"{save_dir}\" --save-name \"{filename}\" --check-segments-count False --binary-merge True" -s
+   XDUClassVideoDownloader.exe 1234567890 -s
    ```
 
-- 在 Linux 上下载一门课程的所有视频
+- 在 Linux 上运行源码使用自定义下载命令下载一门课程的所有视频
 
    ```shell
    python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
