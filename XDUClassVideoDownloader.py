@@ -94,7 +94,7 @@ def main(liveid=None, command='', single=0):
         ))
 
         single = user_input_with_check(
-            "是否仅下载单节课视频？输入s则仅下载单集视频(Y/n/s)：",
+            "是否仅下载单节课视频？输入 s 则仅下载单集（半节课）视频 (Y/n/s)：",
             lambda single: single.lower() in ['', 'y', 'n', 's']
         ).lower()
         if single in ['', 'y']:
@@ -197,9 +197,9 @@ def main(liveid=None, command='', single=0):
 
 def parse_arguments():
     parser = ArgumentParser(description='用于下载西安电子科技大学录直播平台课程视频的工具')
-    parser.add_argument('liveid', nargs='?', type=int, default=None, help='直播ID，不输入则采用交互式方式获取')
+    parser.add_argument('liveid', nargs='?', type=int, default=None, help='直播 ID，不输入则采用交互式方式获取')
     parser.add_argument('-c', '--command', default='', help='自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记')
-    parser.add_argument('-s', '--single', default=0, action='count', help='仅下载单节课视频，指定两次可以仅下载单集视频')
+    parser.add_argument('-s', '--single', default=0, action='count', help='仅下载单节课视频，指定两次可以仅下载单集（半节课）视频')
 
     args = parser.parse_args()
     return args
