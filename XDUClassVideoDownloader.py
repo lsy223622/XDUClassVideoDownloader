@@ -63,12 +63,16 @@ def download_m3u8(url, filename, save_dir, command=''):
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
-    # TODO: make this configurable
-    for attempt in range(2):
+    MAX_ATTEMPTS = 2
+
+    for attempt in range(MAX_ATTEMPTS):
         try:
             subprocess.run(command, shell=True, check=True)
+            break
         except subprocess.CalledProcessError:
-            print(f"第{attempt+1}次下载 {filename} 出错：\n{traceback.format_exc()}\n重试中...")
+            print(f"第 {attempt+1} 次下载 {filename} 出错：\n{traceback.format_exc()}\n重试中...")
+            if attempt == MAX_ATTEMPTS - 1:
+                print(f"下载 {filename} 失败。")
 
 
 def day_to_chinese(day):
