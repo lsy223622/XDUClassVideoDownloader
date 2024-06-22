@@ -40,7 +40,7 @@
 
 ### 使用前的准备步骤
 
-1. 安装 `Python`（我用的 3.12）。[Python 官网下载页面](https://www.python.org/downloads/)
+1. 安装 `Python`（我用的 3.11.7）。[Python 官网下载页面](https://www.python.org/downloads/)
 2. 在命令行中输入以下命令来使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
 
    ```shell
