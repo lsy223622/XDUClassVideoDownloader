@@ -29,8 +29,7 @@ def get_initial_data(liveid):
 
 
 def get_m3u8_links(live_id):
-    url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={
-        live_id}&status=2"
+    url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2"
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Cookie": "UID=2"
@@ -58,13 +57,9 @@ def get_m3u8_links(live_id):
 def download_m3u8(url, filename, save_dir, command=''):
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{
-                save_dir}" --save-name "{
-                filename}" --check-segments-count False --binary-merge True'
+            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
         else:
-            command = f'./N_m3u8DL-RE "{url}" --save-dir "{
-                save_dir}" --save-name "{
-                filename}" --check-segments-count False --binary-merge True'
+            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
@@ -73,8 +68,7 @@ def download_m3u8(url, filename, save_dir, command=''):
         try:
             subprocess.run(command, shell=True, check=True)
         except subprocess.CalledProcessError:
-            print(f"第{attempt+1}次下载 {filename} 出错：\n{
-                traceback.format_exc()}\n重试中...")
+            print(f"第{attempt+1}次下载 {filename} 出错：\n{traceback.format_exc()}\n重试中...")
 
 
 def day_to_chinese(day):
@@ -174,8 +168,7 @@ def main(liveid=None, command='', single=0):
 
     with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['month', 'date', 'day', 'jie',
-                        'days', 'pptVideo', 'teacherTrack'])
+        writer.writerow(['month', 'date', 'day', 'jie', 'days', 'pptVideo', 'teacherTrack'])
         writer.writerows(rows)
 
     print(f"{csv_filename} 文件已创建并写入数据。")
@@ -185,8 +178,7 @@ def main(liveid=None, command='', single=0):
         day_chinese = day_to_chinese(day)
 
         if ppt_video:
-            filename = f"{course_code}{course_name}{year}年{month}月{
-                date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
             filepath = os.path.join(save_dir, f"{filename}.ts")
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
@@ -194,26 +186,21 @@ def main(liveid=None, command='', single=0):
                 download_m3u8(ppt_video, filename, save_dir, command=command)
 
         if teacher_track:
-            filename = f"{course_code}{course_name}{year}年{month}月{
-                date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
             filepath = os.path.join(save_dir, f"{filename}.ts")
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:
-                download_m3u8(teacher_track, filename,
-                              save_dir, command=command)
+                download_m3u8(teacher_track, filename, save_dir, command=command)
 
     print("所有视频下载完成。")
 
 
 def parse_arguments():
     parser = ArgumentParser(description='用于下载西安电子科技大学录直播平台课程视频的工具')
-    parser.add_argument('liveid', nargs='?', type=int, default=None,
-                        help='直播ID，不输入则采用交互式方式获取')
-    parser.add_argument('-c', '--command', default='',
-                        help='自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记')
-    parser.add_argument('-s', '--single', default=0, action='count',
-                        help='仅下载单节课视频，指定两次可以仅下载单集视频')
+    parser.add_argument('liveid', nargs='?', type=int, default=None, help='直播ID，不输入则采用交互式方式获取')
+    parser.add_argument('-c', '--command', default='', help='自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记')
+    parser.add_argument('-s', '--single', default=0, action='count', help='仅下载单节课视频，指定两次可以仅下载单集视频')
 
     args = parser.parse_args()
     return args
