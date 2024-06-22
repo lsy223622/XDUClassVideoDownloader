@@ -120,8 +120,7 @@ def main(liveid=None, command='', single=0):
 
         if not matching_entry:
             # how is this possible
-            raise ValueError(
-                "No matching entry found for the specified liveId")
+            raise ValueError("No matching entry found for the specified liveId")
 
         if single == 1:
             # use start time to find other entries in single course
