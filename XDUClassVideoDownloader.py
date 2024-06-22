@@ -9,6 +9,7 @@ import time
 from tqdm import tqdm
 import os
 from argparse import ArgumentParser
+from multiprocessing import Pool
 import traceback
 import sys
 
@@ -53,6 +54,24 @@ def get_m3u8_links(live_id):
     teacher_track = video_paths.get('teacherTrack', '')
 
     return ppt_video, teacher_track
+
+
+def generate_csv_row(entry):
+    live_id = entry["id"]
+    days = entry["days"]  # week number
+    day = entry["startTime"]["day"]
+    jie = entry["jie"]
+
+    start_time = entry["startTime"]["time"]
+    start_time_unix = start_time / 1000
+    start_time_struct = time.gmtime(start_time_unix)
+    month = start_time_struct.tm_mon
+    date = start_time_struct.tm_mday
+
+    ppt_video, teacher_track = get_m3u8_links(live_id)
+
+    row = [month, date, day, jie, days, ppt_video, teacher_track]
+    return row
 
 
 def download_m3u8(url, filename, save_dir, command=''):
@@ -155,22 +174,12 @@ def main(liveid=None, command='', single=0):
     csv_filename = f"{year}年{course_code}{course_name}.csv"
 
     rows = []
-    for entry in tqdm(data, desc="获取视频链接"):
-        live_id = entry["id"]
-        days = entry["days"]  # week number
-        day = entry["startTime"]["day"]
-        jie = entry["jie"]
-
-        start_time = entry["startTime"]["time"]
-        start_time_unix = start_time / 1000
-        start_time_struct = time.gmtime(start_time_unix)
-        month = start_time_struct.tm_mon
-        date = start_time_struct.tm_mday
-
-        ppt_video, teacher_track = get_m3u8_links(live_id)
-
-        row = [month, date, day, jie, days, ppt_video, teacher_track]
-        rows.append(row)
+    # TODO: make this configurable
+    with Pool(4) as pool:
+        rows = list(tqdm(
+            pool.imap(generate_csv_row, data),
+            total=len(data), desc="获取视频链接")
+        )
 
     with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
