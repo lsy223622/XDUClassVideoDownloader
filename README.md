@@ -1,12 +1,12 @@
 # XDUClassVideoDownloader
 
-![GitHub repo size](https://img.shields.io/github/repo-size/lsy223622/XDUClassVideoDownloader)
-![GitHub License](https://img.shields.io/github/license/lsy223622/XDUClassVideoDownloader)
-![GitHub Repo stars](https://img.shields.io/github/stars/lsy223622/XDUClassVideoDownloader)
+[![GitHub repo size](https://img.shields.io/github/repo-size/lsy223622/XDUClassVideoDownloader)](https://github.com/lsy223622/XDUClassVideoDownloader/archive/refs/heads/main.zip)
+[![GitHub License](https://img.shields.io/github/license/lsy223622/XDUClassVideoDownloader)](https://github.com/lsy223622/XDUClassVideoDownloader?tab=GPL-3.0-1-ov-file)
+[![GitHub Repo stars](https://img.shields.io/github/stars/lsy223622/XDUClassVideoDownloader)](https://github.com/lsy223622/XDUClassVideoDownloader/stargazers)
 
-![GitHub Tag](https://img.shields.io/github/v/tag/lsy223622/XDUClassVideoDownloader)
-![GitHub Release Date](https://img.shields.io/github/release-date-pre/lsy223622/XDUClassVideoDownloader)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/lsy223622/XDUClassVideoDownloader/total)
+[![GitHub Tag](https://img.shields.io/github/v/tag/lsy223622/XDUClassVideoDownloader)](https://github.com/lsy223622/XDUClassVideoDownloader/tags)
+[![GitHub Release Date](https://img.shields.io/github/release-date-pre/lsy223622/XDUClassVideoDownloader)](https://github.com/lsy223622/XDUClassVideoDownloader/releases)
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/lsy223622/XDUClassVideoDownloader/total)](https://github.com/lsy223622/XDUClassVideoDownloader/releases)
 
 ![Static Badge](https://img.shields.io/badge/QQ-2413282135-white?logo=tencentqq&logoColor=white&labelColor=blue)
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
