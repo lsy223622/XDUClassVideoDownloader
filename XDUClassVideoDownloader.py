@@ -54,9 +54,9 @@ def get_m3u8_links(live_id):
 def download_m3u8(url, filename, save_dir, command=''):
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'N_m3u8DL-RE.exe "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'vsd-upx.exe save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
         else:
-            command = f'./N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+            command = f'./vsd-upx save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
@@ -175,16 +175,16 @@ def main(liveid=None, command='', single=0):
         day_chinese = day_to_chinese(day)
 
         if ppt_video:
-            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo"
-            filepath = os.path.join(save_dir, f"{filename}.ts")
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo.ts"
+            filepath = os.path.join(save_dir, f"{filename}")
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:
                 download_m3u8(ppt_video, filename, save_dir, command=command)
 
         if teacher_track:
-            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack"
-            filepath = os.path.join(save_dir, f"{filename}.ts")
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack.ts"
+            filepath = os.path.join(save_dir, f"{filename}")
             if os.path.exists(filepath):
                 print(f"{filepath} 已存在，跳过下载。")
             else:

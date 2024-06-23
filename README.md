@@ -47,10 +47,6 @@
    pip install requests tqdm
    ```
 
-3. 安装 `FFmpeg`
-   - Windows 用户：下载解压 `FFmpeg` 并将其中的 `bin` 文件夹添加到 `Path` 环境变量。[win64 下载链接](https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip)
-   - Linux 用户：使用包管理器安装 `FFmpeg`。
-
 ### 使用
 
 1. 下载本项目。
@@ -88,7 +84,7 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 - 在 Linux 上运行源码使用自定义下载命令下载一门课程的所有视频
 
    ```shell
-   python XDUClassVideoDownloader.py 1234567890 -c './N_m3u8DL-RE "{url}" --save-dir "{save_dir}" --save-name "{filename}" --check-segments-count False --binary-merge True'
+   python XDUClassVideoDownloader.py 1234567890 -c './vsd-upx save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
    ```
 
 ## 注意事项
@@ -99,7 +95,9 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 
 ## 使用的二进制文件
 
-- `N_m3u8DL-RE.exe` , `N_m3u8DL-RE` 来自 [nilaoda/N_m3u8DL-RE](https://github.com/nilaoda/N_m3u8DL-RE)
+- `vsd-upx.exe` , `vsd-upx`
+- `vsd.exe` , `vsd` 来自 [clitic/vsd](https://github.com/clitic/vsd)
+- 使用 `upx` 压缩，来自 [upx/upx](https://github.com/upx/upx)
 
 ## 各种语言的版本
 
