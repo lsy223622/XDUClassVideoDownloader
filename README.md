@@ -12,6 +12,22 @@
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
 [![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
+## 目录
+
+- [XDUClassVideoDownloader](#xduclassvideodownloader)
+  - [目录](#目录)
+  - [使用须知](#使用须知)
+  - [项目简介](#项目简介)
+  - [使用方法](#使用方法)
+    - [**Windows 用户看这里！**](#windows-用户看这里)
+    - [使用前的准备步骤](#使用前的准备步骤)
+    - [使用](#使用)
+  - [命令行参数](#命令行参数)
+    - [示例](#示例)
+  - [注意事项](#注意事项)
+  - [使用的二进制文件](#使用的二进制文件)
+  - [各种语言的版本](#各种语言的版本)
+
 ## 使用须知
 
 - 请先阅读此 README 再使用本项目。
@@ -36,12 +52,18 @@
 
 ### **Windows 用户看这里！**
 
-- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开后输入 `liveId`，下面的选项参考下方 [使用](https://github.com/lsy223622/XDUClassVideoDownloader#%E4%BD%BF%E7%94%A8) 部分。
+- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开后输入 `liveId`，下面的选项参考下方 [使用](#使用) 部分。
 
 ### 使用前的准备步骤
 
 1. 安装 `Python`（我用的 3.11.7）。[Python 官网下载页面](https://www.python.org/downloads/)
-2. 在命令行中输入以下命令来使用 `pip` 安装依赖：`requests` , `tqdm`。~~如果缺别的依赖那就装别的依赖~~
+   - 检查 Python 版本：
+
+   ```shell
+   python --version
+   ```
+
+2. 在命令行中输入以下命令来使用 `pip` 安装依赖：`requests`, `tqdm`。~~如果缺别的依赖那就装别的依赖~~
 
    ```shell
    pip install requests tqdm
@@ -68,13 +90,13 @@
 ## 命令行参数
 
 ```shell
-python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
+python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s] [--no-merge]
 ```
 
-- `LIVEID` （可选）：直播 ID。如果不输入，将采用交互式方式获取。
+- `LIVEID` （可选）：课程的 liveId，不输入则采用交互式方式获取。
 - `-c COMMAND` （可选）：自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
-- `-s` （可选）：仅下载单节课视频，指定两次可以仅下载单集（半节课）视频。
-- `--no-merge` （可选）：不合并上下半节视频。
+- `-s` （可选）：仅下载单节课视频（`-ss`：半节课视频）。
+- `--no-merge` （可选）：不合并上下半节课视频。
 
 命令行参数对 Releases 中打包的 exe 程序也有效，在运行 exe 程序时可以直接在后面加上参数。
 
@@ -100,8 +122,8 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 
 ## 使用的二进制文件
 
-- `vsd-upx.exe` , `vsd-upx`
-- `vsd.exe` , `vsd` 来自 [clitic/vsd](https://github.com/clitic/vsd)
+- `vsd-upx.exe`, `vsd-upx`
+- `vsd.exe`, `vsd` 来自 [clitic/vsd](https://github.com/clitic/vsd)
 - 使用 `upx` 压缩，来自 [upx/upx](https://github.com/upx/upx)
 
 ## 各种语言的版本

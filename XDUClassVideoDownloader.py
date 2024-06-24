@@ -1,105 +1,17 @@
 #!/usr/bin/env python3
 
-import requests
-import json
-import csv
-import urllib.parse
-import subprocess
-import time
-from tqdm import tqdm
 import os
+import csv
+import time
 from argparse import ArgumentParser
+from tqdm import tqdm
 import traceback
-import sys
-
-def get_initial_data(liveid):
-    url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Cookie": "UID=2"
-    }
-    data = {
-        "liveId": liveid
-    }
-
-    response = requests.post(url, headers=headers, data=data)
-    response.raise_for_status()
-    return response.json()
-
-def get_m3u8_links(live_id):
-    url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Cookie": "UID=2"
-    }
-
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    response_text = response.text
-
-    url_start = response_text.find('info=')
-    if url_start == -1:
-        raise ValueError("info parameter not found in the response")
-
-    encoded_info = response_text[url_start + 5:]
-    decoded_info = urllib.parse.unquote(encoded_info)
-    info_json = json.loads(decoded_info)
-
-    video_paths = info_json.get('videoPath', {})
-    ppt_video = video_paths.get('pptVideo', '')
-    teacher_track = video_paths.get('teacherTrack', '')
-
-    return ppt_video, teacher_track
-
-def download_m3u8(url, filename, save_dir, command=''):
-    if not command:
-        if sys.platform.startswith('win32'):
-            command = f'vsd-upx.exe save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
-        else:
-            command = f'./vsd-upx save {url} -o {save_dir}/{filename} --retry-count 32 -t 16'
-    else:
-        command = command.format(url=url, filename=filename, save_dir=save_dir)
-
-    MAX_ATTEMPTS = 2
-
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            subprocess.run(command, shell=True, check=True)
-            break
-        except subprocess.CalledProcessError:
-            print(f"第 {attempt+1} 次下载 {filename} 出错：\n{traceback.format_exc()}\n重试中...")
-            if attempt == MAX_ATTEMPTS - 1:
-                print(f"下载 {filename} 失败。")
-
-def merge_videos(files, output_file):
-    if sys.platform.startswith('win32'):
-        command = f'vsd-upx.exe merge -o {output_file} {" ".join(files)}'
-    else:
-        command = f'./vsd-upx merge -o {output_file} {" ".join(files)}'
-
-    try:
-        subprocess.run(command, shell=True, check=True)
-        print(f"合并完成：{output_file}")
-        for file in files:
-            os.remove(file)
-    except subprocess.CalledProcessError:
-        print(f"合并 {output_file} 失败：\n{traceback.format_exc()}")
-
-def day_to_chinese(day):
-    days = ["日", "一", "二", "三", "四", "五", "六"]
-    return days[day]
-
-def user_input_with_check(prompt, check_func):
-    while True:
-        user_input = input(prompt)
-        if check_func(user_input):
-            return user_input
-        else:
-            print("输入错误，请重新输入：")
+from utils import day_to_chinese, user_input_with_check, create_directory
+from downloader import download_m3u8, merge_videos
+from api import get_initial_data, get_m3u8_links
 
 def main(liveid=None, command='', single=0, merge=True):
     if not liveid:
-        # if liveid is not specified, default to interactive mode for all inputs
         liveid = int(user_input_with_check(
             "请输入 liveId：",
             lambda liveid: liveid.isdigit() and len(liveid) <= 10
@@ -122,7 +34,6 @@ def main(liveid=None, command='', single=0, merge=True):
                 lambda merge: merge.lower() in ['', 'y', 'n']
             ).lower() != 'n'
     else:
-        # dealing with naughty user here
         if single > 2:
             single = 2
 
@@ -137,11 +48,9 @@ def main(liveid=None, command='', single=0, merge=True):
             filter(lambda entry: entry["id"] == liveid, data))
 
         if not matching_entry:
-            # how is this possible
             raise ValueError("No matching entry found for the specified liveId")
 
         if single == 1:
-            # use start time to find other entries in single course
             start_time = matching_entry["startTime"]
             data = list(filter(
                 lambda entry: entry["startTime"]["date"] == start_time["date"] and
@@ -160,7 +69,7 @@ def main(liveid=None, command='', single=0, merge=True):
     year = start_time_struct.tm_year
 
     save_dir = f"{year}年{course_code}{course_name}"
-    os.makedirs(save_dir, exist_ok=True)
+    create_directory(save_dir)
 
     csv_filename = f"{year}年{course_code}{course_name}.csv"
 
@@ -265,15 +174,18 @@ def main(liveid=None, command='', single=0, merge=True):
     print("所有视频下载和处理完成。")
 
 def parse_arguments():
-    parser = ArgumentParser(description='用于下载西安电子科技大学录直播平台课程视频的工具')
-    parser.add_argument('liveid', nargs='?', type=int, default=None, help='直播 ID，不输入则采用交互式方式获取')
-    parser.add_argument('-c', '--command', default='', help='自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记')
-    parser.add_argument('-s', '--single', default=0, action='count', help='仅下载单节课视频，指定两次可以仅下载单集（半节课）视频')
-    parser.add_argument('--no-merge', action='store_true', help='不合并上下半节视频')
+    parser = ArgumentParser(description="用于下载西安电子科技大学录直播平台课程视频的工具")
+    parser.add_argument('liveid', nargs='?', default=None, help="课程的 liveId，不输入则采用交互式方式获取")
+    parser.add_argument('-c', '--command', default='', help="自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记")
+    parser.add_argument('-s', '--single', action='count', default=0, help="仅下载单节课视频（-s：单节课视频，-ss：半节课视频）")
+    parser.add_argument('--no-merge', action='store_false', help="不合并上下半节课视频")
 
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(liveid=args.liveid, command=args.command, single=args.single, merge=not args.no_merge)
+    try:
+        main(liveid=args.liveid, command=args.command, single=args.single, merge=args.no_merge)
+    except Exception as e:
+        print(f"发生错误：{e}")
+        print(traceback.format_exc())
