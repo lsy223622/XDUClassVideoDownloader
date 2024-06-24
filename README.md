@@ -36,7 +36,7 @@
 
 ### **Windows 用户看这里！**
 
-- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开后输入 `liveId` 即可
+- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开后输入 `liveId`，下面的选项参考下方 [使用](https://github.com/lsy223622/XDUClassVideoDownloader#%E4%BD%BF%E7%94%A8) 部分。
 
 ### 使用前的准备步骤
 
@@ -59,7 +59,11 @@
    - `n`：下载这门课程的所有视频。
    - `s`：下载 `liveId` 对应的单集（半节课）视频。
    - 不输入直接回车：效果同 `y`。
-5. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
+5. 输入 `y/n` 并回车。
+   - `y`：合并上下半节视频。
+   - `n`：不合并上下半节视频。
+   - 不输入直接回车：效果同 `y`。
+6. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
 
 ## 命令行参数
 
@@ -70,6 +74,7 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s]
 - `LIVEID` （可选）：直播 ID。如果不输入，将采用交互式方式获取。
 - `-c COMMAND` （可选）：自定义下载命令。使用 `{url}`, `{save_dir}`, `{filename}` 作为替换标记。
 - `-s` （可选）：仅下载单节课视频，指定两次可以仅下载单集（半节课）视频。
+- `--no-merge` （可选）：不合并上下半节视频。
 
 命令行参数对 Releases 中打包的 exe 程序也有效，在运行 exe 程序时可以直接在后面加上参数。
 
