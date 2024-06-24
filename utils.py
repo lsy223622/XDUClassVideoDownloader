@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 
 def day_to_chinese(day):
     days = ["日", "一", "二", "三", "四", "五", "六"]
@@ -16,3 +17,7 @@ def user_input_with_check(prompt, check_func):
 
 def create_directory(directory):
     os.makedirs(directory, exist_ok=True)
+
+def resource_path(relative_path):
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
