@@ -11,7 +11,9 @@ from downloader import download_m3u8, merge_videos
 from api import get_initial_data, get_m3u8_links
 
 def main(liveid=None, command='', single=0, merge=True):
-    if not liveid:
+    if liveid and not isinstance(liveid, int):
+        liveid = int(liveid)
+    elif not liveid:
         liveid = int(user_input_with_check(
             "请输入 liveId：",
             lambda liveid: liveid.isdigit() and len(liveid) <= 10
