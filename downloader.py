@@ -47,20 +47,49 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             return None
         
         month, date, day, jie, days = row[:5]
+        jie = int(jie)  # 确保 jie 是整数
         day_chinese = day_to_chinese(day)
         filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-{track_type}.ts"
         filepath = os.path.join(save_dir, filename)
         
-        if not os.path.exists(filepath):
-            download_m3u8(video_url, filename, save_dir, command=command)
+        # 检查是否存在已有同文件名
+        if os.path.exists(filepath):
+            print(f"文件已存在，跳过下载：{filename}")
+            return filepath
+        
+        # 检查是否存在包括这段视频的合并后的视频
+        merged_exists = any(
+            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"))
+            for jie_next in range(jie, jie + 2)
+        )
+        if merged_exists:
+            print(f"合并后的视频已存在，跳过下载：{filename}")
+            return filepath
+        
+        download_m3u8(video_url, filename, save_dir, command=command)
         
         if row_next:
             month_next, date_next, day_next, jie_next, days_next = row_next[:5] 
+            jie_next = int(jie_next)  # 确保 jie_next 是整数
             day_chinese_next = day_to_chinese(day_next)
             filename_next = f"{course_code}{course_name}{year}年{month_next}月{date_next}日第{days_next}周星期{day_chinese_next}第{jie_next}节-{track_type}.ts"
             filepath_next = os.path.join(save_dir, filename_next)
-            if not os.path.exists(filepath_next):
-                download_m3u8(row_next[5 if track_type == 'pptVideo' else 6], filename_next, save_dir, command=command)
+            
+            # 检查是否存在已有同文件名
+            if os.path.exists(filepath_next):
+                print(f"文件已存在，跳过下载：{filename_next}")
+                return filepath_next
+            
+            # 检查是否存在包括这段视频的合并后的视频
+            merged_exists_next = any(
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month_next}月{date_next}日第{days_next}周星期{day_chinese_next}第{jie_next}-{jie_next + 1}节-{track_type}.ts"))
+                for jie_next in range(jie_next, jie_next + 2)
+            )
+            if merged_exists_next:
+                print(f"合并后的视频已存在，跳过下载：{filename_next}")
+                return filepath_next
+            
+            download_m3u8(row_next[5 if track_type == 'pptVideo' else 6], filename_next, save_dir, command=command)
             
             if merge:
                 merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"
