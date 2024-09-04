@@ -38,6 +38,9 @@ def get_m3u8_links(live_id):
     info_json = json.loads(decoded_info)
 
     video_paths = info_json.get('videoPath', {})
+    if video_paths is None:
+        raise ValueError("videoPath not found in the response")
+
     ppt_video = video_paths.get('pptVideo', '')
     teacher_track = video_paths.get('teacherTrack', '')
 

@@ -39,7 +39,11 @@ def main(liveid=None, command='', single=0, merge=True):
         if single > 2:
             single = 2
 
-    data = get_initial_data(liveid)
+    try:
+        data = get_initial_data(liveid)
+    except Exception as e:
+        print(f"获取初始数据时发生错误：{e}")
+        return
 
     if not data:
         print("没有找到数据，请检查 liveId 是否正确。")
@@ -101,55 +105,39 @@ def main(liveid=None, command='', single=0, merge=True):
     print(f"{csv_filename} 文件已创建并写入数据。")
 
     def process_rows(rows):
+        def process_video(video_url, track_type, row, row_next=None):
+            if not video_url:
+                return None
+            
+            month, date, day, jie, days = row[:5]
+            day_chinese = day_to_chinese(day)
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-{track_type}.ts"
+            filepath = os.path.join(save_dir, filename)
+            
+            if not os.path.exists(filepath):
+                download_m3u8(video_url, filename, save_dir, command=command)
+            
+            if row_next:
+                month_next, date_next, day_next, jie_next, days_next = row_next[:5] 
+                day_chinese_next = day_to_chinese(day_next)
+                filename_next = f"{course_code}{course_name}{year}年{month_next}月{date_next}日第{days_next}周星期{day_chinese_next}第{jie_next}节-{track_type}.ts"
+                filepath_next = os.path.join(save_dir, filename_next)
+                if not os.path.exists(filepath_next):
+                    download_m3u8(row_next[5 if track_type == 'pptVideo' else 6], filename_next, save_dir, command=command)
+                
+                if merge:
+                    merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"
+                    merged_filepath = os.path.join(save_dir, merged_filename)
+                    merge_videos([filepath, filepath_next], merged_filepath)
+            
+            return filepath
+
         for i in range(0, len(rows), 2):
             row1 = rows[i]
-            month1, date1, day1, jie1, days1, ppt_video1, teacher_track1 = row1
-            day_chinese1 = day_to_chinese(day1)
-
             row2 = rows[i + 1] if i + 1 < len(rows) else None
-            if row2:
-                month2, date2, day2, jie2, days2, ppt_video2, teacher_track2 = row2
-                day_chinese2 = day_to_chinese(day2)
-
-            ppt_video_files = []
-            if ppt_video1:
-                filename1 = f"{course_code}{course_name}{year}年{month1}月{date1}日第{days1}周星期{day_chinese1}第{jie1}节-pptVideo.ts"
-                filepath1 = os.path.join(save_dir, filename1)
-                if not os.path.exists(filepath1):
-                    download_m3u8(ppt_video1, filename1, save_dir, command=command)
-                ppt_video_files.append(filepath1)
-
-            if ppt_video2:
-                filename2 = f"{course_code}{course_name}{year}年{month2}月{date2}日第{days2}周星期{day_chinese2}第{jie2}节-pptVideo.ts"
-                filepath2 = os.path.join(save_dir, filename2)
-                if not os.path.exists(filepath2):
-                    download_m3u8(ppt_video2, filename2, save_dir, command=command)
-                ppt_video_files.append(filepath2)
-
-            if len(ppt_video_files) == 2 and merge:
-                ppt_merged_filename = f"{course_code}{course_name}{year}年{month1}月{date1}日第{days1}周星期{day_chinese1}第{jie1}-{jie2}节-pptVideo.ts"
-                ppt_merged_filepath = os.path.join(save_dir, ppt_merged_filename)
-                merge_videos(ppt_video_files, ppt_merged_filepath)
-
-            teacher_track_files = []
-            if teacher_track1:
-                filename1 = f"{course_code}{course_name}{year}年{month1}月{date1}日第{days1}周星期{day_chinese1}第{jie1}节-teacherTrack.ts"
-                filepath1 = os.path.join(save_dir, filename1)
-                if not os.path.exists(filepath1):
-                    download_m3u8(teacher_track1, filename1, save_dir, command=command)
-                teacher_track_files.append(filepath1)
-
-            if teacher_track2:
-                filename2 = f"{course_code}{course_name}{year}年{month2}月{date2}日第{days2}周星期{day_chinese2}第{jie2}节-teacherTrack.ts"
-                filepath2 = os.path.join(save_dir, filename2)
-                if not os.path.exists(filepath2):
-                    download_m3u8(teacher_track2, filename2, save_dir, command=command)
-                teacher_track_files.append(filepath2)
-
-            if len(teacher_track_files) == 2 and merge:
-                teacher_merged_filename = f"{course_code}{course_name}{year}年{month1}月{date1}日第{days1}周星期{day_chinese1}第{jie1}-{jie2}节-teacherTrack.ts"
-                teacher_merged_filepath = os.path.join(save_dir, teacher_merged_filename)
-                merge_videos(teacher_track_files, teacher_merged_filepath)
+            
+            ppt_video1 = process_video(row1[5], 'pptVideo', row1, row2) 
+            teacher_track1 = process_video(row1[6], 'teacherTrack', row1, row2)
 
     if single == 1:
         process_rows(rows[:2])
