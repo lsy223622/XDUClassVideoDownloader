@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 import traceback
 from utils import day_to_chinese, user_input_with_check, create_directory
-from downloader import download_m3u8, merge_videos
+from downloader import download_m3u8, merge_videos, process_rows
 from api import get_initial_data, get_m3u8_links
 
 def main(liveid=None, command='', single=0, merge=True):
@@ -104,43 +104,8 @@ def main(liveid=None, command='', single=0, merge=True):
 
     print(f"{csv_filename} 文件已创建并写入数据。")
 
-    def process_rows(rows):
-        def process_video(video_url, track_type, row, row_next=None):
-            if not video_url:
-                return None
-            
-            month, date, day, jie, days = row[:5]
-            day_chinese = day_to_chinese(day)
-            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-{track_type}.ts"
-            filepath = os.path.join(save_dir, filename)
-            
-            if not os.path.exists(filepath):
-                download_m3u8(video_url, filename, save_dir, command=command)
-            
-            if row_next:
-                month_next, date_next, day_next, jie_next, days_next = row_next[:5] 
-                day_chinese_next = day_to_chinese(day_next)
-                filename_next = f"{course_code}{course_name}{year}年{month_next}月{date_next}日第{days_next}周星期{day_chinese_next}第{jie_next}节-{track_type}.ts"
-                filepath_next = os.path.join(save_dir, filename_next)
-                if not os.path.exists(filepath_next):
-                    download_m3u8(row_next[5 if track_type == 'pptVideo' else 6], filename_next, save_dir, command=command)
-                
-                if merge:
-                    merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"
-                    merged_filepath = os.path.join(save_dir, merged_filename)
-                    merge_videos([filepath, filepath_next], merged_filepath)
-            
-            return filepath
-
-        for i in range(0, len(rows), 2):
-            row1 = rows[i]
-            row2 = rows[i + 1] if i + 1 < len(rows) else None
-            
-            ppt_video1 = process_video(row1[5], 'pptVideo', row1, row2) 
-            teacher_track1 = process_video(row1[6], 'teacherTrack', row1, row2)
-
     if single == 1:
-        process_rows(rows[:2])
+        process_rows(rows[:2], course_code, course_name, year, save_dir, command, merge)
     elif single == 2:
         row = rows[0]
         month, date, day, jie, days, ppt_video, teacher_track = row
@@ -159,7 +124,7 @@ def main(liveid=None, command='', single=0, merge=True):
                 download_m3u8(teacher_track, filename, save_dir, command=command)
 
     else:
-        process_rows(rows)
+        process_rows(rows, course_code, course_name, year, save_dir, command, merge)
 
     print("所有视频下载和处理完成。")
 
