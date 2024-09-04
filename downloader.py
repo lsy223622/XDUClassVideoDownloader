@@ -35,6 +35,7 @@ def merge_videos(files, output_file):
         subprocess.run(command, shell=True, check=True)
         print(f"合并完成：{output_file}")
         for file in files:
-            os.remove(file)
+            if os.path.exists(file):
+                os.remove(file)
     except subprocess.CalledProcessError:
         print(f"合并 {output_file} 失败：\n{traceback.format_exc()}")

@@ -46,7 +46,12 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             if merge:
                 merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"
                 merged_filepath = os.path.join(save_dir, merged_filename)
-                merge_videos([filepath, filepath_next], merged_filepath)
+                
+                # 检查文件是否存在
+                if os.path.exists(filepath) and os.path.exists(filepath_next):
+                    merge_videos([filepath, filepath_next], merged_filepath)
+                else:
+                    print(f"合并文件失败，文件不存在: {filepath} 或 {filepath_next}")
         
         return filepath
 
