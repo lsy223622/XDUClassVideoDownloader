@@ -12,18 +12,19 @@
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
 [![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
-## 目录
+## 🎉🎉 2.0 版本更新 增加 Automation.py 随时自动下载全学期课程！🎉🎉
 
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
-  - [目录](#目录)
+  - [🎉🎉 2.0 版本更新 增加 Automation.py 随时自动下载全学期课程！🎉🎉](#-20-版本更新-增加-automationpy-随时自动下载全学期课程)
   - [使用须知](#使用须知)
   - [项目简介](#项目简介)
   - [使用方法](#使用方法)
     - [**Windows 用户看这里！**](#windows-用户看这里)
     - [使用前的准备步骤](#使用前的准备步骤)
-    - [使用](#使用)
-  - [命令行参数](#命令行参数)
-    - [示例](#示例)
+    - [XDUClassVideoDownloader.py](#xduclassvideodownloaderpy)
+      - [命令行参数](#命令行参数)
+        - [示例](#示例)
+    - [Automation.py](#automationpy)
   - [注意事项](#注意事项)
   - [使用的二进制文件](#使用的二进制文件)
   - [各种语言的版本](#各种语言的版本)
@@ -38,11 +39,15 @@
 ## 项目简介
 
 - 本项目是一个用于下载西安电子科技大学录直播平台课程视频的工具。
-- 只需输入任意一节课的 `liveId`，即可自动下载 `单节课` / `单集（半节课）` / `该课程的所有视频`。
+- 只需运行 `XDUClassVideoDownloader.py`，输入任意一节课的 `liveId`，即可自动下载 `单节课` / `单集（半节课）` / `该课程的所有视频`。
 
    > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到。如：`http://newesxidian.chaoxing.com/live/viewNewCourseLive1?liveId=12345678` 中的 `12345678`。
 
 - 同时会保存选择下载的范围内所有视频的 `m3u8` 链接到对应的 `csv` 表格中，方便使用其他方式下载。
+- 2.0 版本增加 `Automation.py`，只需输入超星用户 UID，即可自动下载本学期目前所有课程。
+
+   > 超星用户 UID 可以在 `chaoxing.com` 的 cookies 中找到，`UID` 的值就是超星用户 UID。
+
 - 下载时会自动检查之前是否下载过同一节课，如果已经下载则会跳过。所以可以在一学期中的多个时候随时下载新增的录播视频。
 - 下载的视频按照课程和时间整理，下载多个课程的视频也不会冲突。
 - 文件夹和 `csv` 表格命名规则：年份-课程号-课程名。
@@ -52,7 +57,7 @@
 
 ### **Windows 用户看这里！**
 
-- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开后输入 `liveId`，下面的选项参考下方 [使用](#使用) 部分。
+- 可以从 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 直接下载打包好的 exe 程序，无需以下所有准备步骤，打开 `XDUClassVideoDownloader.exe` 后输入 `liveId`，或打开 `Automation.exe` 后输入 `UID`，下面的选项参考下方 [使用](#xduclassvideodownloaderpy) 部分。
 
 ### 使用前的准备步骤
 
@@ -69,7 +74,7 @@
    pip install requests tqdm
    ```
 
-### 使用
+### XDUClassVideoDownloader.py
 
 1. 下载本项目。
 2. 运行程序：
@@ -87,7 +92,7 @@
    - 不输入直接回车：效果同 `y`。
 6. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
 
-## 命令行参数
+#### 命令行参数
 
 ```shell
 python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s] [--no-merge]
@@ -100,7 +105,7 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s] [--no-merge]
 
 命令行参数对 Releases 中打包的 exe 程序也有效，在运行 exe 程序时可以直接在后面加上参数。
 
-### 示例
+##### 示例
 
 - 在 Windows 上运行打包的 exe 使用默认的下载命令仅下载单节课视频
 
@@ -113,6 +118,15 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s] [--no-merge]
    ```shell
    python XDUClassVideoDownloader.py 1234567890 -c './vsd-upx save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
    ```
+
+### Automation.py
+
+1. 下载本项目。
+2. 运行程序：
+   - Windows 用户：双击 `automation.bat`。
+   - Linux 用户：运行 `Automation.py`。
+3. 输入 `UID` 并回车。
+4. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
 
 ## 注意事项
 
