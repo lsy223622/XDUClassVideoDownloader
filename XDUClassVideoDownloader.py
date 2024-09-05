@@ -92,7 +92,18 @@ def main(liveid=None, command='', single=0, merge=True):
         month = start_time_struct.tm_mon
         date = start_time_struct.tm_mday
 
-        ppt_video, teacher_track = get_m3u8_links(live_id)
+        end_time = entry["endTime"]["time"]
+        end_time_unix = end_time / 1000
+
+        # 检查视频是否在未来
+        if end_time_unix > time.time():
+            continue
+
+        try:
+            ppt_video, teacher_track = get_m3u8_links(live_id)
+        except ValueError as e:
+            print(f"获取视频链接时发生错误：{e}，liveId: {live_id}")
+            ppt_video, teacher_track = '', ''
 
         row = [month, date, day, jie, days, ppt_video, teacher_track]
         rows.append(row)

@@ -91,8 +91,11 @@ def main():
             month = start_time_struct.tm_mon
             date = start_time_struct.tm_mday
 
+            end_time = entry["endTime"]["time"]
+            end_time_unix = end_time / 1000
+
             # 检查视频是否在未来
-            if start_time_unix > time.time():
+            if end_time_unix > time.time():
                 continue
 
             try:

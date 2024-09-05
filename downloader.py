@@ -42,7 +42,7 @@ def merge_videos(files, output_file):
         print(f"合并 {output_file} 失败：\n{traceback.format_exc()}")
 
 def process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True):
-    def process_video(video_url, track_type, row, row_next=None):
+    def process_video(video_url, track_type, row):
         if not video_url:
             return None
         
@@ -52,60 +52,47 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-{track_type}.ts"
         filepath = os.path.join(save_dir, filename)
         
-        # 检查是否存在已有同文件名
+        # 检查是否存在包括本节的合并后文件
+        merged_exists = any([
+            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}-{jie}节-{track_type}.ts")),
+            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie+1}节-{track_type}.ts"))
+        ])
+        if merged_exists:
+            print(f"合并后的视频已存在，跳过下载和合并：{filename}")
+            return filepath
+        
+        # 检查是否存在和待下载的文件名相同的文件
         if os.path.exists(filepath):
             print(f"文件已存在，跳过下载：{filename}")
-            return filepath
+        else:
+            download_m3u8(video_url, filename, save_dir, command=command)
         
-        # 检查是否存在包括这段视频的合并后的视频
-        merged_exists = any(
-            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"))
-            for jie_next in range(jie, jie + 2)
-        )
-        if merged_exists:
-            print(f"合并后的视频已存在，跳过下载：{filename}")
-            return filepath
-        
-        download_m3u8(video_url, filename, save_dir, command=command)
-        
-        if row_next:
-            month_next, date_next, day_next, jie_next, days_next = row_next[:5] 
-            jie_next = int(jie_next)  # 确保 jie_next 是整数
-            day_chinese_next = day_to_chinese(day_next)
-            filename_next = f"{course_code}{course_name}{year}年{month_next}月{date_next}日第{days_next}周星期{day_chinese_next}第{jie_next}节-{track_type}.ts"
-            filepath_next = os.path.join(save_dir, filename_next)
+        # 合并部分
+        if os.path.exists(filepath):
+            # 先检查是否存在当前 jie 的文件，如果不存在就跳过合并部分
+            if not os.path.exists(filepath):
+                print(f"文件不存在，跳过合并：{filename}")
+                return filepath
             
-            # 检查是否存在已有同文件名
-            if os.path.exists(filepath_next):
-                print(f"文件已存在，跳过下载：{filename_next}")
-                return filepath_next
+            # 检查是否存在和当前文件名相同但是 jie 少 1 或者多 1 的文件
+            prev_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}节-{track_type}.ts")
+            next_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie+1}节-{track_type}.ts")
             
-            # 检查是否存在包括这段视频的合并后的视频
-            merged_exists_next = any(
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month_next}月{date_next}日第{days_next}周星期{day_chinese_next}第{jie_next}-{jie_next + 1}节-{track_type}.ts"))
-                for jie_next in range(jie_next, jie_next + 2)
-            )
-            if merged_exists_next:
-                print(f"合并后的视频已存在，跳过下载：{filename_next}")
-                return filepath_next
+            files_to_merge = []
+            if os.path.exists(prev_filepath):
+                files_to_merge.append(prev_filepath)
+            if os.path.exists(next_filepath):
+                files_to_merge.append(next_filepath)
             
-            download_m3u8(row_next[5 if track_type == 'pptVideo' else 6], filename_next, save_dir, command=command)
-            
-            if merge:
-                merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie_next}节-{track_type}.ts"
+            if files_to_merge:
+                files_to_merge.append(filepath)
+                files_to_merge.sort()  # 确保合并顺序正确
+                merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1 if os.path.exists(prev_filepath) else jie}-{jie+1 if os.path.exists(next_filepath) else jie}节-{track_type}.ts"
                 merged_filepath = os.path.join(save_dir, merged_filename)
-                
-                # 检查文件是否存在
-                if os.path.exists(filepath) and os.path.exists(filepath_next):
-                    merge_videos([filepath, filepath_next], merged_filepath)
-                else:
-                    print(f"合并文件失败，文件不存在: {filepath} 或 {filepath_next}")
+                merge_videos(files_to_merge, merged_filepath)
         
         return filepath
 
-    for i in range(0, len(rows), 2):
-        row1 = rows[i]
-        row2 = rows[i + 1] if i + 1 < len(rows) else None
-        
-        ppt_video1 = process_video(row1[5], 'pptVideo', row1, row2) 
-        teacher_track1 = process_video(row1[6], 'teacherTrack', row1, row2)
+    for row in rows:
+        ppt_video = process_video(row[5], 'pptVideo', row)
+        teacher_track = process_video(row[6], 'teacherTrack', row)
