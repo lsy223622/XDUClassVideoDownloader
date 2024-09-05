@@ -6,7 +6,7 @@ import os
 import traceback
 from utils import day_to_chinese
 
-def download_m3u8(url, filename, save_dir, command=''):
+def download_m3u8(url, filename, save_dir, command='', max_attempts=2):
     if not command:
         if sys.platform.startswith('win32'):
             command = f'vsd-upx.exe save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
@@ -15,15 +15,13 @@ def download_m3u8(url, filename, save_dir, command=''):
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
-    MAX_ATTEMPTS = 2
-
-    for attempt in range(MAX_ATTEMPTS):
+    for attempt in range(max_attempts):
         try:
             subprocess.run(command, shell=True, check=True)
             break
         except subprocess.CalledProcessError:
             print(f"第 {attempt+1} 次下载 {filename} 出错：\n{traceback.format_exc()}\n重试中...")
-            if attempt == MAX_ATTEMPTS - 1:
+            if attempt == max_attempts - 1:
                 print(f"下载 {filename} 失败。")
 
 def merge_videos(files, output_file):
