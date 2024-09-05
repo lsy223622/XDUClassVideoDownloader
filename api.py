@@ -11,20 +11,14 @@ HEADERS = {
 
 def get_initial_data(liveid):
     url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
-    headers = HEADERS
-    data = {
-        "liveId": liveid
-    }
-
-    response = requests.post(url, headers=headers, data=data)
+    data = {"liveId": liveid}
+    response = requests.post(url, headers=HEADERS, data=data)
     response.raise_for_status()
     return response.json()
 
 def get_m3u8_links(live_id):
     url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2"
-    headers = HEADERS
-
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=HEADERS)
     response.raise_for_status()
     response_text = response.text
 
@@ -65,7 +59,7 @@ def scan_courses(user_id, year, term_id, headers):
     while consecutive_empty_weeks < 2:
         url = f"https://newesxidian.chaoxing.com/frontLive/listStudentCourseLivePage?fid=16820&userId={user_id}&week={week}&termYear={year}&termId={term_id}"
         data = fetch_data(url, headers)
-        
+
         if data and len(data) > 0:
             for item in data:
                 course_id = item['courseId']
@@ -74,7 +68,7 @@ def scan_courses(user_id, year, term_id, headers):
             consecutive_empty_weeks = 0
         else:
             consecutive_empty_weeks += 1
-        
+
         week += 1
 
     return first_classes

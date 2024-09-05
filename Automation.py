@@ -24,12 +24,8 @@ def main():
     year = current_time.tm_year
     month = current_time.tm_mon
 
-    if month >= 9:
-        term_id = 1
-    elif month >= 2:
-        term_id = 2
-    else:
-        term_id = 2
+    term_id = 1 if month >= 9 else 2
+    if month < 2:
         year -= 1
 
     if not os.path.exists(CONFIG_FILE):
