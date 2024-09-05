@@ -8,18 +8,19 @@ def day_to_chinese(day):
     return days.get(day, "未知")
 
 def user_input_with_check(prompt, check_func):
-    while True:
-        user_input = input(prompt)
-        if check_func(user_input):
-            return user_input
-        else:
-            print("输入错误，请重新输入：")
+    while not check_func(user_input := input(prompt)):
+        print("输入错误，请重新输入：")
+    return user_input
 
 def create_directory(directory):
     os.makedirs(directory, exist_ok=True)
 
 def write_config(config, user_id, courses):
-    config['DEFAULT'] = {'user_id': user_id}
+    config['DEFAULT'] = {
+        'user_id': user_id,
+        'term_year': '',
+        'term_id': ''
+    }
     for course_id, course in courses.items():
         config[course_id] = {
             'course_code': course['courseCode'],

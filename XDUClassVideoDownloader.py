@@ -11,33 +11,14 @@ from downloader import download_m3u8, merge_videos, process_rows
 from api import get_initial_data, get_m3u8_links
 
 def main(liveid=None, command='', single=0, merge=True):
-    if liveid and not isinstance(liveid, int):
-        liveid = int(liveid)
-    elif not liveid:
-        liveid = int(user_input_with_check(
-            "请输入 liveId：",
-            lambda liveid: liveid.isdigit() and len(liveid) <= 10
-        ))
-
-        single = user_input_with_check(
-            "是否仅下载单节课视频？输入 y 下载单节课，n 下载这门课所有视频，s 则仅下载单集（半节课）视频，直接回车默认单节课 (Y/n/s):",
-            lambda single: single.lower() in ['', 'y', 'n', 's']
-        ).lower()
-        if single in ['', 'y']:
-            single = 1
-        elif single == 's':
-            single = 2
-        else:
-            single = 0
-
-        if single != 2:
-            merge = user_input_with_check(
-                "是否自动合并上下半节课视频？输入 y 合并，n 不合并，直接回车默认合并 (Y/n):",
-                lambda merge: merge.lower() in ['', 'y', 'n']
-            ).lower() != 'n'
+    if not liveid:
+        liveid = int(user_input_with_check("请输入 liveId：", lambda x: x.isdigit() and len(x) <= 10))
+        single = user_input_with_check("是否仅下载单节课视频？输入 y 下载单节课，n 下载这门课所有视频，s 则仅下载单集（半节课）视频，直接回车默认单节课 (Y/n/s):", lambda x: x.lower() in ['', 'y', 'n', 's']).lower()
+        single = 1 if single in ['', 'y'] else 2 if single == 's' else 0
+        merge = user_input_with_check("是否自动合并上下半节课视频？(Y/n):", lambda x: x.lower() in ['', 'y', 'n']).lower() != 'n'
     else:
-        if single > 2:
-            single = 2
+        liveid = int(liveid) if not isinstance(liveid, int) else liveid
+        single = min(single, 2)
 
     try:
         data = get_initial_data(liveid)
@@ -50,62 +31,40 @@ def main(liveid=None, command='', single=0, merge=True):
         return
 
     if single:
-        matching_entry = next(
-            filter(lambda entry: entry["id"] == liveid, data))
-
-        if not matching_entry:
+        data = [entry for entry in data if entry["id"] == liveid]
+        if not data:
             raise ValueError("No matching entry found for the specified liveId")
-
         if single == 1:
-            start_time = matching_entry["startTime"]
-            data = list(filter(
-                lambda entry: entry["startTime"]["date"] == start_time["date"] and
-                entry["startTime"]["month"] == start_time["month"],
-                data))
-        else:
-            data = [matching_entry]
+            start_time = data[0]["startTime"]
+            data = [entry for entry in data if entry["startTime"]["date"] == start_time["date"] and entry["startTime"]["month"] == start_time["month"]]
 
     first_entry = data[0]
-    start_time = first_entry["startTime"]["time"]
+    year = time.gmtime(first_entry["startTime"]["time"] / 1000).tm_year
     course_code = first_entry["courseCode"]
     course_name = first_entry["courseName"]
-
-    start_time_unix = start_time / 1000
-    start_time_struct = time.gmtime(start_time_unix)
-    year = start_time_struct.tm_year
 
     save_dir = f"{year}年{course_code}{course_name}"
     create_directory(save_dir)
 
-    csv_filename = f"{year}年{course_code}{course_name}.csv"
+    csv_filename = f"{save_dir}.csv"
 
     rows = []
     for entry in tqdm(data, desc="获取视频链接"):
-        live_id = entry["id"]
-        days = entry["days"]
-        day = entry["startTime"]["day"]
-        jie = entry["jie"]
-
-        start_time = entry["startTime"]["time"]
-        start_time_unix = start_time / 1000
-        start_time_struct = time.gmtime(start_time_unix)
-        month = start_time_struct.tm_mon
-        date = start_time_struct.tm_mday
-
-        end_time = entry["endTime"]["time"]
-        end_time_unix = end_time / 1000
-
-        # 检查视频是否在未来
-        if end_time_unix > time.time():
+        if entry["endTime"]["time"] / 1000 > time.time():
             continue
 
         try:
-            ppt_video, teacher_track = get_m3u8_links(live_id)
+            ppt_video, teacher_track = get_m3u8_links(entry["id"])
         except ValueError as e:
-            print(f"获取视频链接时发生错误：{e}，liveId: {live_id}")
+            print(f"获取视频链接时发生错误：{e}，liveId: {entry['id']}")
             ppt_video, teacher_track = '', ''
 
-        row = [month, date, day, jie, days, ppt_video, teacher_track]
+        start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
+        row = [
+            start_time_struct.tm_mon, start_time_struct.tm_mday, 
+            entry["startTime"]["day"], entry["jie"], entry["days"], 
+            ppt_video, teacher_track
+        ]
         rows.append(row)
 
     with open(csv_filename, mode='w', newline='') as file:

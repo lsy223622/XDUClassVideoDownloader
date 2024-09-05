@@ -8,38 +8,40 @@ from tqdm import tqdm
 import traceback
 from utils import day_to_chinese, create_directory, write_config, read_config
 from downloader import download_m3u8, merge_videos, process_rows
-from api import get_initial_data, get_m3u8_links, fetch_data, scan_courses
+from api import get_initial_data, get_m3u8_links, scan_courses
 import configparser
+from argparse import ArgumentParser
 
 CONFIG_FILE = 'config.ini'
 
 def main():
+    args = parse_arguments()
     config = configparser.ConfigParser()
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Cookie": "UID=2"
-    }
 
     current_time = time.localtime()
-    year = current_time.tm_year
+    term_year = current_time.tm_year
     month = current_time.tm_mon
 
     term_id = 1 if month >= 9 else 2
     if month < 2:
-        year -= 1
+        term_year -= 1
 
     if not os.path.exists(CONFIG_FILE):
-        user_id = input("请输入用户ID：")
-        courses = scan_courses(user_id, year, term_id, headers)
+        user_id = args.uid or input("请输入用户ID：")
+        term_year = args.year or term_year
+        term_id = args.term or term_id
+        courses = scan_courses(user_id, term_year, term_id)
         write_config(config, user_id, courses)
         print("配置文件已生成，请修改配置文件后按回车继续...")
         input()
     else:
         config = read_config()
-        user_id = config['DEFAULT']['user_id']
+        user_id = args.uid or config['DEFAULT']['user_id']
+        term_year = args.year or config['DEFAULT'].get('term_year', term_year)
+        term_id = args.term or config['DEFAULT'].get('term_id', term_id)
         print("使用配置文件中的用户ID：", user_id)
         existing_courses = {section: dict(config[section]) for section in config.sections() if section != 'DEFAULT'}
-        new_courses = scan_courses(user_id, year, term_id, headers)
+        new_courses = scan_courses(user_id, term_year, term_id)
         new_course_added = False
         for course_id, course in new_courses.items():
             course_id_str = str(course_id)  # 将course_id转换为字符串类型
@@ -97,40 +99,25 @@ def main():
             print(f"没有找到数据，请检查 liveId 是否正确。liveId: {live_id}")
             continue
 
-        first_entry = data[0]
-        start_time = first_entry["startTime"]["time"]
-        start_time_unix = start_time / 1000
-        start_time_struct = time.gmtime(start_time_unix)
-        year = start_time_struct.tm_year
+        year = time.gmtime(data[0]["startTime"]["time"] / 1000).tm_year
 
         rows = []
         for entry in tqdm(data, desc=f"获取 {course_code} - {course_name} 的视频链接"):
-            live_id = entry["id"]
-            days = entry["days"]
-            day = entry["startTime"]["day"]
-            jie = entry["jie"]
-
-            start_time = entry["startTime"]["time"]
-            start_time_unix = start_time / 1000
-            start_time_struct = time.gmtime(start_time_unix)
-            month = start_time_struct.tm_mon
-            date = start_time_struct.tm_mday
-
-            end_time = entry["endTime"]["time"]
-            end_time_unix = end_time / 1000
-
-            # 检查视频是否在未来
-            if end_time_unix > time.time():
+            if entry["endTime"]["time"] / 1000 > time.time():
                 continue
 
             try:
-                ppt_video, teacher_track = get_m3u8_links(live_id)
+                ppt_video, teacher_track = get_m3u8_links(entry["id"])
             except ValueError as e:
-                print(f"获取视频链接时发生错误：{e}，liveId: {live_id}")
+                print(f"获取视频链接时发生错误：{e}，liveId: {entry['id']}")
                 ppt_video, teacher_track = '', ''
 
-            row = [month, date, day, jie, days, ppt_video, teacher_track]
-            rows.append(row)
+            start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
+            rows.append([
+                start_time_struct.tm_mon, start_time_struct.tm_mday, 
+                entry["startTime"]["day"], entry["jie"], entry["days"], 
+                ppt_video, teacher_track
+            ])
 
         if rows:
             all_videos[course_code] = {
@@ -151,6 +138,13 @@ def main():
         process_rows(rows, course_code, course_name, year, save_dir)
 
     print("所有视频下载和处理完成。")
+
+def parse_arguments():
+    parser = ArgumentParser(description="用于下载西安电子科技大学录直播平台课程视频的工具")
+    parser.add_argument('-u', '--uid', default=None, help="用户的 UID")
+    parser.add_argument('-y', '--year', type=int, default=None, help="学年")
+    parser.add_argument('-t', '--term', type=int, choices=[1, 2], default=None, help="学期")
+    return parser.parse_args()
 
 if __name__ == "__main__":
     main()

@@ -10,23 +10,16 @@ HEADERS = {
 }
 
 def get_initial_data(liveid):
-    url = "http://newesxidian.chaoxing.com/live/listSignleCourse"
-    data = {"liveId": liveid}
-    response = requests.post(url, headers=HEADERS, data=data)
+    response = requests.post("http://newesxidian.chaoxing.com/live/listSignleCourse", headers=HEADERS, data={"liveId": liveid})
     response.raise_for_status()
     return response.json()
 
 def get_m3u8_links(live_id):
-    url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2"
-    response = requests.get(url, headers=HEADERS)
+    response = requests.get(f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2", headers=HEADERS)
     response.raise_for_status()
     response_text = response.text
 
-    url_start = response_text.find('info=')
-    if url_start == -1:
-        raise ValueError("info parameter not found in the response")
-
-    encoded_info = response_text[url_start + 5:]
+    encoded_info = response_text.split('info=')[-1]
     decoded_info = urllib.parse.unquote(encoded_info)
     info_json = json.loads(decoded_info)
 
@@ -34,14 +27,11 @@ def get_m3u8_links(live_id):
     if video_paths is None:
         raise ValueError("videoPath not found in the response")
 
-    ppt_video = video_paths.get('pptVideo', '')
-    teacher_track = video_paths.get('teacherTrack', '')
+    return video_paths.get('pptVideo', ''), video_paths.get('teacherTrack', '')
 
-    return ppt_video, teacher_track
-
-def fetch_data(url, headers):
+def fetch_data(url):
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -51,14 +41,13 @@ def fetch_data(url, headers):
         print(f"解析 JSON 错误：{e}")
         return None
 
-def scan_courses(user_id, year, term_id, headers):
+def scan_courses(user_id, term_year, term_id):
     week = 1
     consecutive_empty_weeks = 0
     first_classes = {}
 
     while consecutive_empty_weeks < 2:
-        url = f"https://newesxidian.chaoxing.com/frontLive/listStudentCourseLivePage?fid=16820&userId={user_id}&week={week}&termYear={year}&termId={term_id}"
-        data = fetch_data(url, headers)
+        data = fetch_data(f"https://newesxidian.chaoxing.com/frontLive/listStudentCourseLivePage?fid=16820&userId={user_id}&week={week}&termYear={term_year}&termId={term_id}")
 
         if data and len(data) > 0:
             for item in data:
