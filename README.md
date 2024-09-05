@@ -12,10 +12,10 @@
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
 [![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
-## 🎉🎉 2.0 版本更新 增加 Automation.py 随时自动下载全学期课程！🎉🎉
+## 🎉🎉 2.0 大版本更新 增加 Automation.py 随时自动下载全学期课程！🎉🎉
 
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
-  - [🎉🎉 2.0 版本更新 增加 Automation.py 随时自动下载全学期课程！🎉🎉](#-20-版本更新-增加-automationpy-随时自动下载全学期课程)
+  - [🎉🎉 2.0 大版本更新 增加 Automation.py 随时自动下载全学期课程！🎉🎉](#-20-大版本更新-增加-automationpy-随时自动下载全学期课程)
   - [使用须知](#使用须知)
   - [项目简介](#项目简介)
   - [使用方法](#使用方法)
@@ -44,10 +44,12 @@
    > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到。如：`http://newesxidian.chaoxing.com/live/viewNewCourseLive1?liveId=12345678` 中的 `12345678`。
 
 - 同时会保存选择下载的范围内所有视频的 `m3u8` 链接到对应的 `csv` 表格中，方便使用其他方式下载。
-- 2.0 版本增加 `Automation.py`，只需输入超星用户 UID，即可自动下载本学期目前所有课程。
+- 2.0 版本增加 `Automation.py`，只需输入超星 UID，即可自动下载本学期目前所有课程。
 
-   > 超星用户 UID 可以在 `chaoxing.com` 的 cookies 中找到，`UID` 的值就是超星用户 UID。
+   > 超星 UID 可以在 `chaoxing.com` 的 cookies 中找到，`UID` 的值就是超星 UID。
 
+- 使用 `Automation.py` 下载时会将 UID 保存到 `config.ini` 文件中，下次运行时会自动读取，无需再次输入。
+- 可以在 `config.ini` 文件中设置是否下载某一门课。
 - 下载时会自动检查之前是否下载过同一节课，如果已经下载则会跳过。所以可以在一学期中的多个时候随时下载新增的录播视频。
 - 下载的视频按照课程和时间整理，下载多个课程的视频也不会冲突。
 - 文件夹和 `csv` 表格命名规则：年份-课程号-课程名。
@@ -125,8 +127,11 @@ python XDUClassVideoDownloader.py [LIVEID] [-c COMMAND] [-s] [--no-merge]
 2. 运行程序：
    - Windows 用户：双击 `automation.bat`。
    - Linux 用户：运行 `Automation.py`。
-3. 输入 `UID` 并回车。
-4. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
+3. 第一次运行：输入 `UID` 并回车。
+4. 第一次运行会将 `UID` 和本学期所有课程保存到 `config.ini` 文件中，可以在配置文件中设置是否下载某一门课，编辑完后保存配置文件，在程序窗口中按回车键继续。
+5. 再次运行时如果已存在配置文件：无需输入 `UID`，直接运行。
+6. 等待程序执行结束，下载的视频会保存在同目录下对应的文件夹中。
+7. 如果变换学期或想重新获取所有课程，删除 `config.ini` 文件后重新运行程序即可。
 
 ## 注意事项
 
