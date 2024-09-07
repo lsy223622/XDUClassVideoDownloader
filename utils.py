@@ -35,3 +35,6 @@ def read_config():
     config = configparser.ConfigParser()
     config.read('config.ini')
     return config
+
+def handle_exception(e, message):
+    print(f"{message}：\n{traceback.format_exc()}")

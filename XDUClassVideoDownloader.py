@@ -6,7 +6,7 @@ import time
 from argparse import ArgumentParser
 from tqdm import tqdm
 import traceback
-from utils import day_to_chinese, user_input_with_check, create_directory
+from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception
 from downloader import download_m3u8, merge_videos, process_rows
 from api import get_initial_data, get_m3u8_links
 
@@ -23,7 +23,7 @@ def main(liveid=None, command='', single=0, merge=True):
     try:
         data = get_initial_data(liveid)
     except Exception as e:
-        print(f"获取初始数据时发生错误：{e}")
+        handle_exception(e, "获取初始数据时发生错误")
         return
 
     if not data:
