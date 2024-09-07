@@ -3,6 +3,7 @@
 import requests
 import urllib.parse
 import json
+from utils import handle_exception
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -35,10 +36,10 @@ def fetch_data(url):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"请求错误：{e}")
+        handle_exception(e, "请求错误")
         return None
     except ValueError as e:
-        print(f"解析 JSON 错误：{e}")
+        handle_exception(e, "解析 JSON 错误")
         return None
 
 def scan_courses(user_id, term_year, term_id):

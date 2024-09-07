@@ -6,7 +6,7 @@ import os
 import csv
 from tqdm import tqdm
 import traceback
-from utils import day_to_chinese, create_directory, write_config, read_config
+from utils import day_to_chinese, create_directory, write_config, read_config, handle_exception
 from downloader import download_m3u8, merge_videos, process_rows
 from api import get_initial_data, get_m3u8_links, scan_courses
 import configparser
@@ -92,7 +92,7 @@ def main():
         try:
             data = get_initial_data(live_id)
         except Exception as e:
-            print(f"获取初始数据时发生错误：{e}")
+            handle_exception(e, "获取初始数据时发生错误")
             continue
 
         if not data:

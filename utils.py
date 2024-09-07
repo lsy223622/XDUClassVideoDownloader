@@ -2,6 +2,7 @@
 
 import os
 import configparser
+import traceback
 
 def day_to_chinese(day):
     days = {0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}
@@ -35,3 +36,6 @@ def read_config():
     config = configparser.ConfigParser()
     config.read('config.ini')
     return config
+
+def handle_exception(e, message):
+    print(f"{message}：\n{traceback.format_exc()}")
