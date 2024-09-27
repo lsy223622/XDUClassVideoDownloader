@@ -5,7 +5,7 @@ import urllib.parse
 import json
 from utils import handle_exception
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
