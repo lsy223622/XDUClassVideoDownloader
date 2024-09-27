@@ -8,11 +8,13 @@ from tqdm import tqdm
 import traceback
 from utils import day_to_chinese, create_directory, write_config, read_config, handle_exception
 from downloader import download_m3u8, merge_videos, process_rows
-from api import get_initial_data, get_m3u8_links, scan_courses
+from api import get_initial_data, get_m3u8_links, scan_courses, check_update
 import configparser
 from argparse import ArgumentParser
 
 CONFIG_FILE = 'config.ini'
+
+check_update()
 
 def main():
     args = parse_arguments()

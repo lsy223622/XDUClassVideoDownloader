@@ -53,7 +53,9 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         # 检查是否存在包括本节的合并后文件
         merged_exists = any([
             os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}-{jie}节-{track_type}.ts")),
-            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie+1}节-{track_type}.ts"))
+            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}-{jie}节-{track_type}.mp4")),
+            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie+1}节-{track_type}.ts")),
+            os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{jie+1}节-{track_type}.mp4"))
         ])
         if merged_exists:
             print(f"合并后的视频已存在，跳过下载和合并：{filename}")
@@ -72,8 +74,10 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
 
         # 检查是否存在和当前文件名相同但是 jie 少 1 或者多 1 的文件
         prev_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}节-{track_type}.ts")
+        prev_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}节-{track_type}.mp4")
         next_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie+1}节-{track_type}.ts")
-            
+        next_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie+1}节-{track_type}.ts")
+        
         files_to_merge = []
         if os.path.exists(prev_filepath) and prev_filepath.endswith('.ts'):
             files_to_merge.append(prev_filepath)

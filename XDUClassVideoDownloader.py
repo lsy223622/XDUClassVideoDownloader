@@ -8,7 +8,9 @@ from tqdm import tqdm
 import traceback
 from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception
 from downloader import download_m3u8, merge_videos, process_rows
-from api import get_initial_data, get_m3u8_links
+from api import get_initial_data, get_m3u8_links, check_update
+
+check_update()
 
 def main(liveid=None, command='', single=0, merge=True):
     if not liveid:

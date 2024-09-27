@@ -5,6 +5,8 @@ import urllib.parse
 import json
 from utils import handle_exception
 
+VERSION = "2.2.0"
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Cookie": "UID=2"
@@ -62,3 +64,26 @@ def scan_courses(user_id, term_year, term_id):
         week += 1
 
     return first_classes
+
+def compare_versions(v1, v2):
+    v1_parts = list(map(int, v1.split('.')))
+    v2_parts = list(map(int, v2.split('.')))
+    for i in range(3):
+        if v1_parts[i] > v2_parts[i]:
+            return 1
+        elif v1_parts[i] < v2_parts[i]:
+            return -1
+    return 0
+
+def check_update():
+    try:
+        response = requests.get(f"https://api.lsy223622.com/xcvd.php?version={VERSION}")
+        data = response.json()
+        if data.get("message"):
+            print(data["message"])
+        if data.get("latest_version"):
+            latest_version = data["latest_version"]
+            if compare_versions(latest_version, VERSION) > 0:
+                print(f"有新版本可用: {latest_version}，请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载。")
+    except Exception as e:
+        print(f"检查更新时发生错误: {e}")
