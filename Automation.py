@@ -184,3 +184,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"发生错误：{e}")
         print(traceback.format_exc())
+    input("按回车键退出...")
