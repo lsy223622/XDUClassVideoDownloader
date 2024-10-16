@@ -4,6 +4,7 @@ import os
 import configparser
 import traceback
 import psutil
+import sys
 
 def remove_invalid_chars(course_name):
     invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
@@ -66,3 +67,7 @@ def calculate_optimal_threads():
 
     max_threads = min(max(max_threads, cpu_count), cpu_count * 8) # 最小是核心数，最大是核心数的8倍
     return int(max_threads)
+
+def resource_path(relative_path):
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
