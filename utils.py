@@ -3,6 +3,7 @@
 import os
 import configparser
 import traceback
+import sys
 
 def day_to_chinese(day):
     days = {0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}
@@ -39,3 +40,7 @@ def read_config():
 
 def handle_exception(e, message):
     print(f"{message}：\n{traceback.format_exc()}")
+
+def resource_path(relative_path):
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)

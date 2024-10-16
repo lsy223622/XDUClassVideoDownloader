@@ -5,6 +5,7 @@
         "gmtime",
         "liveid",
         "mday",
+        "MEIPASS",
         "tqdm"
     ]
 }

@@ -4,14 +4,16 @@ import subprocess
 import sys
 import os
 import traceback
-from utils import day_to_chinese, handle_exception
+from utils import day_to_chinese, handle_exception, resource_path
 
 def download_m3u8(url, filename, save_dir, command='', max_attempts=2):
+    vsd_path = resource_path('vsd-upx.exe')
+    
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'vsd-upx.exe save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
+            command = f'{vsd_path} save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
         else:
-            command = f'./vsd-upx save {url} -o {save_dir}/{filename} --retry-count 32 -t 16'
+            command = f'{vsd_path} save {url} -o {save_dir}/{filename} --retry-count 32 -t 16'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
@@ -25,10 +27,12 @@ def download_m3u8(url, filename, save_dir, command='', max_attempts=2):
                 print(f"下载 {filename} 失败。")
 
 def merge_videos(files, output_file):
+    vsd_path = resource_path('vsd-upx.exe')
+    
     if sys.platform.startswith('win32'):
-        command = f'vsd-upx.exe merge -o {output_file} {" ".join(files)}'
+        command = f'{vsd_path} merge -o {output_file} {" ".join(files)}'
     else:
-        command = f'./vsd-upx merge -o {output_file} {" ".join(files)}'
+        command = f'{vsd_path} merge -o {output_file} {" ".join(files)}'
 
     try:
         subprocess.run(command, shell=True, check=True)
