@@ -273,3 +273,5 @@ if __name__ == "__main__":
         if logger.getEffectiveLevel() <= logging.DEBUG:
             print(traceback.format_exc())
         sys.exit(1)
+
+    input("按回车键退出...")
