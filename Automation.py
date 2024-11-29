@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 
-import requests
-import time
 import os
-import csv
-from tqdm import tqdm
+import time
 import traceback
-from utils import day_to_chinese, create_directory, write_config, read_config, handle_exception
-from downloader import download_m3u8, merge_videos, process_rows
-from api import get_initial_data, get_m3u8_links, scan_courses, check_update
 import configparser
+from tqdm import tqdm
 from argparse import ArgumentParser
-
-CONFIG_FILE = 'config.ini'
+from api import get_initial_data, get_m3u8_links, scan_courses, check_update
+from downloader import process_rows
+from utils import create_directory, write_config, read_config, handle_exception
 
 check_update()
+
+CONFIG_FILE = 'config.ini'
 
 def main():
     args = parse_arguments()
@@ -149,4 +147,9 @@ def parse_arguments():
     return parser.parse_args()
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    try:
+        main()
+    except Exception as e:
+        print(f"发生错误：{e}")
+        print(traceback.format_exc())

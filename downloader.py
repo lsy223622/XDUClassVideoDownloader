@@ -71,6 +71,10 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         if not os.path.exists(filepath):
             print(f"文件不存在，跳过合并：{filename}")
             return
+        
+        # 如果 merge 为 False，跳过合并逻辑
+        if not merge:
+            return
 
         # 检查是否存在和当前文件名相同但是 jie 少 1 或者多 1 的文件
         prev_filepath = os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1}节-{track_type}.ts")
