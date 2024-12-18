@@ -8,7 +8,7 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from api import get_initial_data, get_m3u8_links, scan_courses, check_update
 from downloader import process_rows
-from utils import create_directory, write_config, read_config, handle_exception
+from utils import create_directory, write_config, read_config, handle_exception, day_to_chinese
 
 check_update()
 
@@ -100,10 +100,42 @@ def main():
             continue
 
         year = time.gmtime(data[0]["startTime"]["time"] / 1000).tm_year
+        save_dir = f"{year}年{course_code}{course_name}"
+        create_directory(save_dir)
 
         rows = []
         for entry in tqdm(data, desc=f"获取 {course_code} - {course_name} 的视频链接"):
             if entry["endTime"]["time"] / 1000 > time.time():
+                continue
+            
+            start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
+            month, date = start_time_struct.tm_mon, start_time_struct.tm_mday
+            day = entry["startTime"]["day"]
+            jie = entry["jie"]
+            days = entry["days"]
+            
+            # 检查文件是否已存在
+            day_chinese = day_to_chinese(day)
+            base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
+            
+            # 检查各种可能的文件名
+            file_exists = any([
+                os.path.exists(os.path.join(save_dir, f"{base_filename}-pptVideo.ts")),
+                os.path.exists(os.path.join(save_dir, f"{base_filename}-teacherTrack.ts")),
+                os.path.exists(os.path.join(save_dir, f"{base_filename}-pptVideo.mp4")),
+                os.path.exists(os.path.join(save_dir, f"{base_filename}-teacherTrack.mp4")),
+                # 检查合并文件
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.ts")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.ts")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.ts")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.ts")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.mp4")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.mp4")),
+                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4"))
+            ])
+            
+            if file_exists:
                 continue
 
             try:
@@ -112,9 +144,8 @@ def main():
                 print(f"获取视频链接时发生错误：{e}，liveId: {entry['id']}")
                 ppt_video, teacher_track = '', ''
 
-            start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
             rows.append([
-                start_time_struct.tm_mon, start_time_struct.tm_mday, 
+                month, date, 
                 entry["startTime"]["day"], entry["jie"], entry["days"], 
                 ppt_video, teacher_track
             ])
@@ -126,7 +157,7 @@ def main():
                 "rows": rows
             }
         else:
-            print(f"课程 {course_code} - {course_name} 没有视频。")
+            print(f"课程 {course_code} - {course_name} 没有或没有新增视频。")
 
     # 下载视频
     for course_code, course_info in all_videos.items():
