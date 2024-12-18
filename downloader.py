@@ -4,14 +4,18 @@ import subprocess
 import sys
 import os
 import traceback
+from shlex import quote
 from utils import day_to_chinese, handle_exception
 
 def download_m3u8(url, filename, save_dir, command='', max_attempts=2):
     if not command:
         if sys.platform.startswith('win32'):
-            command = f'vsd-upx.exe save {url} -o {save_dir}\{filename} --retry-count 32 -t 16'
+            output_path = os.path.join(save_dir, filename)
+            command = f'vsd-upx.exe save {url} -o "{output_path}" --retry-count 32 -t 16'
         else:
-            command = f'./vsd-upx save {url} -o {save_dir}/{filename} --retry-count 32 -t 16'
+            output_path = os.path.join(save_dir, filename)
+            safe_path = quote(output_path)
+            command = f'./vsd-upx save {url} -o {safe_path} --retry-count 32 -t 16'
     else:
         command = command.format(url=url, filename=filename, save_dir=save_dir)
 
@@ -26,9 +30,12 @@ def download_m3u8(url, filename, save_dir, command='', max_attempts=2):
 
 def merge_videos(files, output_file):
     if sys.platform.startswith('win32'):
-        command = f'vsd-upx.exe merge -o {output_file} {" ".join(files)}'
+        files_str = ' '.join(f'"{f}"' for f in files)
+        command = f'vsd-upx.exe merge -o "{output_file}" {files_str}'
     else:
-        command = f'./vsd-upx merge -o {output_file} {" ".join(files)}'
+        safe_output = quote(output_file)
+        safe_files = ' '.join(quote(f) for f in files)
+        command = f'./vsd-upx merge -o {safe_output} {safe_files}'
 
     try:
         subprocess.run(command, shell=True, check=True)
