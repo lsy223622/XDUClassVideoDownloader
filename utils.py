@@ -4,6 +4,13 @@ import os
 import configparser
 import traceback
 
+def remove_invalid_chars(course_name):
+    win_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+    if os.name == 'nt':
+        for char in win_chars:
+            course_name = course_name.replace(char, '')
+    return course_name
+
 def day_to_chinese(day):
     days = {0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}
     return days.get(day, "未知")

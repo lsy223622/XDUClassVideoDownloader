@@ -8,7 +8,7 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from api import get_initial_data, get_m3u8_links, check_update
 from downloader import download_m3u8, process_rows
-from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception
+from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception, remove_invalid_chars
 
 check_update()
 
@@ -44,6 +44,8 @@ def main(liveid=None, command='', single=0, merge=True):
     year = time.gmtime(first_entry["startTime"]["time"] / 1000).tm_year
     course_code = first_entry["courseCode"]
     course_name = first_entry["courseName"]
+
+    course_name = remove_invalid_chars(course_name)
 
     save_dir = f"{year}年{course_code}{course_name}"
     create_directory(save_dir)
