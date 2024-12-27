@@ -3,7 +3,7 @@
 import requests
 import urllib.parse
 import json
-from utils import handle_exception
+from utils import handle_exception, remove_invalid_chars
 
 VERSION = "2.5.0"
 
@@ -56,6 +56,7 @@ def scan_courses(user_id, term_year, term_id):
             for item in data:
                 course_id = item['courseId']
                 if course_id not in first_classes:
+                    item['courseName'] = remove_invalid_chars(item['courseName'])
                     first_classes[course_id] = item
             consecutive_empty_weeks = 0
         else:
