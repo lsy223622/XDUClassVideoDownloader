@@ -5,10 +5,9 @@ import configparser
 import traceback
 
 def remove_invalid_chars(course_name):
-    win_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
-    if os.name == 'nt':
-        for char in win_chars:
-            course_name = course_name.replace(char, '')
+    invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+    for char in invalid_chars:
+        course_name = course_name.replace(char, '')
     return course_name
 
 def day_to_chinese(day):
@@ -32,7 +31,7 @@ def write_config(config, user_id, courses):
     for course_id, course in courses.items():
         config[course_id] = {
             'course_code': course['courseCode'],
-            'course_name': course['courseName'],
+            'course_name': remove_invalid_chars(course['courseName']),
             'live_id': course['id'],
             'download': 'yes'
         }

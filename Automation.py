@@ -8,7 +8,7 @@ from tqdm import tqdm
 from argparse import ArgumentParser
 from api import get_initial_data, get_m3u8_links, scan_courses, check_update
 from downloader import process_rows
-from utils import create_directory, write_config, read_config, handle_exception, day_to_chinese
+from utils import create_directory, write_config, read_config, handle_exception, day_to_chinese, remove_invalid_chars
 
 check_update()
 
@@ -49,7 +49,7 @@ def main():
                 print(f"添加新课程：{course_id_str} - {course['courseName']}")
                 config[course_id_str] = {
                     'course_code': course['courseCode'],
-                    'course_name': course['courseName'],
+                    'course_name': remove_invalid_chars(course['courseName']),
                     'live_id': course['id'],
                     'download': 'yes'
                 }
@@ -58,12 +58,12 @@ def main():
                 # 检查现有课程的详细信息是否匹配
                 existing_course = existing_courses[course_id_str]
                 if (existing_course['course_code'] != course['courseCode'] or
-                    existing_course['course_name'] != course['courseName'] or
+                    existing_course['course_name'] != remove_invalid_chars(course['courseName']) or
                     existing_course['live_id'] != str(course['id'])):
                     print(f"更新课程信息：{course_id_str} - {course['courseName']}")
                     config[course_id_str] = {
                         'course_code': course['courseCode'],
-                        'course_name': course['courseName'],
+                        'course_name': remove_invalid_chars(course['courseName']),
                         'live_id': course['id'],
                         'download': existing_course.get('download', 'yes')
                     }
@@ -85,7 +85,7 @@ def main():
             continue
 
         course_code = config[course_id]['course_code']
-        course_name = config[course_id]['course_name']
+        course_name = remove_invalid_chars(config[course_id]['course_name'])
         live_id = config[course_id]['live_id']
         print(f"正在检查课程：{course_code} - {course_name}")
 

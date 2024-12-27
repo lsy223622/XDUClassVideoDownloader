@@ -43,9 +43,7 @@ def main(liveid=None, command='', single=0, merge=True):
     first_entry = data[0]
     year = time.gmtime(first_entry["startTime"]["time"] / 1000).tm_year
     course_code = first_entry["courseCode"]
-    course_name = first_entry["courseName"]
-
-    course_name = remove_invalid_chars(course_name)
+    course_name = remove_invalid_chars(first_entry["courseName"])
 
     save_dir = f"{year}年{course_code}{course_name}"
     create_directory(save_dir)
