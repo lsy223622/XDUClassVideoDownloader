@@ -14,10 +14,12 @@ def user_input_with_check(prompt, check_func):
     return user_input
 
 def create_directory(directory):
-    # Remove invalid characters in directory name
-    remove_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'] # these characters are not allowed in Windows directory name
-    for char in remove_chars:
-        directory = directory.replace(char, '')
+    if os.name == 'nt':
+        # Remove invalid characters in directory name
+        # these characters are not allowed in Windows directory name
+        remove_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'] 
+        for char in remove_chars:
+            directory = directory.replace(char, '')
     os.makedirs(directory, exist_ok=True)
 
 def write_config(config, user_id, courses):
