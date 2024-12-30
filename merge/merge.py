@@ -1,7 +1,27 @@
 import os
 import subprocess
 
-print("Hello World")
+
+coder = "libx264"
+
+def has_nvidia_gpu():
+    try:
+        # 运行 nvidia-smi 命令
+        result = subprocess.run(["nvidia-smi"], capture_output=True, text=True)
+        # 如果命令成功执行并返回输出，说明存在 NVIDIA GPU
+        return result.returncode == 0 and "NVIDIA" in result.stdout
+    except FileNotFoundError:
+        # 如果 nvidia-smi 命令不存在，说明没有 NVIDIA GPU
+        return False
+
+# 检测是否有 NVIDIA GPU
+if has_nvidia_gpu():
+    coder = "h264_nvenc"
+    print("检测到 NVIDIA GPU")
+else:
+    coder = "libx264"
+    print("未检测到 NVIDIA GPU")
+    
 
 def find_matching_files(directory):
     """
@@ -31,7 +51,7 @@ def merge_videos(ppt_file, teacher_file, output_file):
         "ffmpeg",
         "-i", teacher_file,
         "-i", ppt_file,
-        "-c:v", "h264_nvenc",  # 使用 NVENC 编码压缩
+        "-c:v", coder,  # 使用 NVENC 编码压缩
         "-preset", "slow",  # 编码速度设置为 slow
         "-crf", "32",  # 视频质量设置为 32
         "-b:v", "500k",  # 视频目标码率设置为 1000kbps
