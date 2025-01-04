@@ -77,6 +77,7 @@ def compare_versions(v1, v2):
     return 0
 
 def check_update():
+    print("正在检查更新...")
     try:
         response = requests.get(
             f"https://api.lsy223622.com/xcvd.php?version={VERSION}",
