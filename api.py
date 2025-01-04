@@ -78,7 +78,10 @@ def compare_versions(v1, v2):
 
 def check_update():
     try:
-        response = requests.get(f"https://api.lsy223622.com/xcvd.php?version={VERSION}")
+        response = requests.get(
+            f"https://api.lsy223622.com/xcvd.php?version={VERSION}",
+            timeout=10
+        )
         data = response.json()
         if data.get("message"):
             print(data["message"])
