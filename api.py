@@ -17,11 +17,44 @@ def get_initial_data(liveid):
     response.raise_for_status()
     return response.json()
 
-def get_m3u8_links(live_id):
-    response = requests.get(f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}&status=2", headers=HEADERS)
-    response.raise_for_status()
-    response_text = response.text
-
+def get_m3u8_text(live_id, u = 0):
+    time.sleep(random.randint(1, 50))
+    if u > 10:
+        return ''
+    elif u != 0:
+        print(f"{live_id}正在进行第{u + 1}/10次尝试")
+    try:
+    # if True:
+        result_text = ''
+        result = subprocess.run(
+            ['curl', 
+            f'http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}',
+            '--compressed',
+            '-H', 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0',
+            '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            '-H', 'Accept-Language: en-US,en;q=0.5',
+            '-H', 'Accept-Encoding: gzip, deflate',
+            '-H', 'Connection: keep-alive', 
+            '-H', 'Cookie: UID=2',
+            '-H', 'Upgrade-Insecure-Requests: 1',
+            '-H', 'Priority: u=0, i'],
+            capture_output=True,
+            text=True,
+            check=True  # 如果 curl 返回非零状态码，会抛出异常
+        )
+        # return result.stdout
+        result_text = result.stdout.strip()
+        if result_text == '':
+            result_text = get_m3u8_text(live_id, u + 1)
+        return result_text
+    except subprocess.CalledProcessError as e:
+        print(e)
+        return ''
+        
+def get_m3u8_links(live_id, u = 0):
+    response_text = get_m3u8_text(live_id)
+    if response_text.strip() == '':
+        raise ValueError(f"在获取{live_id}时10次尝试失败，学校服务器杂鱼了")
     encoded_info = response_text.split('info=')[-1]
     decoded_info = urllib.parse.unquote(encoded_info)
     info_json = json.loads(decoded_info)
@@ -31,6 +64,7 @@ def get_m3u8_links(live_id):
         raise ValueError("videoPath not found in the response")
 
     return video_paths.get('pptVideo', ''), video_paths.get('teacherTrack', '')
+
 
 def fetch_data(url):
     try:
