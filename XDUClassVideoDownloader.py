@@ -102,6 +102,8 @@ def main(liveid=None, command='', single=0, merge=True):
                 if row:
                     rows.append(row)
 
+    rows.sort(key=lambda x: (x[0], x[1], x[2], x[3], x[4])) # 确保按时间排序
+
     with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['month', 'date', 'day', 'jie', 'days', 'pptVideo', 'teacherTrack'])
