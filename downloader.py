@@ -4,6 +4,7 @@ import subprocess
 import sys
 import os
 import traceback
+import re
 from shlex import quote
 from utils import day_to_chinese, handle_exception
 
@@ -95,7 +96,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             
         if files_to_merge and all(f.endswith('.ts') for f in files_to_merge):
             files_to_merge.append(filepath)
-            files_to_merge.sort()  # 确保合并顺序正确
+            files_to_merge.sort(key=lambda f: int(re.search(r"第(\d+)节", f).group(1)))  # 确保合并顺序正确
             merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie-1 if os.path.exists(prev_filepath) else jie}-{jie+1 if os.path.exists(next_filepath) else jie}节-{track_type}.ts"
             merged_filepath = os.path.join(save_dir, merged_filename)
             merge_videos(files_to_merge, merged_filepath)
