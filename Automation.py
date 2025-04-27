@@ -23,7 +23,7 @@ def main():
     month = current_time.tm_mon
 
     term_id = 1 if month >= 9 else 2
-    if month < 2:
+    if month < 8:
         term_year -= 1
 
     if not os.path.exists(CONFIG_FILE):
