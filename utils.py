@@ -35,7 +35,7 @@ def write_config(config, user_id, courses):
             'live_id': course['id'],
             'download': 'yes'
         }
-    with open('config.ini', 'w') as configfile:
+    with open('config.ini', 'w', encoding='utf-8') as configfile:
         config.write(configfile)
 
 def read_config():

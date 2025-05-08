@@ -69,7 +69,7 @@ def main():
                     }
                     new_course_added = True
 
-        with open(CONFIG_FILE, 'w') as configfile:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
             config.write(configfile)
 
         if new_course_added:
