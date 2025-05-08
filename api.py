@@ -8,7 +8,7 @@ import subprocess
 import time
 import random
 
-VERSION = "2.7.1"
+VERSION = "2.7.2"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
