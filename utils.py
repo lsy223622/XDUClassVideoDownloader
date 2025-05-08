@@ -40,7 +40,7 @@ def write_config(config, user_id, courses):
 
 def read_config():
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read('config.ini', encoding='utf-8')
     return config
 
 def handle_exception(e, message):
