@@ -3,6 +3,7 @@
 import os
 import configparser
 import traceback
+import psutil
 
 def remove_invalid_chars(course_name):
     invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
@@ -45,3 +46,23 @@ def read_config():
 
 def handle_exception(e, message):
     print(f"{message}：\n{traceback.format_exc()}")
+
+def calculate_optimal_threads():
+    """
+    根据 CPU 负载和内存使用情况计算最佳线程数。
+    """
+    cpu_usage = psutil.cpu_percent()
+    mem_usage = psutil.virtual_memory().percent
+
+    cpu_count = os.cpu_count()
+
+    # 根据 CPU 使用率和内存使用率进行调整
+    if cpu_usage > 80 or mem_usage > 80:
+        max_threads = cpu_count
+    elif cpu_usage < 30 and mem_usage < 30:
+        max_threads = cpu_count * 4
+    else:
+        max_threads = cpu_count * 2
+
+    max_threads = min(max(max_threads, cpu_count), cpu_count * 8) # 最小是核心数，最大是核心数的8倍
+    return int(max_threads)

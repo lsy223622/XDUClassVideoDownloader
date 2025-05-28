@@ -129,3 +129,22 @@ def check_update():
                 print(f"有新版本可用: {latest_version}，请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载。")
     except Exception as e:
         print(f"检查更新时发生错误: {e}")
+
+def fetch_m3u8_links(entry, lock, desc):
+    """
+    获取单个课程条目的 m3u8 链接，并处理异常。
+    """
+    try:
+        ppt_video, teacher_track = get_m3u8_links(entry["id"])
+        start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
+        row = [
+            start_time_struct.tm_mon, start_time_struct.tm_mday,
+            entry["startTime"]["day"], entry["jie"], entry["days"],
+            ppt_video, teacher_track
+        ]
+        with lock:
+            desc.update(1)
+        return row
+    except ValueError as e:
+        print(f"获取视频链接时发生错误：{e}，liveId: {entry['id']}")
+        return None

@@ -5,54 +5,13 @@ import time
 import traceback
 from tqdm import tqdm
 from argparse import ArgumentParser
-from api import get_initial_data, get_m3u8_links, check_update
+from api import get_initial_data, get_m3u8_links, check_update, fetch_m3u8_links
 from downloader import download_m3u8, process_rows
-from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception, remove_invalid_chars
+from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception, remove_invalid_chars, calculate_optimal_threads
 import concurrent.futures
 from threading import Lock
-import psutil
-import concurrent.futures
 
 check_update()
-
-def calculate_optimal_threads():
-    """
-    根据 CPU 负载和内存使用情况计算最佳线程数。
-    """
-    cpu_usage = psutil.cpu_percent()
-    mem_usage = psutil.virtual_memory().percent
-
-    cpu_count = os.cpu_count()
-
-    # 根据 CPU 使用率和内存使用率进行调整
-    if cpu_usage > 80 or mem_usage > 80:
-        max_threads = cpu_count
-    elif cpu_usage < 30 and mem_usage < 30:
-        max_threads = cpu_count * 4
-    else:
-        max_threads = cpu_count * 2
-
-    max_threads = min(max(max_threads, cpu_count), cpu_count * 8) # 最小是核心数，最大是核心数的8倍
-    return int(max_threads)
-
-def fetch_m3u8_links(entry, lock, desc):
-    """
-    获取单个课程条目的 m3u8 链接，并处理异常。
-    """
-    try:
-        ppt_video, teacher_track = get_m3u8_links(entry["id"])
-        start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
-        row = [
-            start_time_struct.tm_mon, start_time_struct.tm_mday,
-            entry["startTime"]["day"], entry["jie"], entry["days"],
-            ppt_video, teacher_track
-        ]
-        with lock:
-            desc.update(1)
-        return row
-    except ValueError as e:
-        print(f"获取视频链接时发生错误：{e}，liveId: {entry['id']}")
-        return None
 
 def main(liveid=None, command='', single=0, merge=True):
     if not liveid:
