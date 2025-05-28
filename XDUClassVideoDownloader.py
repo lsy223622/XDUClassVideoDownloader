@@ -75,12 +75,13 @@ def main(liveid=None, command='', single=0, merge=True):
         return
 
     if single:
-        data = [entry for entry in data if entry["id"] == liveid]
+        data_temp = data[:] # 切片拷贝
+        data = [entry for entry in data_temp if entry["id"] == liveid]
         if not data:
             raise ValueError("No matching entry found for the specified liveId")
         if single == 1:
             start_time = data[0]["startTime"]
-            data = [entry for entry in data if entry["startTime"]["date"] == start_time["date"] and entry["startTime"]["month"] == start_time["month"]]
+            data = [entry for entry in data_temp if entry["startTime"]["date"] == start_time["date"] and entry["startTime"]["month"] == start_time["month"]]
 
     first_entry = data[0]
     year = time.gmtime(first_entry["startTime"]["time"] / 1000).tm_year
