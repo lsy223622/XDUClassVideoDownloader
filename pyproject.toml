@@ -1,0 +1,11 @@
+[project]
+name = "xduclassvideodownloader"
+version = "2.9.0"
+description = "本项目是一个用于下载西安电子科技大学录直播平台课程视频的工具。"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "psutil>=7.0.0",
+    "requests>=2.32.3",
+    "tqdm>=4.67.1",
+]
