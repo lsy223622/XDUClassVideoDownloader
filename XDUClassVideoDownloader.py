@@ -19,9 +19,19 @@ def main(liveid=None, command='', single=0, merge=True):
         single = user_input_with_check("是否仅下载单节课视频？输入 y 下载单节课，n 下载这门课所有视频，s 则仅下载单集（半节课）视频，直接回车默认单节课 (Y/n/s):", lambda x: x.lower() in ['', 'y', 'n', 's']).lower()
         single = 1 if single in ['', 'y'] else 2 if single == 's' else 0
         merge = user_input_with_check("是否自动合并上下半节课视频？(Y/n):", lambda x: x.lower() in ['', 'y', 'n']).lower() != 'n'
+        # 跳过一定的周数，直到大于此值
+        skip_input = user_input_with_check(
+            "是否从某个周数才开始下载？输入周数（如 3 则从第三周开始下载）或直接回车表示从第一周开始：",
+            lambda x: x.isdigit() or x == ''
+        ).strip()
+        skip_until = int(skip_input) - 1 if skip_input.isdigit() else 0
+        if skip_until < 0:
+            raise ValueError("跳过的周数不能为负数")
     else:
         liveid = int(liveid) if not isinstance(liveid, int) else liveid
         single = min(single, 2)
+        # 非交互模式下，默认不跳过任何周
+        skip_until = 0
 
     try:
         data = get_initial_data(liveid)
@@ -63,6 +73,10 @@ def main(liveid=None, command='', single=0, merge=True):
                     rows.append(row)
 
     rows.sort(key=lambda x: (x[0], x[1], x[2], int(x[3]), x[4])) # 确保按时间排序(确保'jie'是整数)
+
+    # 根据 skip_until 过滤掉周数 <= skip_until 的行
+    if skip_until > 0:
+        rows = [row for row in rows if int(row[4]) > skip_until]
 
     with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
