@@ -72,10 +72,10 @@
    python --version
    ```
 
-2. 在命令行中输入以下命令来使用 `pip` 安装依赖：`requests`, `tqdm`。~~如果缺别的依赖那就装别的依赖~~
+2. 在命令行中输入以下命令来使用 `pip` 安装依赖：`requests`, `tqdm`, `psutil`。~~如果缺别的依赖那就装别的依赖~~
 
    ```shell
-   pip install requests tqdm
+   pip install requests tqdm psutil
    ```
 
 ### XDUClassVideoDownloader.py
