@@ -178,7 +178,7 @@ def main():
         rows = course_info["rows"]
         save_dir = f"{year}年{course_code}{course_name}"
         create_directory(save_dir)
-        process_rows(rows, course_code, course_name, year, save_dir, video_type=video_type)
+        process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True, video_type=video_type)
 
     print("所有视频下载和处理完成。")
 
