@@ -42,7 +42,7 @@ def main():
         term_id = args.term or config['DEFAULT'].get('term_id', term_id)
         # 处理旧配置文件兼容性，添加默认video_type
         # 命令行参数优先，如果没有指定则使用配置文件中的值
-        video_type = args.video_type if args.video_type != 'both' else config['DEFAULT'].get('video_type', 'both')
+        video_type = args.video_type or config['DEFAULT'].get('video_type', 'both')
         
         # 如果配置文件中没有video_type，自动添加
         if 'video_type' not in config['DEFAULT']:
