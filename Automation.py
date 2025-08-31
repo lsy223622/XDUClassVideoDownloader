@@ -32,7 +32,7 @@ def main():
         term_id = args.term or term_id
         video_type = args.video_type
         courses = scan_courses(user_id, term_year, term_id)
-        write_config(config, user_id, courses, term_year, term_id, video_type)
+        write_config(config, user_id, courses, video_type)
         print("配置文件已生成，请修改配置文件后按回车继续...")
         input()
     else:
