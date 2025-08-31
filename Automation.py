@@ -30,8 +30,9 @@ def main():
         user_id = args.uid or input("请输入用户ID：")
         term_year = args.year or term_year
         term_id = args.term or term_id
+        video_type = args.video_type
         courses = scan_courses(user_id, term_year, term_id)
-        write_config(config, user_id, courses)
+        write_config(config, user_id, courses, video_type)
         print("配置文件已生成，请修改配置文件后按回车继续...")
         input()
     else:
@@ -39,6 +40,17 @@ def main():
         user_id = args.uid or config['DEFAULT']['user_id']
         term_year = args.year or config['DEFAULT'].get('term_year', term_year)
         term_id = args.term or config['DEFAULT'].get('term_id', term_id)
+        # 处理旧配置文件兼容性，添加默认video_type
+        # 命令行参数优先，如果没有指定则使用配置文件中的值
+        video_type = args.video_type or config['DEFAULT'].get('video_type', 'both')
+        
+        # 如果配置文件中没有video_type，自动添加
+        if 'video_type' not in config['DEFAULT']:
+            config['DEFAULT']['video_type'] = 'both'
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
+                config.write(configfile)
+            print("已自动更新配置文件，添加视频类型选项（默认：两种视频都下载）")
+        
         print("使用配置文件中的用户ID：", user_id)
         existing_courses = {section: dict(config[section]) for section in config.sections() if section != 'DEFAULT'}
         new_courses = scan_courses(user_id, term_year, term_id)
@@ -166,7 +178,7 @@ def main():
         rows = course_info["rows"]
         save_dir = f"{year}年{course_code}{course_name}"
         create_directory(save_dir)
-        process_rows(rows, course_code, course_name, year, save_dir)
+        process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True, video_type=video_type)
 
     print("所有视频下载和处理完成。")
 
@@ -175,6 +187,7 @@ def parse_arguments():
     parser.add_argument('-u', '--uid', default=None, help="用户的 UID")
     parser.add_argument('-y', '--year', type=int, default=None, help="学年")
     parser.add_argument('-t', '--term', type=int, choices=[1, 2], default=None, help="学期")
+    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both', help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
 
 if __name__ == "__main__":

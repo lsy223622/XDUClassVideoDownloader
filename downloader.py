@@ -47,7 +47,7 @@ def merge_videos(files, output_file):
     except subprocess.CalledProcessError as e:
         handle_exception(e, f"合并 {output_file} 失败")
 
-def process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True):
+def process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True, video_type='both'):
     def process_video(video_url, track_type, row):
         if not video_url:
             return
@@ -102,5 +102,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             merge_videos(files_to_merge, merged_filepath)
         
     for row in rows:
-        process_video(row[5], 'pptVideo', row)
-        process_video(row[6], 'teacherTrack', row)
+        if video_type in ['both', 'ppt']:
+            process_video(row[5], 'pptVideo', row)
+        if video_type in ['both', 'teacher']:
+            process_video(row[6], 'teacherTrack', row)

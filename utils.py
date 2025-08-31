@@ -4,6 +4,7 @@ import os
 import configparser
 import traceback
 import psutil
+from datetime import datetime
 
 def remove_invalid_chars(course_name):
     invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
@@ -23,11 +24,24 @@ def user_input_with_check(prompt, check_func):
 def create_directory(directory):
     os.makedirs(directory, exist_ok=True)
 
-def write_config(config, user_id, courses):
+def write_config(config, user_id, courses, video_type='both'):
+    # Extract term information from the context - since all courses come from scan_courses
+    # with specific term_year and term_id, we can determine these from the current context
+    current_date = datetime.now()
+    current_year = current_date.year
+    month = current_date.month
+    
+    # Determine current term based on date logic (same as Automation.py)
+    term_year = current_year
+    term_id = 1 if month >= 9 else 2
+    if month < 8:
+        term_year -= 1
+    
     config['DEFAULT'] = {
         'user_id': user_id,
-        'term_year': '',
-        'term_id': ''
+        'term_year': term_year,
+        'term_id': term_id,
+        'video_type': video_type
     }
     for course_id, course in courses.items():
         config[course_id] = {
