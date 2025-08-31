@@ -57,6 +57,7 @@
 - **智能化配置文件**：首次运行 `Automation.py` 会生成 `config.ini` 文件，列出您的所有课程。您可以自由编辑此文件，决定哪些课程需要下载。
 - **新课程自动发现**：自动化脚本能自动检测到您课表中的新课程，并将其添加到配置文件中，提醒您进行确认。
 - **自动增量下载**：自动跳过已存在的视频文件，您可以随时运行脚本来下载新增的录播视频，无需担心重复下载。
+- **灵活的视频类型选择**：支持选择下载 pptVideo（课件视频）、teacherTrack（教师视频），或两种视频都下载。默认为两种都下载。
 - **视频智能合并**：自动将同一节课的上下两个部分（`pptVideo` 和 `teacherTrack`）合并为一个文件，方便观看。
 - **M3U8 链接导出**：在下载的同时，会将所有视频的 `m3u8` 链接保存到对应的 `.csv` 文件中，方便您使用其他下载工具。
 - **性能优化**：根据系统负载（CPU、内存）动态调整并发线程数，在保证系统稳定性的前提下，最大化下载效率。
@@ -97,8 +98,12 @@
         - `y` (或直接回车): 下载该 `liveId` 对应的**单节课**（上下两集）。
         - `n`: 下载这门课的**所有视频**。
         - `s`: 仅下载该 `liveId` 对应的**单集视频**（半节课）。
-    4. 选择是否自动合并视频。
-    5. (可选) 输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从头开始。
+    4. 选择要下载的视频类型:
+        - `b` (或直接回车): 下载两种视频（pptVideo和teacherTrack，默认）。
+        - `p`: 仅下载 pptVideo（课件视频）。
+        - `t`: 仅下载 teacherTrack（教师视频）。
+    5. 选择是否自动合并视频。
+    6. (可选) 输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从头开始。
 
 #### **`Automation.py`** (全自动下载)
 
@@ -110,10 +115,12 @@
         - 程序会提示您输入超星 `UID`。
         - 输入后，脚本会自动扫描您当前学期的所有课程，并生成一个 `config.ini` 文件。
         - 此时，您可以打开 `config.ini` 文件，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
+        - 配置文件中的 `video_type` 字段控制全局视频类型（`both`/`ppt`/`teacher`），默认为 `both`。
         - 保存配置文件后，回到程序窗口按回车键，即可开始下载。
     3. **后续运行**:
         - 程序会自动读取 `config.ini`，并检查是否有新课程加入。
         - 如果发现新课程，会将其添加到配置文件中并提示您修改。确认后即可开始增量下载。
+        - 程序会自动检查并更新旧版本的配置文件，确保包含 `video_type` 参数。
         - 若要重新扫描所有课程或更换学期，只需删除 `config.ini` 文件后重新运行脚本即可。
 
 #### **辅助工具：`ConvertTStoMP4`**
@@ -132,7 +139,7 @@
 
 ```shell
 # 用法
-python XDUClassVideoDownloader.py [LIVEID] [-s] [-c COMMAND] [--no-merge]
+python XDUClassVideoDownloader.py [LIVEID] [-s] [-c COMMAND] [--no-merge] [--video-type {both,ppt,teacher}]
 ```
 
 - `LIVEID` (可选): 课程的 `liveId`。如果省略，将进入交互模式。
@@ -140,31 +147,45 @@ python XDUClassVideoDownloader.py [LIVEID] [-s] [-c COMMAND] [--no-merge]
   - `-s`: 仅下载单节课视频。
   - `-ss`: 仅下载单集（半节课）视频。
 - `--no-merge` (可选): 禁止自动合并上下半节课的视频。
+- `--video-type` (可选): 选择要下载的视频类型:
+  - `both`: 下载两种视频（pptVideo 和 teacherTrack，默认）
+  - `ppt`: 仅下载 pptVideo（课件视频）
+  - `teacher`: 仅下载 teacherTrack（教师视频）
 - `-c COMMAND` (可选): 使用自定义的下载命令。可用占位符: `{url}`, `{save_dir}`, `{filename}`。
 
 **示例:**
 
 ```shell
-# 使用 exe 下载 liveId 为 1234567890 的单节课，且不合并
-XDUClassVideoDownloader.exe 1234567890 -s --no-merge
+# 使用 exe 下载 liveId 为 1234567890 的单节课，且不合并，仅下载课件视频
+XDUClassVideoDownloader.exe 1234567890 -s --no-merge --video-type ppt
+
+# 仅下载教师视频
+XDUClassVideoDownloader.exe 1234567890 --video-type teacher
 ```
 
 ### `Automation.py` 参数
 
 ```shell
 # 用法
-python Automation.py [-u UID] [-y YEAR] [-t TERM]
+python Automation.py [-u UID] [-y YEAR] [-t TERM] [--video-type {both,ppt,teacher}]
 ```
 
 - `-u UID` (可选): 您的超星 `UID`。
 - `-y YEAR` (可选): 指定学年（如 `2024`）。默认为当前学年。
 - `-t TERM` (可选): 指定学期（`1` 代表秋季学期，`2` 代表春季学期）。默认为当前学期。
+- `--video-type` (可选): 选择要下载的视频类型:
+  - `both`: 下载两种视频（pptVideo 和 teacherTrack，默认）
+  - `ppt`: 仅下载 pptVideo（课件视频）
+  - `teacher`: 仅下载 teacherTrack（教师视频）
 
 **示例:**
 
 ```shell
-# 使用 exe 自动下载 2024 年秋季学期的课程，并指定 UID
-Automation.exe -u 123456789 -y 2024 -t 1
+# 使用 exe 自动下载 2024 年秋季学期的课程，并指定 UID，仅下载课件视频
+Automation.exe -u 123456789 -y 2024 -t 1 --video-type ppt
+
+# 仅下载教师视频
+Automation.exe --video-type teacher
 ```
 
 ## **注意事项**

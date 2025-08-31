@@ -13,12 +13,14 @@ from threading import Lock
 
 check_update()
 
-def main(liveid=None, command='', single=0, merge=True):
+def main(liveid=None, command='', single=0, merge=True, video_type='both'):
     if not liveid:
         liveid = int(user_input_with_check("请输入 liveId：", lambda x: x.isdigit() and len(x) <= 10))
         single = user_input_with_check("是否仅下载单节课视频？输入 y 下载单节课，n 下载这门课所有视频，s 则仅下载单集（半节课）视频，直接回车默认单节课 (Y/n/s):", lambda x: x.lower() in ['', 'y', 'n', 's']).lower()
         single = 1 if single in ['', 'y'] else 2 if single == 's' else 0
         merge = user_input_with_check("是否自动合并上下半节课视频？(Y/n):", lambda x: x.lower() in ['', 'y', 'n']).lower() != 'n'
+        video_type_input = user_input_with_check("选择要下载的视频类型？输入 b 下载两种视频，p 仅下载pptVideo，t 仅下载teacherTrack，直接回车默认两种都下载 (B/p/t):", lambda x: x.lower() in ['', 'b', 'p', 't']).lower()
+        video_type = 'ppt' if video_type_input == 'p' else 'teacher' if video_type_input == 't' else 'both'
         # 跳过一定的周数，直到大于此值
         skip_input = user_input_with_check(
             "是否从某个周数才开始下载？输入周数（如 3 则从第三周开始下载）或直接回车表示从第一周开始：",
@@ -86,23 +88,23 @@ def main(liveid=None, command='', single=0, merge=True):
     print(f"{csv_filename} 文件已创建并写入数据。")
 
     if single == 1:
-        process_rows(rows[:2], course_code, course_name, year, save_dir, command, merge)
+        process_rows(rows[:2], course_code, course_name, year, save_dir, command, merge, video_type)
     elif single == 2:
         row = rows[0]
         month, date, day, jie, days, ppt_video, teacher_track = row
         day_chinese = day_to_chinese(day)
-        if ppt_video:
+        if video_type in ['both', 'ppt'] and ppt_video:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo.ts"
             filepath = os.path.join(save_dir, filename)
             if not os.path.exists(filepath):
                 download_m3u8(ppt_video, filename, save_dir, command=command)
-        if teacher_track:
+        if video_type in ['both', 'teacher'] and teacher_track:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack.ts"
             filepath = os.path.join(save_dir, filename)
             if not os.path.exists(filepath):
                 download_m3u8(teacher_track, filename, save_dir, command=command)
     else:
-        process_rows(rows, course_code, course_name, year, save_dir, command, merge)
+        process_rows(rows, course_code, course_name, year, save_dir, command, merge, video_type)
 
     print("所有视频下载和处理完成。")
 
@@ -113,6 +115,7 @@ def parse_arguments():
     parser.add_argument('-c', '--command', default='', help="自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记")
     parser.add_argument('-s', '--single', action='count', default=0, help="仅下载单节课视频（-s：单节课视频，-ss：半节课视频）")
     parser.add_argument('--no-merge', action='store_false', help="不合并上下半节课视频")
+    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both', help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
 
 
@@ -120,7 +123,7 @@ if __name__ == "__main__":
     args = parse_arguments()
     try:
         
-        main(liveid=args.liveid, command=args.command, single=args.single, merge=args.no_merge)
+        main(liveid=args.liveid, command=args.command, single=args.single, merge=args.no_merge, video_type=args.video_type)
     except Exception as e:
         print(f"发生错误：{e}")
         print(traceback.format_exc())

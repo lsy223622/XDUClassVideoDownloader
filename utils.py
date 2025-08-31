@@ -23,11 +23,12 @@ def user_input_with_check(prompt, check_func):
 def create_directory(directory):
     os.makedirs(directory, exist_ok=True)
 
-def write_config(config, user_id, courses):
+def write_config(config, user_id, courses, term_year=None, term_id=None, video_type='both'):
     config['DEFAULT'] = {
         'user_id': user_id,
-        'term_year': '',
-        'term_id': ''
+        'term_year': term_year or '',
+        'term_id': term_id or '',
+        'video_type': video_type
     }
     for course_id, course in courses.items():
         config[course_id] = {
