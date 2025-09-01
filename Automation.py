@@ -171,9 +171,11 @@ def main():
             base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
             
             # 根据 video_type 选择要检查的文件类型
-            file_patterns = []
+            # 拆分为 ppt 与 teacher 两类，方便在 both 模式下做“部分存在仍需继续”的判断
+            ppt_patterns = []
+            teacher_patterns = []
             if video_type in ['both', 'ppt']:
-                file_patterns += [
+                ppt_patterns = [
                     f"{base_filename}-pptVideo.ts",
                     f"{base_filename}-pptVideo.mp4",
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.ts",
@@ -182,7 +184,7 @@ def main():
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4"
                 ]
             if video_type in ['both', 'teacher']:
-                file_patterns += [
+                teacher_patterns = [
                     f"{base_filename}-teacherTrack.ts",
                     f"{base_filename}-teacherTrack.mp4",
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.ts",
@@ -190,10 +192,17 @@ def main():
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.ts",
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4"
                 ]
-            file_exists = any([
-                os.path.exists(os.path.join(save_dir, fname))
-                for fname in file_patterns
-            ])
+
+            ppt_exists = any(os.path.exists(os.path.join(save_dir, f)) for f in ppt_patterns) if ppt_patterns else False
+            teacher_exists = any(os.path.exists(os.path.join(save_dir, f)) for f in teacher_patterns) if teacher_patterns else False
+
+            if video_type == 'both':
+                # both 模式：只有两种都存在才整体跳过；如果只存在其中一种则继续处理缺失的那一种
+                file_exists = ppt_exists and teacher_exists
+            elif video_type == 'ppt':
+                file_exists = ppt_exists
+            else:  # video_type == 'teacher'
+                file_exists = teacher_exists
             
             # 如果文件已存在，跳过此条目
             if file_exists:
