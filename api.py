@@ -13,7 +13,7 @@ import subprocess
 import time
 import random
 
-VERSION = "2.8.0"
+VERSION = "2.9.0"
 
 # HTTP请求头，模拟浏览器访问
 HEADERS = {
