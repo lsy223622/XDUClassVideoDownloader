@@ -52,7 +52,7 @@ def get_m3u8_text(live_id, u = 0):
         str: M3U8播放列表的文本内容，失败时返回空字符串
     """
     # 随机延迟1-50秒，避免对服务器造成过大压力
-    time.sleep(random.randint(1, 50))
+    time.sleep(random.randint(1, 10))
     
     # 超过10次重试则放弃
     if u > 10:
