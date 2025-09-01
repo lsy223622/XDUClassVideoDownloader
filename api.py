@@ -216,7 +216,7 @@ def check_update():
     """
     检查软件是否有新版本可用。
     """
-    print("正在检查更新...")
+    print("正在检查更新...", end="", flush=True)
     try:
         # 向API服务器请求最新版本信息
         response = requests.get(
@@ -227,17 +227,23 @@ def check_update():
         
         # 显示服务器返回的消息
         if data.get("message"):
-            print(data["message"])
-            
-        # 检查是否有新版本
-        if data.get("latest_version"):
-            latest_version = data["latest_version"]
-            # 比较版本号，如果有新版本则提示用户
-            if compare_versions(latest_version, VERSION) > 0:
-                print(f"有新版本可用: {latest_version}，请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载。")
+            print(f"\r{data['message']}")
+        else:
+            # 检查是否有新版本
+            if data.get("latest_version"):
+                latest_version = data["latest_version"]
+                # 比较版本号，如果有新版本则提示用户
+                if compare_versions(latest_version, VERSION) > 0:
+                    print(f"\r有新版本可用: {latest_version}，请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载。")
+                else:
+                    # 没有新版本，清除"正在检查更新..."文字
+                    print("\r" + " " * 20 + "\r", end="", flush=True)
+            else:
+                # 清除"正在检查更新..."文字
+                print("\r" + " " * 20 + "\r", end="", flush=True)
     except Exception as e:
         # 检查更新失败时不影响主功能
-        print(f"检查更新时发生错误: {e}")
+        print(f"\r检查更新时发生错误: {e}")
 
 def fetch_m3u8_links(entry, lock, desc):
     """

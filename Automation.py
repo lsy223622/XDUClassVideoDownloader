@@ -271,7 +271,7 @@ def parse_arguments():
     parser.add_argument('-t', '--term', type=int,
                         choices=[1, 2], default=None, help="学期")
     parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None,
-                        help="选择要下载的视频类型：both（两种都下载）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+                        help="选择要下载的视频类型：both（两种都下载=）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
 
 
