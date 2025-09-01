@@ -51,7 +51,7 @@ def main():
         user_id = args.uid or input("请输入用户ID：")
         term_year = args.year or term_year
         term_id = args.term or term_id
-        video_type = args.video_type
+        video_type = args.video_type if args.video_type is not None else 'both'
 
         # 扫描课程并写入配置文件
         courses = scan_courses(user_id, term_year, term_id)
@@ -66,8 +66,7 @@ def main():
         term_id = args.term or config['DEFAULT'].get('term_id', term_id)
 
         # 处理旧配置文件兼容性，添加默认video_type
-        video_type = args.video_type or config['DEFAULT'].get(
-            'video_type', 'both')
+        video_type = args.video_type if args.video_type is not None else config['DEFAULT'].get('video_type', 'both')
 
         # 如果配置文件中没有video_type，自动添加
         if 'video_type' not in config['DEFAULT']:
@@ -126,6 +125,7 @@ def main():
 
     # 重新读取配置文件以获取最新配置
     config = read_config()
+    video_type = args.video_type if args.video_type is not None else config['DEFAULT'].get('video_type', 'both')
 
     # 批量处理所有启用下载的课程
     all_videos = {}
@@ -270,8 +270,8 @@ def parse_arguments():
     parser.add_argument('-y', '--year', type=int, default=None, help="学年")
     parser.add_argument('-t', '--term', type=int,
                         choices=[1, 2], default=None, help="学期")
-    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both',
-                        help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None,
+                        help="选择要下载的视频类型：both（两种都下载）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
 
 
