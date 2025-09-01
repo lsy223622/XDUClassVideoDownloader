@@ -39,9 +39,9 @@ def main():
     term_year = current_time.tm_year
     month = current_time.tm_mon
 
-    # 根据月份确定学期：9月及以后为第一学期，其他为第二学期
-    term_id = 1 if month >= 9 else 2
-    if month < 8:  # 1-7月属于上一学年的第二学期
+    # 根据月份确定学期：9月及以后为第一学期，3月及以后为第二学期
+    term_id = 1 if month >= 9 or month < 3 else 2
+    if month < 9:  # 1-8月属于上一学年
         term_year -= 1
 
     # 首次运行：创建配置文件
