@@ -170,21 +170,29 @@ def main():
             day_chinese = day_to_chinese(day)
             base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
             
-            # 检查各种可能的文件名（包括不同格式和合并文件）
+            # 根据 video_type 选择要检查的文件类型
+            file_patterns = []
+            if video_type in ['both', 'ppt']:
+                file_patterns += [
+                    f"{base_filename}-pptVideo.ts",
+                    f"{base_filename}-pptVideo.mp4",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.ts",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.mp4",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.ts",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4"
+                ]
+            if video_type in ['both', 'teacher']:
+                file_patterns += [
+                    f"{base_filename}-teacherTrack.ts",
+                    f"{base_filename}-teacherTrack.mp4",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.ts",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.mp4",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.ts",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4"
+                ]
             file_exists = any([
-                os.path.exists(os.path.join(save_dir, f"{base_filename}-pptVideo.ts")),
-                os.path.exists(os.path.join(save_dir, f"{base_filename}-teacherTrack.ts")),
-                os.path.exists(os.path.join(save_dir, f"{base_filename}-pptVideo.mp4")),
-                os.path.exists(os.path.join(save_dir, f"{base_filename}-teacherTrack.mp4")),
-                # 检查合并文件（前一节-当前节）
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.ts")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.ts")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.ts")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.ts")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.mp4")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.mp4")),
-                os.path.exists(os.path.join(save_dir, f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4"))
+                os.path.exists(os.path.join(save_dir, fname))
+                for fname in file_patterns
             ])
             
             # 如果文件已存在，跳过此条目
