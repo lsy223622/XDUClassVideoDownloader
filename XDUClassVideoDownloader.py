@@ -168,7 +168,7 @@ def parse_arguments():
     parser.add_argument('-c', '--command', default='', help="自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记")
     parser.add_argument('-s', '--single', action='count', default=0, help="仅下载单节课视频（-s：单节课视频，-ss：半节课视频）")
     parser.add_argument('--no-merge', action='store_false', help="不合并上下半节课视频")
-    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both', help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None, help="选择要下载的视频类型：both（两种都下载）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
 
 
