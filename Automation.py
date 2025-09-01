@@ -20,10 +20,11 @@ check_update()
 # 配置文件名
 CONFIG_FILE = 'config.ini'
 
+
 def main():
     """
     自动化下载主函数：扫描用户的所有课程并批量下载视频。
-    
+
     功能流程：
     1. 解析命令行参数或读取配置文件
     2. 扫描用户的所有课程
@@ -51,7 +52,7 @@ def main():
         term_year = args.year or term_year
         term_id = args.term or term_id
         video_type = args.video_type
-        
+
         # 扫描课程并写入配置文件
         courses = scan_courses(user_id, term_year, term_id)
         write_config(config, user_id, courses, video_type)
@@ -63,26 +64,28 @@ def main():
         user_id = args.uid or config['DEFAULT']['user_id']
         term_year = args.year or config['DEFAULT'].get('term_year', term_year)
         term_id = args.term or config['DEFAULT'].get('term_id', term_id)
-        
+
         # 处理旧配置文件兼容性，添加默认video_type
-        video_type = args.video_type or config['DEFAULT'].get('video_type', 'both')
-        
+        video_type = args.video_type or config['DEFAULT'].get(
+            'video_type', 'both')
+
         # 如果配置文件中没有video_type，自动添加
         if 'video_type' not in config['DEFAULT']:
             config['DEFAULT']['video_type'] = 'both'
             with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
                 config.write(configfile)
             print("已自动更新配置文件，添加视频类型选项（默认：两种视频都下载）")
-        
+
         print("使用配置文件中的用户ID：", user_id)
-        
+
         # 读取现有课程配置
-        existing_courses = {section: dict(config[section]) for section in config.sections() if section != 'DEFAULT'}
-        
+        existing_courses = {section: dict(
+            config[section]) for section in config.sections() if section != 'DEFAULT'}
+
         # 重新扫描课程，检查是否有新课程
         new_courses = scan_courses(user_id, term_year, term_id)
         new_course_added = False
-        
+
         # 处理新发现的课程
         for course_id, course in new_courses.items():
             course_id_str = str(course_id)  # 将course_id转换为字符串类型
@@ -101,13 +104,14 @@ def main():
                 existing_course = existing_courses[course_id_str]
                 if (existing_course['course_code'] != course['courseCode'] or
                     existing_course['course_name'] != remove_invalid_chars(course['courseName']) or
-                    existing_course['live_id'] != str(course['id'])):
+                        existing_course['live_id'] != str(course['id'])):
                     print(f"更新课程信息：{course_id_str} - {course['courseName']}")
                     config[course_id_str] = {
                         'course_code': course['courseCode'],
                         'course_name': remove_invalid_chars(course['courseName']),
                         'live_id': course['id'],
-                        'download': existing_course.get('download', 'yes')  # 保持原有的下载设置
+                        # 保持原有的下载设置
+                        'download': existing_course.get('download', 'yes')
                     }
                     new_course_added = True
 
@@ -158,18 +162,18 @@ def main():
             # 只处理已结束的课程
             if entry["endTime"]["time"] / 1000 > time.time():
                 continue
-            
+
             # 解析时间信息
             start_time_struct = time.gmtime(entry["startTime"]["time"] / 1000)
             month, date = start_time_struct.tm_mon, start_time_struct.tm_mday
             day = entry["startTime"]["day"]
             jie = entry["jie"]
             days = entry["days"]
-            
+
             # 检查文件是否已存在，避免重复下载
             day_chinese = day_to_chinese(day)
             base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
-            
+
             # 根据 video_type 选择要检查的文件类型
             # 拆分为 ppt 与 teacher 两类，方便在 both 模式下做“部分存在仍需继续”的判断
             ppt_patterns = []
@@ -193,8 +197,10 @@ def main():
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4"
                 ]
 
-            ppt_exists = any(os.path.exists(os.path.join(save_dir, f)) for f in ppt_patterns) if ppt_patterns else False
-            teacher_exists = any(os.path.exists(os.path.join(save_dir, f)) for f in teacher_patterns) if teacher_patterns else False
+            ppt_exists = any(os.path.exists(os.path.join(save_dir, f))
+                             for f in ppt_patterns) if ppt_patterns else False
+            teacher_exists = any(os.path.exists(os.path.join(save_dir, f))
+                                 for f in teacher_patterns) if teacher_patterns else False
 
             if video_type == 'both':
                 # both 模式：只有两种都存在才整体跳过；如果只存在其中一种则继续处理缺失的那一种
@@ -203,7 +209,7 @@ def main():
                 file_exists = ppt_exists
             else:  # video_type == 'teacher'
                 file_exists = teacher_exists
-            
+
             # 如果文件已存在，跳过此条目
             if file_exists:
                 continue
@@ -246,23 +252,28 @@ def main():
         save_dir = f"{year}年{course_code}{course_name}"
         create_directory(save_dir)
         # 使用统一的处理函数下载视频
-        process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True, video_type=video_type)
+        process_rows(rows, course_code, course_name, year, save_dir,
+                     command='', merge=True, video_type=video_type)
 
     print("所有视频下载和处理完成。")
+
 
 def parse_arguments():
     """
     解析自动化下载程序的命令行参数。
-    
+
     返回:
         argparse.Namespace: 包含所有命令行参数的对象
     """
     parser = ArgumentParser(description="用于下载西安电子科技大学录直播平台课程视频的工具")
     parser.add_argument('-u', '--uid', default=None, help="用户的 UID")
     parser.add_argument('-y', '--year', type=int, default=None, help="学年")
-    parser.add_argument('-t', '--term', type=int, choices=[1, 2], default=None, help="学期")
-    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both', help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+    parser.add_argument('-t', '--term', type=int,
+                        choices=[1, 2], default=None, help="学期")
+    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both',
+                        help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
+
 
 if __name__ == "__main__":
     # 解析命令行参数
