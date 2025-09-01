@@ -209,16 +209,22 @@ def main():
                 continue
 
             try:
-                # 获取视频下载链接
+                # 获取视频下载链接（同时拿到两个，后面按需裁剪）
                 ppt_video, teacher_track = get_m3u8_links(entry["id"])
             except ValueError as e:
                 print(f"获取视频链接时发生错误：{e}，liveId: {entry['id']}")
                 ppt_video, teacher_track = '', ''
 
-            # 添加到待下载列表
+            # 按视频类型选择保留所需的链接，避免传递无关类型
+            if video_type == 'ppt':
+                teacher_track = ''
+            elif video_type == 'teacher':
+                ppt_video = ''
+
+            # 添加到待下载列表：结构保持不变 [.., ppt_video, teacher_track]
             rows.append([
-                month, date, 
-                entry["startTime"]["day"], entry["jie"], entry["days"], 
+                month, date,
+                entry["startTime"]["day"], entry["jie"], entry["days"],
                 ppt_video, teacher_track
             ])
 
