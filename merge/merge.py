@@ -90,7 +90,11 @@ def merge_videos(ppt_file, teacher_file, output_file):
         "-y",                # 自动覆盖输出文件
         "-v", "verbose",     # 详细输出模式
         "-stats",            # 显示编码统计信息
-        # 复杂的视频滤镜：将PPT视频和教师视频并排显示
+        # 复杂的视频滤镜链：实现双画面并排显示
+        # [1:v][0:v]scale2ref=main_w:ih[sec][pri] - 将两个视频缩放到相同高度
+        # [sec]setsar=1,drawbox=c=black:t=fill[sec] - 设置宽高比并填充黑色背景
+        # [pri][sec]hstack[canvas] - 水平堆叠两个视频
+        # [canvas][1:v]overlay=main_w-overlay_w - 在画布上叠加视频
         "-filter_complex", "[1:v][0:v]scale2ref=main_w:ih[sec][pri];[sec]setsar=1,drawbox=c=black:t=fill[sec];[pri][sec]hstack[canvas];[canvas][1:v]overlay=main_w-overlay_w",
         output_file
     ]
