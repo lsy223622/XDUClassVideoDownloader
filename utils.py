@@ -26,25 +26,32 @@ from pathlib import Path
 import logging
 
 
-# 配置日志记录
+# 配置基础日志记录 - 只保存到文件
+from pathlib import Path
+
+logs_dir = Path('logs')
+logs_dir.mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
     handlers=[
-        logging.FileHandler('xdu_downloader.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
+        logging.FileHandler(logs_dir / 'xdu_downloader.log', encoding='utf-8')
     ]
 )
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(name='xdu_downloader', level=logging.INFO):
+def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=logging.WARNING):
     """
     设置日志记录系统。
+    
+    详细日志保存到文件中，用户界面只显示警告和错误信息。
 
     参数:
         name (str): 日志记录器名称
-        level: 日志级别
+        level: 文件日志级别
+        console_level: 控制台日志级别（默认只显示WARNING及以上）
 
     返回:
         logging.Logger: 配置好的日志记录器
@@ -57,23 +64,32 @@ def setup_logging(name='xdu_downloader', level=logging.INFO):
     if logger.handlers:
         return logger
     
-    # 创建文件处理器
-    file_handler = logging.FileHandler(f'{name}.log', encoding='utf-8')
+    # 创建日志目录
+    log_dir = Path('logs')
+    log_dir.mkdir(exist_ok=True)
+    
+    # 创建文件处理器 - 记录所有日志信息
+    file_handler = logging.FileHandler(log_dir / f'{name}.log', encoding='utf-8')
     file_handler.setLevel(level)
     
-    # 创建控制台处理器
+    # 创建控制台处理器 - 只显示重要信息
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
+    console_handler.setLevel(console_level)
     
-    # 创建格式化器
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    # 创建详细的文件格式化器
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
+    # 创建简洁的控制台格式化器
+    console_formatter = logging.Formatter(
+        '%(levelname)s: %(message)s'
+    )
+    
     # 设置格式化器
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
+    console_handler.setFormatter(console_formatter)
     
     # 添加处理器到日志记录器
     logger.addHandler(file_handler)

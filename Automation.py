@@ -39,8 +39,8 @@ from utils import (
     validate_term_params
 )
 
-# 设置日志
-logger = setup_logging('automation')
+# 设置日志 - 详细日志保存到文件，控制台只显示重要信息
+logger = setup_logging('automation', level=logging.INFO, console_level=logging.WARNING)
 
 # 配置文件名
 CONFIG_FILE = 'automation_config.ini'
@@ -60,6 +60,7 @@ def main():
         bool: 处理是否成功
     """
     try:
+        print("启动自动化批量下载...")
         logger.info("开始执行自动化批量下载任务")
         
         # 检查程序更新
@@ -227,7 +228,8 @@ def update_existing_config(args, default_year, default_term):
             print("配置文件中的参数无效")
             return False
 
-        print(f"使用配置文件中的用户ID：{user_id}")
+        print(f"使用用户ID：{user_id}")
+        logger.info(f"使用配置文件中的用户ID：{user_id}")
 
         # 重新扫描课程
         print("正在扫描课程...", end='', flush=True)
@@ -294,7 +296,8 @@ def update_course_config(config, new_courses):
         
         if course_id_str not in config.sections():
             # 添加新课程
-            print(f"添加新课程：{course_id_str} - {course['courseName']}")
+            logger.info(f"添加新课程：{course_id_str} - {course['courseName']}")
+            print(f"发现新课程：{course['courseName']}")
             config[course_id_str] = {
                 'course_code': course['courseCode'],
                 'course_name': remove_invalid_chars(course['courseName']),
@@ -309,7 +312,8 @@ def update_course_config(config, new_courses):
                 existing_course.get('course_name') != remove_invalid_chars(course['courseName']) or
                 existing_course.get('live_id') != str(course['id'])):
                 
-                print(f"更新课程信息：{course_id_str} - {course['courseName']}")
+                logger.info(f"更新课程信息：{course_id_str} - {course['courseName']}")
+                print(f"更新课程：{course['courseName']}")
                 config[course_id_str] = {
                     'course_code': course['courseCode'],
                     'course_name': remove_invalid_chars(course['courseName']),
@@ -350,13 +354,15 @@ def process_all_courses(config, video_type):
             course_name = remove_invalid_chars(config[course_id]['course_name'])
             live_id = config[course_id]['live_id']
             
-            print(f"\n[{processed_courses}/{total_courses}] 正在检查课程：{course_code} - {course_name}")
+            print(f"\n[{processed_courses}/{total_courses}] 处理课程：{course_name}")
+            logger.info(f"正在检查课程：{course_code} - {course_name} (ID: {live_id})")
 
             try:
                 # 获取课程数据
                 data = get_initial_data(int(live_id))
                 if not data:
-                    print(f"没有找到数据，跳过课程 {course_code}")
+                    logger.warning(f"没有找到课程数据：{course_code}")
+                    print(f"跳过课程 {course_code}")
                     continue
 
                 # 提取课程年份并创建保存目录
@@ -374,9 +380,11 @@ def process_all_courses(config, video_type):
                         "rows": rows,
                         "save_dir": save_dir
                     }
-                    print(f"发现 {len(rows)} 个待下载视频")
+                    print(f"找到 {len(rows)} 个待下载视频")
+                    logger.info(f"课程 {course_code} 有 {len(rows)} 个视频待下载")
                 else:
-                    print(f"课程 {course_code} 没有新增视频")
+                    logger.info(f"课程 {course_code} 没有新增视频")
+                    print(f"课程 {course_code} 无新视频")
 
             except Exception as e:
                 error_msg = handle_exception(e, f"处理课程 {course_code} 时发生错误")

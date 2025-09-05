@@ -41,16 +41,8 @@ from utils import (day_to_chinese, user_input_with_check, create_directory,
 import concurrent.futures
 from threading import Lock
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('xdu_downloader.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
+# 使用统一的日志配置
+logger = setup_logging('main_downloader', level=logging.INFO, console_level=logging.WARNING)
 
 # 程序启动时检查更新
 print("正在初始化程序...")
