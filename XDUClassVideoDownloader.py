@@ -10,7 +10,7 @@ import traceback
 from tqdm import tqdm
 from argparse import ArgumentParser
 from api import get_initial_data, get_m3u8_links, check_update, fetch_m3u8_links
-from downloader import download_m3u8, process_rows
+from downloader import download_m3u8, download_mp4, process_rows
 from utils import day_to_chinese, user_input_with_check, create_directory, handle_exception, remove_invalid_chars, calculate_optimal_threads
 import concurrent.futures
 from threading import Lock
@@ -138,17 +138,17 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
         
         # 下载PPT视频
         if video_type in ['both', 'ppt'] and ppt_video:
-            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo.ts"
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo.mp4"
             filepath = os.path.join(save_dir, filename)
             if not os.path.exists(filepath):
-                download_m3u8(ppt_video, filename, save_dir, command=command)
+                download_mp4(ppt_video, filename, save_dir)
         
         # 下载教师视频
         if video_type in ['both', 'teacher'] and teacher_track:
-            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack.ts"
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack.mp4"
             filepath = os.path.join(save_dir, filename)
             if not os.path.exists(filepath):
-                download_m3u8(teacher_track, filename, save_dir, command=command)
+                download_mp4(teacher_track, filename, save_dir)
     else:
         # 全部下载模式：下载所有视频
         process_rows(rows, course_code, course_name, year, save_dir, command, merge, video_type)

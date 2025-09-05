@@ -161,3 +161,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 config.ini
+auth.ini
+*.csv
+
+# 忽略所有以 test_ 开头的 Python 文件
+test_*.py

@@ -121,6 +121,62 @@ def read_config():
     config.read('config.ini', encoding='utf-8')
     return config
 
+def get_auth_cookies(fid=None):
+    """
+    获取身份验证所需的cookie信息。
+    如果配置文件中不存在，则提示用户输入并保存。
+    
+    返回:
+        dict: 包含身份验证cookie的字典
+    """
+    config = configparser.ConfigParser(interpolation=None)
+    # 保持键的大小写
+    config.optionxform = str
+    auth_config_file = 'auth.ini'
+    
+    # 尝试读取现有的认证配置
+    if os.path.exists(auth_config_file):
+        config.read(auth_config_file, encoding='utf-8')
+        if 'AUTH' in config and all(key in config['AUTH'] for key in ['fid', '_d', 'UID', 'vc3']):
+            return dict(config['AUTH'])
+    
+    # 如果配置不存在或不完整，则提示用户输入 cookie
+    print("需要进行身份验证。请提供以下cookie信息：")
+    print("（这些信息可以从浏览器开发者工具中获取）")
+
+    auth_cookies = {}
+    # 使用调用方提供的 fid（如果为 None 则设置为空字符串）
+    auth_cookies['fid'] = fid or ''
+    auth_cookies['_d'] = input("请输入 _d: ").strip()
+    auth_cookies['UID'] = input("请输入 UID: ").strip()
+    auth_cookies['vc3'] = input("请输入 vc3: ").strip()
+
+    # 保存到配置文件（保存 _d, UID, vc3 到 auth.ini，保持向后兼容）
+    config['AUTH'] = {k: v for k, v in auth_cookies.items() if k != 'fid'}
+    with open(auth_config_file, 'w', encoding='utf-8') as configfile:
+        config.write(configfile)
+
+    print("身份验证信息已保存到 auth.ini 文件中。")
+    return auth_cookies
+
+def format_auth_cookies(auth_cookies):
+    """
+    将认证cookie字典格式化为HTTP请求可用的cookie字符串。
+    
+    参数:
+        auth_cookies (dict): 包含认证信息的字典
+        
+    返回:
+        str: 格式化的cookie字符串
+    """
+    # 支持调用方传入 fid 作为回退值
+    def _format(fid=None):
+        fid_value = auth_cookies.get('fid', fid or '')
+        return f"fid={fid_value}; _d={auth_cookies['_d']}; UID={auth_cookies['UID']}; vc3={auth_cookies['vc3']}"
+
+    # 默认直接返回使用 auth_cookies 中 fid 的格式化字符串
+    return _format()
+
 def handle_exception(e, message):
     """
     统一的异常处理函数，打印错误信息和详细的堆栈跟踪。

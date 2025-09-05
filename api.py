@@ -8,18 +8,34 @@ API模块
 import requests
 import urllib.parse
 import json
-from utils import handle_exception, remove_invalid_chars
-import subprocess
+import re
+from utils import handle_exception, remove_invalid_chars, get_auth_cookies, format_auth_cookies
 import time
 import random
 
 VERSION = "2.9.0"
 
-# HTTP请求头，模拟浏览器访问
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Cookie": "UID=2"  # 必要的用户标识Cookie
-}
+FID = '16820'
+
+def get_authenticated_headers():
+    """
+    获取包含身份验证信息的HTTP请求头。
+    
+    返回:
+        dict: 包含认证cookie的请求头字典
+    """
+    auth_cookies = get_auth_cookies(FID)
+    cookie_string = format_auth_cookies(auth_cookies)
+    
+    return {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Cookie": cookie_string,
+        "Upgrade-Insecure-Requests": "1"
+    }
 
 def get_initial_data(liveid):
     """
@@ -35,93 +51,122 @@ def get_initial_data(liveid):
         requests.HTTPError: 当HTTP请求失败时抛出
     """
     # 向学校服务器发送POST请求获取课程信息
-    response = requests.post("http://newesxidian.chaoxing.com/live/listSignleCourse", headers=HEADERS, data={"liveId": liveid})
+    headers = get_authenticated_headers()
+    response = requests.post("http://newes.chaoxing.com/xidianpj/live/listSignleCourse",
+                             headers=headers,
+                             data={"liveId": liveid, "fid": FID})
     # 检查HTTP响应状态，如果失败会抛出异常
     response.raise_for_status()
     return response.json()
 
-def get_m3u8_text(live_id, u = 0):
+def get_video_info_from_html(live_id, u=0):
     """
-    获取M3U8播放列表的原始文本内容，包含重试机制。
+    从新的API获取视频信息，通过解析HTML页面中的infostr变量。
     
     参数:
         live_id (int): 直播课程ID
         u (int): 重试次数，默认为0
         
     返回:
-        str: M3U8播放列表的文本内容，失败时返回空字符串
+        dict: 解析后的视频信息，包含videoPath等字段
+        
+    异常:
+        ValueError: 当获取视频信息失败或解析响应失败时抛出
     """
-    # 随机延迟1-50秒，避免对服务器造成过大压力
+    # 随机延迟1-10秒，避免对服务器造成过大压力
     time.sleep(random.randint(1, 10))
     
     # 超过10次重试则放弃
     if u > 10:
-        return ''
+        raise ValueError(f"在获取{live_id}时10次尝试失败，学校服务器杂鱼了")
     elif u != 0:
         print(f"{live_id}正在进行第{u + 1}/10次尝试")
     
     try:
-        result_text = ''
-        # 使用curl命令获取M3U8播放列表，模拟浏览器请求
-        result = subprocess.run(
-            ['curl', 
-            f'http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={live_id}',
-            '--compressed',  # 支持压缩传输
-            '-H', 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0',
-            '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            '-H', 'Accept-Language: en-US,en;q=0.5',
-            '-H', 'Accept-Encoding: gzip, deflate',
-            '-H', 'Connection: keep-alive', 
-            '-H', 'Cookie: UID=2',  # 必要的Cookie信息
-            '-H', 'Upgrade-Insecure-Requests: 1',
-            '-H', 'Priority: u=0, i'],
-            capture_output=True,  # 捕获输出
-            text=True,
-            check=True  # 如果 curl 返回非零状态码，会抛出异常
-        )
+        # 构建新的API URL
+        url = f"http://newes.chaoxing.com/xidianpj/frontLive/playVideo2Keda?liveId={live_id}"
+        headers = get_authenticated_headers()
         
-        result_text = result.stdout.strip()
-        # 如果返回空内容，递归重试
-        if result_text == '':
-            result_text = get_m3u8_text(live_id, u + 1)
-        return result_text
-    except subprocess.CalledProcessError as e:
-        print(e)
-        return ''
+        # 发送GET请求获取HTML页面
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        html_content = response.text
         
-def get_m3u8_links(live_id, u = 0):
+        # 从HTML中提取infostr变量
+        # 查找: var infostr = "...";
+        match = re.search(r'var infostr = "([^"]+)";', html_content)
+        if not match:
+            # 如果找不到infostr，可能需要重试
+            if u < 10:
+                return get_video_info_from_html(live_id, u + 1)
+            else:
+                raise ValueError(f"无法在HTML响应中找到infostr变量，liveId: {live_id}")
+        
+        encoded_info = match.group(1)
+        
+        # URL解码
+        decoded_info = urllib.parse.unquote(encoded_info)
+        
+        # 解析JSON数据
+        info_json = json.loads(decoded_info)
+        
+        return info_json
+        
+    except requests.RequestException as e:
+        print(f"网络请求错误: {e}")
+        if u < 10:
+            return get_video_info_from_html(live_id, u + 1)
+        else:
+            raise ValueError(f"网络请求失败，liveId: {live_id}")
+    except json.JSONDecodeError as e:
+        print(f"JSON解析错误: {e}")
+        if u < 10:
+            return get_video_info_from_html(live_id, u + 1)
+        else:
+            raise ValueError(f"JSON解析失败，liveId: {live_id}")
+
+def get_m3u8_links(live_id, u=0):
     """
-    从直播ID获取PPT视频和教师视频的M3U8下载链接。
+    从直播ID获取PPT视频和教师视频的下载链接（新版API）。
     
     参数:
         live_id (int): 直播课程ID
         u (int): 重试次数，默认为0
         
     返回:
-        tuple: (ppt_video_url, teacher_track_url) 两个视频流的URL
+        tuple: (ppt_video_url, teacher_track_url) 两个视频的URL
         
     异常:
         ValueError: 当获取视频链接失败或解析响应失败时抛出
     """
-    # 获取包含视频信息的原始响应文本
-    response_text = get_m3u8_text(live_id)
-    if response_text.strip() == '':
-        raise ValueError(f"在获取{live_id}时10次尝试失败，学校服务器杂鱼了")
+    try:
+        # 获取视频信息
+        info_json = get_video_info_from_html(live_id)
+        
+        # 提取视频路径信息
+        video_paths = info_json.get('videoPath', {})
+        if video_paths is None:
+            raise ValueError("videoPath not found in the response")
+
+        # 返回PPT视频和教师视频的URL，如果不存在则返回空字符串
+        ppt_video = video_paths.get('pptVideo', '')
+        teacher_track = video_paths.get('teacherTrack', '')
+        
+        return ppt_video, teacher_track
+        
+    except Exception as e:
+        # 如果发生任何错误，记录并重新抛出
+        raise ValueError(f"获取视频链接失败: {str(e)}")
+
+# 保留旧的函数名但标记为废弃，以备兼容性
+def get_m3u8_text(live_id, u=0):
+    """
+    废弃的函数：获取M3U8播放列表的原始文本内容。
     
-    # 从响应中提取info参数（URL编码的JSON数据）
-    encoded_info = response_text.split('info=')[-1]
-    # URL解码
-    decoded_info = urllib.parse.unquote(encoded_info)
-    # 解析JSON数据
-    info_json = json.loads(decoded_info)
-
-    # 提取视频路径信息
-    video_paths = info_json.get('videoPath', {})
-    if video_paths is None:
-        raise ValueError("videoPath not found in the response")
-
-    # 返回PPT视频和教师视频的URL，如果不存在则返回空字符串
-    return video_paths.get('pptVideo', ''), video_paths.get('teacherTrack', '')
+    注意：此函数已废弃，新版本使用get_video_info_from_html。
+    """
+    print("警告：get_m3u8_text函数已废弃，请使用新的API函数。")
+    return ''
 
 
 def fetch_data(url):
@@ -135,8 +180,9 @@ def fetch_data(url):
         dict: 解析后的JSON数据，失败时返回None
     """
     try:
-        # 发送GET请求
-        response = requests.get(url, headers=HEADERS)
+        # 发送GET请求，使用认证头
+        headers = get_authenticated_headers()
+        response = requests.get(url, headers=headers)
         # 检查响应状态
         response.raise_for_status()
         return response.json()
@@ -168,7 +214,7 @@ def scan_courses(user_id, term_year, term_id):
     # 当连续2周没有课程时停止扫描
     while consecutive_empty_weeks < 2:
         # 构建请求URL，获取指定周的课程数据
-        data = fetch_data(f"https://newesxidian.chaoxing.com/frontLive/listStudentCourseLivePage?fid=16820&userId={user_id}&week={week}&termYear={term_year}&termId={term_id}")
+        data = fetch_data(f"https://newesxidian.chaoxing.com/frontLive/listStudentCourseLivePage?fid={FID}&userId={user_id}&week={week}&termYear={term_year}&termId={term_id}")
 
         if data and len(data) > 0:
             # 遍历该周的所有课程

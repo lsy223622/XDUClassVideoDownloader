@@ -7,6 +7,7 @@
 import os
 import time
 import traceback
+import sys
 import configparser
 from tqdm import tqdm
 from argparse import ArgumentParser
@@ -53,9 +54,19 @@ def main():
         term_id = args.term or term_id
         video_type = args.video_type if args.video_type is not None else 'both'
 
-        # 扫描课程并写入配置文件
-        courses = scan_courses(user_id, term_year, term_id)
-        write_config(config, user_id, courses, video_type)
+        # 提示正在生成配置文件，避免用户误以为程序卡住
+        print("正在生成配置文件...", end='', flush=True)
+        try:
+            # 扫描课程并写入配置文件
+            courses = scan_courses(user_id, term_year, term_id)
+            write_config(config, user_id, courses, video_type)
+        except Exception as e:
+            # 在发生异常时清理提示行并打印错误信息
+            sys.stdout.write('\r' + ' ' * 80 + '\r')
+            print(f"生成配置文件时发生错误：{e}")
+            raise
+        # 覆盖掉正在生成的提示并显示已生成消息
+        sys.stdout.write('\r' + ' ' * 80 + '\r')
         print("配置文件已生成，请修改配置文件后按回车继续...")
         input()  # 等待用户确认配置
     else:
@@ -77,12 +88,19 @@ def main():
 
         print("使用配置文件中的用户ID：", user_id)
 
+        # 在重新扫描课程前显示覆盖式提示，避免用户误以为程序卡住
+        print("正在扫描课程...", end='', flush=True)
+
         # 读取现有课程配置
         existing_courses = {section: dict(
             config[section]) for section in config.sections() if section != 'DEFAULT'}
 
         # 重新扫描课程，检查是否有新课程
-        new_courses = scan_courses(user_id, term_year, term_id)
+        try:
+            new_courses = scan_courses(user_id, term_year, term_id)
+        finally:
+            # 清除覆盖式提示行，后续的打印信息（如添加/更新课程）会显示在新行
+            sys.stdout.write('\r' + ' ' * 80 + '\r')
         new_course_added = False
 
         # 处理新发现的课程
@@ -180,21 +198,21 @@ def main():
             teacher_patterns = []
             if video_type in ['both', 'ppt']:
                 ppt_patterns = [
-                    f"{base_filename}-pptVideo.ts",
                     f"{base_filename}-pptVideo.mp4",
-                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.ts",
+                    f"{base_filename}-pptVideo.ts",  # 向后兼容
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.mp4",
-                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.ts",
-                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4"
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.ts",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.ts"
                 ]
             if video_type in ['both', 'teacher']:
                 teacher_patterns = [
-                    f"{base_filename}-teacherTrack.ts",
                     f"{base_filename}-teacherTrack.mp4",
-                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.ts",
+                    f"{base_filename}-teacherTrack.ts",  # 向后兼容
                     f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.mp4",
-                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.ts",
-                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4"
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-teacherTrack.ts",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.mp4",
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-teacherTrack.ts"
                 ]
 
             ppt_exists = any(os.path.exists(os.path.join(save_dir, f))
