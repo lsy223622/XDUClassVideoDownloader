@@ -18,10 +18,11 @@ from threading import Lock
 # 程序启动时检查更新
 check_update()
 
+
 def main(liveid=None, command='', single=0, merge=True, video_type='both'):
     """
     主函数：下载指定课程的视频。
-    
+
     参数:
         liveid (int): 课程直播ID，为None时进入交互模式
         command (str): 自定义下载命令
@@ -32,19 +33,23 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
     # 交互模式：用户输入参数
     if not liveid:
         # 获取课程ID
-        liveid = int(user_input_with_check("请输入 liveId：", lambda x: x.isdigit() and len(x) <= 10))
-        
+        liveid = int(user_input_with_check(
+            "请输入 liveId：", lambda x: x.isdigit() and len(x) <= 10))
+
         # 选择下载模式
-        single = user_input_with_check("是否仅下载单节课视频？输入 y 下载单节课，n 下载这门课所有视频，s 则仅下载单集（半节课）视频，直接回车默认单节课 (Y/n/s):", lambda x: x.lower() in ['', 'y', 'n', 's']).lower()
+        single = user_input_with_check(
+            "是否仅下载单节课视频？输入 y 下载单节课，n 下载这门课所有视频，s 则仅下载单集（半节课）视频，直接回车默认单节课 (Y/n/s):", lambda x: x.lower() in ['', 'y', 'n', 's']).lower()
         single = 1 if single in ['', 'y'] else 2 if single == 's' else 0
-        
+
         # 选择是否合并视频
-        merge = user_input_with_check("是否自动合并上下半节课视频？(Y/n):", lambda x: x.lower() in ['', 'y', 'n']).lower() != 'n'
-        
+        merge = user_input_with_check(
+            "是否自动合并上下半节课视频？(Y/n):", lambda x: x.lower() in ['', 'y', 'n']).lower() != 'n'
+
         # 选择视频类型
-        video_type_input = user_input_with_check("选择要下载的视频类型？输入 b 下载两种视频，p 仅下载pptVideo，t 仅下载teacherTrack，直接回车默认两种都下载 (B/p/t):", lambda x: x.lower() in ['', 'b', 'p', 't']).lower()
+        video_type_input = user_input_with_check(
+            "选择要下载的视频类型？输入 b 下载两种视频，p 仅下载pptVideo，t 仅下载teacherTrack，直接回车默认两种都下载 (B/p/t):", lambda x: x.lower() in ['', 'b', 'p', 't']).lower()
         video_type = 'ppt' if video_type_input == 'p' else 'teacher' if video_type_input == 't' else 'both'
-        
+
         # 设置跳过周数
         skip_input = user_input_with_check(
             "是否从某个周数才开始下载？输入周数（如 3 则从第三周开始下载）或直接回车表示从第一周开始：",
@@ -77,12 +82,14 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
         # 筛选出指定liveId的条目
         data = [entry for entry in data_temp if entry["id"] == liveid]
         if not data:
-            raise ValueError("No matching entry found for the specified liveId")
-        
+            raise ValueError(
+                "No matching entry found for the specified liveId")
+
         if single == 1:
             # 单节课模式：下载同一天的所有课程
             start_time = data[0]["startTime"]
-            data = [entry for entry in data_temp if entry["startTime"]["date"] == start_time["date"] and entry["startTime"]["month"] == start_time["month"]]
+            data = [entry for entry in data_temp if entry["startTime"]["date"] ==
+                    start_time["date"] and entry["startTime"]["month"] == start_time["month"]]
 
     # 提取课程基本信息
     first_entry = data[0]
@@ -100,10 +107,11 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
         # 计算最佳线程数
         max_threads = calculate_optimal_threads()
         print(f"CPU 核心数: {os.cpu_count()}, 最佳线程数: {max_threads}")
-        
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
             # 只处理已结束的课程（endTime <= 当前时间）
-            futures = [executor.submit(fetch_m3u8_links, entry, lock, desc) for entry in data if entry["endTime"]["time"] / 1000 <= time.time()]
+            futures = [executor.submit(fetch_m3u8_links, entry, lock, desc)
+                       for entry in data if entry["endTime"]["time"] / 1000 <= time.time()]
             # 收集所有线程的结果
             for future in concurrent.futures.as_completed(futures):
                 row = future.result()
@@ -121,7 +129,8 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
     with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
         # 写入CSV表头
-        writer.writerow(['month', 'date', 'day', 'jie', 'days', 'pptVideo', 'teacherTrack'])
+        writer.writerow(['month', 'date', 'day', 'jie',
+                        'days', 'pptVideo', 'teacherTrack'])
         writer.writerows(rows)
 
     print(f"{csv_filename} 文件已创建并写入数据。")
@@ -129,20 +138,21 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
     # 根据下载模式执行不同的下载逻辑
     if single == 1:
         # 单节课模式：最多下载2个条目（上下半节课）
-        process_rows(rows[:2], course_code, course_name, year, save_dir, command, merge, video_type)
+        process_rows(rows[:2], course_code, course_name,
+                     year, save_dir, command, merge, video_type)
     elif single == 2:
         # 半节课模式：只下载第一个条目
         row = rows[0]
         month, date, day, jie, days, ppt_video, teacher_track = row
         day_chinese = day_to_chinese(day)
-        
+
         # 下载PPT视频
         if video_type in ['both', 'ppt'] and ppt_video:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo.mp4"
             filepath = os.path.join(save_dir, filename)
             if not os.path.exists(filepath):
                 download_mp4(ppt_video, filename, save_dir)
-        
+
         # 下载教师视频
         if video_type in ['both', 'teacher'] and teacher_track:
             filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack.mp4"
@@ -151,7 +161,8 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
                 download_mp4(teacher_track, filename, save_dir)
     else:
         # 全部下载模式：下载所有视频
-        process_rows(rows, course_code, course_name, year, save_dir, command, merge, video_type)
+        process_rows(rows, course_code, course_name, year,
+                     save_dir, command, merge, video_type)
 
     print("所有视频下载和处理完成。")
 
@@ -159,16 +170,20 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
 def parse_arguments():
     """
     解析命令行参数。
-    
+
     返回:
         argparse.Namespace: 包含所有命令行参数的对象
     """
     parser = ArgumentParser(description="用于下载西安电子科技大学录直播平台课程视频的工具")
-    parser.add_argument('liveid', nargs='?', default=None, help="课程的 liveId，不输入则采用交互式方式获取")
-    parser.add_argument('-c', '--command', default='', help="自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记")
-    parser.add_argument('-s', '--single', action='count', default=0, help="仅下载单节课视频（-s：单节课视频，-ss：半节课视频）")
+    parser.add_argument('liveid', nargs='?', default=None,
+                        help="课程的 liveId，不输入则采用交互式方式获取")
+    parser.add_argument('-c', '--command', default='',
+                        help="自定义下载命令，使用 {url}, {save_dir}, {filename} 作为替换标记")
+    parser.add_argument('-s', '--single', action='count',
+                        default=0, help="仅下载单节课视频（-s：单节课视频，-ss：半节课视频）")
     parser.add_argument('--no-merge', action='store_false', help="不合并上下半节课视频")
-    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None, help="选择要下载的视频类型：both（两种都下载）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None,
+                        help="选择要下载的视频类型：both（两种都下载）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
     return parser.parse_args()
 
 
@@ -177,7 +192,8 @@ if __name__ == "__main__":
     args = parse_arguments()
     try:
         # 调用主函数，传入解析后的参数
-        main(liveid=args.liveid, command=args.command, single=args.single, merge=args.no_merge, video_type=args.video_type)
+        main(liveid=args.liveid, command=args.command, single=args.single,
+             merge=args.no_merge, video_type=args.video_type)
     except Exception as e:
         # 捕获并显示所有未处理的异常
         print(f"发生错误：{e}")

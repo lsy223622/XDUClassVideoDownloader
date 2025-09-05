@@ -77,7 +77,8 @@ def main():
         term_id = args.term or config['DEFAULT'].get('term_id', term_id)
 
         # 处理旧配置文件兼容性，添加默认video_type
-        video_type = args.video_type if args.video_type is not None else config['DEFAULT'].get('video_type', 'both')
+        video_type = args.video_type if args.video_type is not None else config['DEFAULT'].get(
+            'video_type', 'both')
 
         # 如果配置文件中没有video_type，自动添加
         if 'video_type' not in config['DEFAULT']:
@@ -143,7 +144,8 @@ def main():
 
     # 重新读取配置文件以获取最新配置
     config = read_config()
-    video_type = args.video_type if args.video_type is not None else config['DEFAULT'].get('video_type', 'both')
+    video_type = args.video_type if args.video_type is not None else config['DEFAULT'].get(
+        'video_type', 'both')
 
     # 批量处理所有启用下载的课程
     all_videos = {}

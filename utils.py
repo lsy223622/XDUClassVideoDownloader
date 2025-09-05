@@ -10,13 +10,14 @@ import traceback
 import psutil
 from datetime import datetime
 
+
 def remove_invalid_chars(course_name):
     """
     移除文件名中的非法字符，确保可以在文件系统中创建文件。
-    
+
     参数:
         course_name (str): 原始课程名称
-        
+
     返回:
         str: 移除非法字符后的课程名称
     """
@@ -27,13 +28,14 @@ def remove_invalid_chars(course_name):
         course_name = course_name.replace(char, '')
     return course_name
 
+
 def day_to_chinese(day):
     """
     将星期数字转换为中文表示。
-    
+
     参数:
         day (int): 星期数字 (0-6, 0代表星期日)
-        
+
     返回:
         str: 对应的中文星期表示
     """
@@ -41,14 +43,15 @@ def day_to_chinese(day):
     days = {0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}
     return days.get(day, "未知")
 
+
 def user_input_with_check(prompt, check_func):
     """
     带验证功能的用户输入函数，会循环提示直到输入合法。
-    
+
     参数:
         prompt (str): 提示信息
         check_func (function): 验证函数，返回True表示输入合法
-        
+
     返回:
         str: 验证通过的用户输入
     """
@@ -57,20 +60,22 @@ def user_input_with_check(prompt, check_func):
         print("输入错误，请重新输入：")
     return user_input
 
+
 def create_directory(directory):
     """
     创建目录，如果目录已存在则不会报错。
-    
+
     参数:
         directory (str): 要创建的目录路径
     """
     # exist_ok=True 确保目录已存在时不会抛出异常
     os.makedirs(directory, exist_ok=True)
 
+
 def write_config(config, user_id, courses, video_type='both'):
     """
     将用户信息和课程信息写入配置文件。
-    
+
     参数:
         config (ConfigParser): 配置解析器对象
         user_id (str): 用户ID
@@ -82,14 +87,14 @@ def write_config(config, user_id, courses, video_type='both'):
     current_date = datetime.now()
     current_year = current_date.year
     month = current_date.month
-    
+
     # Determine current term based on date logic (same as Automation.py)
     # 根据当前月份确定学期信息
     term_year = current_year
     term_id = 1 if month >= 9 else 2  # 9月及以后为第一学期，否则为第二学期
     if month < 8:  # 如果是1-7月，说明还是上一学年的第二学期
         term_year -= 1
-    
+
     # 写入默认配置段
     config['DEFAULT'] = {
         'user_id': user_id,
@@ -101,7 +106,8 @@ def write_config(config, user_id, courses, video_type='both'):
     for course_id, course in courses.items():
         config[course_id] = {
             'course_code': course['courseCode'],
-            'course_name': remove_invalid_chars(course['courseName']),  # 移除文件名非法字符
+            # 移除文件名非法字符
+            'course_name': remove_invalid_chars(course['courseName']),
             'live_id': course['id'],
             'download': 'yes'  # 默认设置为下载
         }
@@ -109,10 +115,11 @@ def write_config(config, user_id, courses, video_type='both'):
     with open('config.ini', 'w', encoding='utf-8') as configfile:
         config.write(configfile)
 
+
 def read_config():
     """
     从config.ini文件读取配置信息。
-    
+
     返回:
         ConfigParser: 包含配置信息的配置解析器对象
     """
@@ -121,11 +128,12 @@ def read_config():
     config.read('config.ini', encoding='utf-8')
     return config
 
+
 def get_auth_cookies(fid=None):
     """
     获取身份验证所需的cookie信息。
     如果配置文件中不存在，则提示用户输入并保存。
-    
+
     返回:
         dict: 包含身份验证cookie的字典
     """
@@ -133,13 +141,13 @@ def get_auth_cookies(fid=None):
     # 保持键的大小写
     config.optionxform = str
     auth_config_file = 'auth.ini'
-    
+
     # 尝试读取现有的认证配置
     if os.path.exists(auth_config_file):
         config.read(auth_config_file, encoding='utf-8')
         if 'AUTH' in config and all(key in config['AUTH'] for key in ['fid', '_d', 'UID', 'vc3']):
             return dict(config['AUTH'])
-    
+
     # 如果配置不存在或不完整，则提示用户输入 cookie
     print("需要进行身份验证。请提供以下cookie信息：")
     print("（这些信息可以从浏览器开发者工具中获取）")
@@ -159,13 +167,14 @@ def get_auth_cookies(fid=None):
     print("身份验证信息已保存到 auth.ini 文件中。")
     return auth_cookies
 
+
 def format_auth_cookies(auth_cookies):
     """
     将认证cookie字典格式化为HTTP请求可用的cookie字符串。
-    
+
     参数:
         auth_cookies (dict): 包含认证信息的字典
-        
+
     返回:
         str: 格式化的cookie字符串
     """
@@ -177,10 +186,11 @@ def format_auth_cookies(auth_cookies):
     # 默认直接返回使用 auth_cookies 中 fid 的格式化字符串
     return _format()
 
+
 def handle_exception(e, message):
     """
     统一的异常处理函数，打印错误信息和详细的堆栈跟踪。
-    
+
     参数:
         e (Exception): 异常对象
         message (str): 自定义错误消息
@@ -188,10 +198,11 @@ def handle_exception(e, message):
     # 打印自定义错误消息和详细的堆栈跟踪信息
     print(f"{message}：\n{traceback.format_exc()}")
 
+
 def calculate_optimal_threads():
     """
     根据 CPU 负载和内存使用情况计算最佳线程数。
-    
+
     返回:
         int: 推荐的线程数量
     """
