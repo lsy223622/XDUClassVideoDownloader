@@ -18,7 +18,6 @@
 """
 
 import subprocess
-import os
 import re
 import requests
 import shutil
@@ -26,12 +25,19 @@ import tempfile
 import logging
 import threading
 import math
+import sys
+import os
+import csv
+import time
+import concurrent.futures
+from datetime import datetime
 from pathlib import Path
+from threading import Lock
 from tqdm import tqdm
-from utils import (day_to_chinese, handle_exception, get_auth_cookies,
-                   format_auth_cookies, is_valid_url, get_safe_filename,
-                   format_file_size)
-from api import FID
+from utils import day_to_chinese, handle_exception, get_safe_filename, format_file_size, remove_invalid_chars, create_directory, calculate_optimal_threads
+from config import get_auth_cookies, format_auth_cookies
+from validator import is_valid_url, validate_file_integrity as verify_file_integrity
+from api import FID, get_initial_data, fetch_m3u8_links
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -42,55 +48,7 @@ DOWNLOAD_TIMEOUT = 60  # 下载超时时间（秒）
 MAX_DOWNLOAD_RETRIES = 3  # 最大下载重试次数
 MIN_FILE_SIZE = 1024  # 最小有效文件大小（字节）
 MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
-MIN_SIZE_FOR_MULTITHREAD = 5 * 1024 * 1024  # 启用多线程下载的最小文件大小（5MB）
-
-
-
-def verify_file_integrity(filepath, expected_size=None):
-    """
-    验证下载文件的完整性。
-
-    参数:
-        filepath (str): 文件路径
-        expected_size (int): 期望的文件大小（可选）
-
-    返回:
-        bool: 文件是否完整有效
-    """
-    try:
-        if not os.path.exists(filepath):
-            return False
-
-        file_size = os.path.getsize(filepath)
-
-        # 检查文件大小是否合理
-        if file_size < MIN_FILE_SIZE:
-            logger.warning(f"文件大小过小，可能下载不完整: {filepath} ({file_size} bytes)")
-            return False
-
-        # 如果提供了期望大小，进行比较
-        if expected_size is not None and abs(file_size - expected_size) > 1024:
-            logger.warning(f"文件大小不匹配，期望: {expected_size}, 实际: {file_size}")
-            return False
-
-        # 简单的文件头验证（MP4文件应该以特定字节开头）
-        try:
-            with open(filepath, 'rb') as f:
-                header = f.read(8)
-                # MP4文件头通常包含 'ftyp' 标识
-                if len(header) >= 8 and b'ftyp' in header:
-                    logger.debug(f"文件头验证通过: {filepath}")
-                    return True
-                else:
-                    logger.warning(f"文件头验证失败，可能不是有效的MP4文件: {filepath}")
-                    return False
-        except Exception as e:
-            logger.warning(f"文件头验证时出错: {e}")
-            return False
-
-    except Exception as e:
-        logger.error(f"文件完整性验证失败: {e}")
-        return False
+MIN_SIZE_FOR_MULTITHREAD = 5 * 1024 * 1024  # 启用多线程下载的最小文件大小（5MB)
 
 
 def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
@@ -394,6 +352,53 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                     logger.warning(f"清理临时文件失败: {e}")
 
     return False
+
+
+# 使用 ANSI 控制序列的覆盖打印实现（上移一行并清空），参考示例中的 "\033[F\033[K" 方法。
+# 该实现以换行方式输出临时状态（与示例保持一致），随后可调用 clear_overwrite_line()
+# 将上一条临时状态清除。为提高在旧版 Windows 控制台的兼容性，尝试开启 VT 模式。
+
+_last_overwrite = False
+
+
+def _enable_windows_ansi():
+    """在 Windows 上尝试开启虚拟终端处理，启用 ANSI 转义序列支持。"""
+    if os.name != 'nt':
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        hStdOut = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        mode = ctypes.c_uint()
+        if kernel32.GetConsoleMode(hStdOut, ctypes.byref(mode)):
+            ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+            new_mode = mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            kernel32.SetConsoleMode(hStdOut, new_mode)
+    except Exception:
+        # 若无法开启也无需中断，ANSI 在多数现代终端可用
+        pass
+
+
+# 尝试启用（在模块导入时运行一次）
+_enable_windows_ansi()
+
+
+def overwrite_print(msg):
+    """打印一行临时状态（带换行），后续可调用 clear_overwrite_line() 清除该行。"""
+    global _last_overwrite
+    print(str(msg))
+    sys.stdout.flush()
+    _last_overwrite = True
+
+
+def clear_overwrite_line():
+    """如果上一次输出是通过 overwrite_print 打印的，向上移动一行并清空该行。"""
+    global _last_overwrite
+    if _last_overwrite:
+        # 上移一行并清空该行（ESC[F 上移，ESC[K 清除行）
+        sys.stdout.write('\033[F\033[K')
+        sys.stdout.flush()
+        _last_overwrite = False
 
 
 def download_m3u8(url, filename, save_dir, command='', max_attempts=MAX_DOWNLOAD_RETRIES):
@@ -949,3 +954,407 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         logger.warning(f"有 {stats['failed']} 个视频处理失败，请检查网络连接或重试")
 
     return stats
+
+
+def download_single_video(row, course_code, course_name, year, save_dir, video_type):
+    """
+    下载单个视频片段（半节课模式）。
+
+    参数:
+        row (list): 视频信息行
+        course_code (str): 课程代码
+        course_name (str): 课程名称
+        year (int): 年份
+        save_dir (str): 保存目录
+        video_type (str): 视频类型
+
+    返回:
+        bool: 下载是否成功
+    """
+    try:
+        month, date, day, jie, days, ppt_video, teacher_track = row
+        day_chinese = day_to_chinese(day)
+
+        success_count = 0
+        total_count = 0
+
+        # 下载PPT视频
+        if video_type in ['both', 'ppt'] and ppt_video:
+            total_count += 1
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-pptVideo.mp4"
+            filepath = Path(save_dir) / filename
+
+            if filepath.exists():
+                print(f"PPT视频已存在，跳过下载：{filename}")
+                success_count += 1
+            else:
+                print(f"开始下载PPT视频：{filename}")
+                if download_mp4(ppt_video, filename, save_dir):
+                    success_count += 1
+                    print(f"PPT视频下载成功：{filename}")
+                else:
+                    print(f"PPT视频下载失败：{filename}")
+
+        # 下载教师视频
+        if video_type in ['both', 'teacher'] and teacher_track:
+            total_count += 1
+            filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节-teacherTrack.mp4"
+            filepath = Path(save_dir) / filename
+
+            if filepath.exists():
+                print(f"教师视频已存在，跳过下载：{filename}")
+                success_count += 1
+            else:
+                print(f"开始下载教师视频：{filename}")
+                if download_mp4(teacher_track, filename, save_dir):
+                    success_count += 1
+                    print(f"教师视频下载成功：{filename}")
+                else:
+                    print(f"教师视频下载失败：{filename}")
+
+        print(f"\n半节课下载完成：成功 {success_count}/{total_count} 个视频")
+        return success_count == total_count
+
+    except Exception as e:
+        error_msg = handle_exception(e, "半节课下载失败")
+        print(f"\n{error_msg}")
+        return False
+
+
+def is_video_exists(save_path, video_info, video_type):
+    """
+    检查视频文件是否已存在。
+
+    参数:
+        save_path: 保存路径
+        video_info: 视频信息
+        video_type: 视频类型 ('ppt' 或 'teacher')
+
+    返回:
+        bool: 文件是否存在
+    """
+    # 解析视频信息中的详情
+    course_code = video_info.get('courseCode', 'Unknown')
+    course_name = video_info.get('courseName', 'Unknown')
+    course_name = remove_invalid_chars(course_name)
+    year = video_info.get('year', datetime.now().year)
+    month = video_info.get('month', 1)
+    date = video_info.get('date', 1)
+    day = video_info.get('day', 1)
+    jie = video_info.get('jie', 1)
+    days = video_info.get('days', 1)
+
+    day_chinese = day_to_chinese(day)
+    base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
+
+    # 根据视频类型生成文件名
+    if video_type == 'ppt':
+        filename = f"{base_filename}-pptVideo.mp4"
+    else:  # teacher
+        filename = f"{base_filename}-teacherTrack.mp4"
+
+    file_path = os.path.join(save_path, filename)
+    return os.path.exists(file_path)
+
+
+def get_course_videos(live_id, video_type='both'):
+    """
+    获取指定课程的视频数据。
+
+    参数:
+        live_id: 课程直播ID
+        video_type: 视频类型 ('both', 'ppt', 'teacher')
+
+    返回:
+        tuple: (videos, save_path, course_name, course_code)
+    """
+    try:
+        # 获取课程信息
+        videos = get_initial_data(live_id)
+        if not videos:
+            return None, None, None, None
+
+        # 构建保存路径 - 从第一个视频获取课程信息
+        first_video = videos[0] if videos else None
+        if not first_video:
+            return None, None, None, None
+
+        course_code = first_video.get('courseCode', 'Unknown')
+        course_name = first_video.get('courseName', 'Unknown')
+        # 从startTime提取年份
+        start_time = first_video.get('startTime', '')
+        if start_time:
+            try:
+                year = int(start_time[:4])
+            except (ValueError, IndexError):
+                year = datetime.now().year
+        else:
+            year = datetime.now().year
+
+        course_name_clean = remove_invalid_chars(course_name)
+        save_path = f"{year}年{course_code}{course_name_clean}"
+
+        # 转换为字典格式以保持兼容性
+        videos_dict = {i: video for i, video in enumerate(videos)}
+
+        return videos_dict, save_path, course_name, course_code
+    except Exception as e:
+        error_msg = handle_exception(e, f"获取课程视频失败 (liveId: {live_id})")
+        logger.error(error_msg)
+        return None, None, None, None
+
+
+def download_course_videos(live_id, single=0, merge=True, video_type='both', skip_until=0):
+    """
+    下载指定课程的视频，这是核心的下载逻辑函数。
+
+    参数:
+        live_id: 课程直播ID
+        single: 下载模式 (0=全部, 1=单节课, 2=半节课)
+        merge: 是否自动合并相邻节次视频
+        video_type: 视频类型 ('both', 'ppt', 'teacher')
+        skip_until: 跳过指定周数之前的视频
+
+    返回:
+        bool: 处理是否成功
+    """
+    try:
+        logger.info(f"开始下载课程 {live_id} 的视频")
+
+        # 获取课程的初始数据
+        overwrite_print(f"正在获取课程 {live_id} 的信息...")
+        try:
+            data = get_initial_data(live_id)
+        except Exception as e:
+            error_msg = handle_exception(e, "获取课程信息失败")
+            # 清除上一条临时状态行再打印多行信息
+            clear_overwrite_line()
+            print(f"\n{error_msg}")
+            print("请检查：")
+            print("1. 课程ID是否正确")
+            print("2. 网络连接是否正常")
+            print("3. 是否已正确配置认证信息")
+            return False
+
+        # 检查是否获取到有效数据
+        if not data:
+            clear_overwrite_line()
+            print(f"\n没有找到课程 {live_id} 的数据，请检查课程ID是否正确")
+            return False
+
+        clear_overwrite_line()
+        print(f"成功获取到 {len(data)} 条课程记录")
+
+        # 处理不同的下载模式
+        if single:
+            original_data = data[:]
+            # 筛选出指定liveId的条目
+            data = [entry for entry in original_data if entry["id"] == live_id]
+
+            if not data:
+                logger.error(f"没有找到课程ID {live_id} 对应的课程记录")
+                print(f"错误：没有找到课程ID {live_id} 对应的课程记录")
+                return False
+
+            if single == 1:
+                # 单节课模式：下载同一天的所有课程
+                start_time = data[0]["startTime"]
+                data = [
+                    entry for entry in original_data
+                    if (entry["startTime"]["date"] == start_time["date"] and
+                        entry["startTime"]["month"] == start_time["month"])
+                ]
+                print(f"单节课模式：将下载 {len(data)} 个视频片段")
+
+        # 提取课程基本信息
+        first_entry = data[0]
+        year = time.gmtime(first_entry["startTime"]["time"] / 1000).tm_year
+        course_code = first_entry.get("courseCode", "未知课程")
+        course_name = remove_invalid_chars(
+            first_entry.get("courseName", "未知课程名"))
+
+        save_dir = f"{year}年{course_code}{course_name}"
+
+        clear_overwrite_line()
+        print(f"年份：{year}")
+        print(f"课程代码：{course_code}")
+        print(f"课程名称：{course_name}")
+        print(f"保存目录：{save_dir}")
+
+        # 创建保存目录
+        try:
+            create_directory(save_dir)
+        except OSError as e:
+            error_msg = handle_exception(e, "创建保存目录失败")
+            print(f"\n{error_msg}")
+            return False
+
+        # 多线程获取所有视频的M3U8链接
+        overwrite_print(f"正在获取视频链接...")
+        rows = []
+        lock = Lock()
+
+        # 只处理已结束的课程
+        valid_entries = [
+            entry for entry in data
+            if entry.get("endTime", {}).get("time", 0) / 1000 <= time.time()
+        ]
+
+        if not valid_entries:
+            print("没有找到已结束的课程，无法下载")
+            return False
+
+        clear_overwrite_line()
+        print(f"找到 {len(valid_entries)} 个可下载的课程片段")
+
+        with tqdm(total=len(valid_entries), desc="获取视频链接") as desc:
+            # 计算最佳线程数
+            max_threads = calculate_optimal_threads()
+            logger.info(f"使用 {max_threads} 个线程获取视频链接")
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+                # 提交所有任务
+                futures = [
+                    executor.submit(fetch_m3u8_links, entry, lock, desc)
+                    for entry in valid_entries
+                ]
+
+                # 收集所有线程的结果
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        row = future.result()
+                        if row:
+                            rows.append(row)
+                    except Exception as e:
+                        logger.error(f"获取视频链接时出错: {e}")
+
+        if not rows:
+            print("没有成功获取到任何视频链接")
+            return False
+
+        # 按时间排序：月、日、星期、节次、周数
+        rows.sort(key=lambda x: (x[0], x[1], x[2], int(x[3]), x[4]))
+
+        # 根据skip_until参数过滤掉指定周数之前的视频
+        if skip_until > 0:
+            original_count = len(rows)
+            rows = [row for row in rows if int(row[4]) > skip_until]
+            filtered_count = original_count - len(rows)
+            if filtered_count > 0:
+                print(f"根据设置跳过了前 {skip_until} 周的 {filtered_count} 个视频")
+
+        # 保存视频信息到CSV文件
+        csv_filename = f"{save_dir}.csv"
+        try:
+            with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
+                writer = csv.writer(file)
+                writer.writerow(['month', 'date', 'day', 'jie',
+                                'days', 'pptVideo', 'teacherTrack'])
+                writer.writerows(rows)
+            print(f"视频信息已保存到：{csv_filename}")
+        except Exception as e:
+            logger.warning(f"保存CSV文件失败: {e}")
+
+        # 根据下载模式执行不同的下载逻辑
+        if single == 1:
+            # 单节课模式：最多下载2个条目（上下半节课）
+            download_rows = rows[:2]
+            print(f"\n单节课模式：准备下载 {len(download_rows)} 个视频片段")
+        elif single == 2:
+            # 半节课模式：只下载第一个条目
+            download_rows = rows[:1]
+            print(f"\n半节课模式：准备下载 1 个视频片段")
+        else:
+            # 全部下载模式
+            download_rows = rows
+            print(f"\n全部下载模式：准备下载 {len(download_rows)} 个视频片段")
+
+        if single == 2:
+            # 半节课模式的特殊处理
+            return download_single_video(download_rows[0], course_code, course_name, year, save_dir, video_type)
+        else:
+            # 批量下载处理
+            try:
+                stats = process_rows(
+                    download_rows, course_code, course_name, year,
+                    save_dir, '', merge, video_type
+                )
+
+                print(f"\n下载任务完成！")
+                print(
+                    f"总计 {stats['total_videos']} 个 | 下载 {stats['downloaded']} 个 | 跳过 {stats['skipped']} 个 | 失败 {stats['failed']} 个 | 合并 {stats['merged']} 个")
+
+                if stats['failed'] > 0:
+                    print(f"\n注意：有 {stats['failed']} 个视频下载失败")
+                    print("可能的原因：网络连接问题、服务器限制或认证过期")
+                    return False
+
+                return True
+
+            except Exception as e:
+                error_msg = handle_exception(e, "批量下载处理失败")
+                print(f"\n{error_msg}")
+                return False
+
+    except Exception as e:
+        error_msg = handle_exception(e, f"下载课程 {live_id} 失败")
+        logger.error(error_msg)
+        print(f"\n{error_msg}")
+        return False
+
+
+def process_all_courses(config, video_type='both'):
+    """
+    处理配置文件中的所有课程。
+
+    参数:
+        config: 配置对象
+        video_type: 视频类型
+
+    返回:
+        bool: 是否成功处理
+    """
+    success_count = 0
+    total_count = 0
+
+    for section_name in config.sections():
+        section = config[section_name]
+        if section.get('download', 'yes').lower() != 'yes':
+            continue
+
+        live_id = section.get('live_id')
+        course_code = section.get('course_code', 'Unknown')
+        course_name = section.get('course_name', 'Unknown')
+
+        total_count += 1
+
+        if not live_id:
+            logger.warning(f"课程 {course_code} {course_name} 缺少 live_id")
+            continue
+
+        overwrite_print(f"\n正在处理课程: {course_code} {course_name}")
+
+        try:
+            # 下载课程视频 - 使用提取的核心下载函数
+            clear_overwrite_line()
+            success = download_course_videos(
+                live_id, single=0, merge=True, video_type=video_type)
+            if success:
+                success_count += 1
+            else:
+                clear_overwrite_line()
+                print(f"\n课程 {course_code} {course_name} 下载失败")
+
+        except Exception as e:
+            clear_overwrite_line()
+            error_msg = handle_exception(
+                e, f"处理课程失败 ({course_code} {course_name})")
+            logger.error(error_msg)
+            print(f"\n课程 {course_code} {course_name} 处理时发生错误: {error_msg}")
+
+        # 添加分隔符（先清除临时行）
+        clear_overwrite_line()
+        print(f"\n" + "-" * 12)
+
+    print(f"\n批量下载完成: 成功 {success_count}/{total_count} 门课程")
+    return success_count > 0

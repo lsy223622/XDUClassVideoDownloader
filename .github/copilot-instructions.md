@@ -154,8 +154,10 @@
 ├── XDUClassVideoDownloader.py        # 单课程下载（交互或命令行）
 ├── Automation.py                     # 按学期批量扫描与下载
 ├── api.py                            # 服务端交互、视频信息解析、更新检查
-├── downloader.py                     # MP4 下载、合并、统计
+├── downloader.py                     # MP4 下载、合并、统计、课程处理
 ├── utils.py                          # 日志/配置/认证/工具函数
+├── config.py                         # 配置文件管理、认证、课程配置
+├── validator.py                      # 输入验证、参数检查、错误处理
 ├── auth.ini                          # 认证（本地生成/维护，勿泄露）
 ├── automation_config.ini             # 自动化配置（运行时生成/更新）
 ├── ffmpeg.exe                        # Windows 平台 FFmpeg 可执行文件

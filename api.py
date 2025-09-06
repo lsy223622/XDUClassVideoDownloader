@@ -26,10 +26,13 @@ import logging
 from functools import wraps
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from utils import handle_exception, remove_invalid_chars, get_auth_cookies, format_auth_cookies, is_valid_url
+from utils import remove_invalid_chars, setup_logging
+from config import get_auth_cookies, format_auth_cookies
+from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
 # 配置日志
-logger = logging.getLogger(__name__)
+logger = setup_logging('api', level=logging.INFO,
+                       console_level=logging.WARNING)
 
 # 应用版本和配置
 VERSION = "2.9.1"  # 更新版本号以反映改进
@@ -128,33 +131,6 @@ def get_authenticated_headers():
     except Exception as e:
         logger.error(f"获取认证头失败: {e}")
         raise ValueError(f"无法获取有效的认证信息: {e}")
-
-
-def validate_live_id(live_id):
-    """
-    验证直播ID的格式和有效性。
-
-    参数:
-        live_id: 待验证的直播ID
-
-    返回:
-        int: 验证后的直播ID
-
-    异常:
-        ValueError: 当直播ID格式无效时
-    """
-    if live_id is None:
-        raise ValueError("直播ID不能为空")
-
-    try:
-        live_id_int = int(live_id)
-        if live_id_int <= 0:
-            raise ValueError("直播ID必须是正整数")
-        if live_id_int > 9999999999:  # 设置合理的上限
-            raise ValueError("直播ID超出有效范围")
-        return live_id_int
-    except (TypeError, ValueError) as e:
-        raise ValueError(f"直播ID格式无效: {live_id}")
 
 
 @rate_limit
@@ -511,39 +487,6 @@ def fetch_data(url):
     except Exception as e:
         logger.error(f"请求失败: {e}, URL: {url}")
         return None
-
-
-def validate_scan_parameters(user_id, term_year, term_id):
-    """
-    验证课程扫描参数的有效性。
-
-    参数:
-        user_id (str): 用户ID
-        term_year (int): 学年
-        term_id (int): 学期ID
-
-    异常:
-        ValueError: 当参数无效时
-    """
-    if not user_id or not isinstance(user_id, str):
-        raise ValueError("用户ID不能为空且必须是字符串类型")
-
-    if not str(user_id).isdigit():
-        raise ValueError("用户ID必须是数字")
-
-    try:
-        term_year = int(term_year)
-        if term_year < 2020 or term_year > 2030:
-            raise ValueError("学年必须在2020-2030范围内")
-    except (TypeError, ValueError):
-        raise ValueError("学年必须是有效的整数")
-
-    try:
-        term_id = int(term_id)
-        if term_id not in [1, 2]:
-            raise ValueError("学期ID必须是1或2")
-    except (TypeError, ValueError):
-        raise ValueError("学期ID必须是1或2")
 
 
 def scan_courses(user_id, term_year, term_id):

@@ -1,33 +1,26 @@
 #!/usr/bin/env python3
 """
 工具模块
-提供各种辅助函数，包括文件处理、配置管理、系统资源监控等功能
+提供各种辅助函数，包括文件处理、系统资源监控等功能
 
 主要功能：
 - 文件系统操作和路径处理
-- 配置文件管理
 - 用户输入验证和交互
 - 系统资源监控
-- 安全的认证信息管理
 - 统一的异常处理和日志记录
+- 字符串处理和格式化
 """
 
 import os
 import sys
-import re
-import configparser
 import psutil
 import stat
-import tempfile
-import shutil
-from datetime import datetime
 from pathlib import Path
 import logging
+import math
 
 
 # 配置基础日志记录 - 只保存到文件
-from pathlib import Path
-
 logs_dir = Path('logs')
 logs_dir.mkdir(exist_ok=True)
 
@@ -153,7 +146,7 @@ def day_to_chinese(day):
     将星期数字转换为中文表示。
 
     参数:
-        day (int): 星期数字 (0-6, 0代表星期日)
+        day (int): 星期数字 (0-6, 0代表星期日，或1-7，1代表星期一)
 
     返回:
         str: 对应的中文星期表示
@@ -167,44 +160,17 @@ def day_to_chinese(day):
         except (TypeError, ValueError):
             raise ValueError(f"星期数字必须是整数，收到：{type(day).__name__}")
 
-    # 星期数字到中文的映射字典
-    days = {0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}
-
-    if day not in days:
-        raise ValueError(f"星期数字必须在0-6范围内，收到：{day}")
-
-    return days[day]
-
-
-def validate_input(value, validator, error_message="输入格式错误"):
-    """
-    验证用户输入的通用函数。
-
-    参数:
-        value: 待验证的值
-        validator: 验证函数或正则表达式
-        error_message (str): 验证失败时的错误消息
-
-    返回:
-        bool: 验证是否通过
-
-    异常:
-        ValueError: 当验证器类型不正确时
-    """
-    try:
-        if callable(validator):
-            return validator(value)
-        elif isinstance(validator, str):
-            # 作为正则表达式处理
-            return bool(re.match(validator, str(value)))
-        else:
-            raise ValueError("验证器必须是函数或正则表达式字符串")
-    except Exception as e:
-        logger.warning(f"输入验证失败: {e}")
-        return False
+    # 星期数字到中文的映射字典 - 支持两种格式
+    if day == 0:
+        return "日"  # 0代表星期日
+    elif 1 <= day <= 7:
+        days = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
+        return days[day]
+    else:
+        raise ValueError(f"星期数字必须在0-7范围内，收到：{day}")
 
 
-def user_input_with_check(prompt, validator, max_attempts=3, error_message="输入格式错误，请重新输入"):
+def user_input_with_check(prompt, validator, max_attempts=3, error_message="输入格式错误，请重新输入", allow_empty=False):
     """
     带验证功能的用户输入函数，提供更好的用户体验和安全性。
 
@@ -220,10 +186,17 @@ def user_input_with_check(prompt, validator, max_attempts=3, error_message="输�
     异常:
         ValueError: 超过最大尝试次数时
     """
+    from validator import validate_input
+
     attempts = 0
     while attempts < max_attempts:
         try:
             user_input = input(prompt).strip()
+
+            # 如果允许空输入且用户直接回车，则返回空字符串
+            if allow_empty and user_input == '':
+                return user_input
+
             if validate_input(user_input, validator):
                 return user_input
             else:
@@ -270,288 +243,6 @@ def create_directory(directory):
     except OSError as e:
         logger.error(f"创建目录失败: {directory}, 错误: {e}")
         raise OSError(f"无法创建目录 {directory}: {e}")
-
-
-def safe_write_config(config, filename, backup=True):
-    """
-    安全地写入配置文件，包含备份和原子性保证。
-
-    参数:
-        config (ConfigParser): 配置对象
-        filename (str): 配置文件名
-        backup (bool): 是否创建备份
-
-    异常:
-        OSError: 文件写入失败时
-    """
-    filepath = Path(filename)
-
-    # 创建备份到 logs 目录
-    if backup and filepath.exists():
-        # 确保 logs 目录存在
-        logs_dir = Path('logs')
-        logs_dir.mkdir(exist_ok=True)
-
-        backup_filename = f"{filepath.stem}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}{filepath.suffix}"
-        backup_path = logs_dir / backup_filename
-        try:
-            shutil.copy2(filepath, backup_path)
-            logger.info(f"配置文件备份已创建: {backup_path}")
-        except OSError as e:
-            logger.warning(f"无法创建配置文件备份: {e}")
-
-    # 原子性写入：先写入临时文件，再重命名
-    temp_file = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode='w',
-            encoding='utf-8',
-            delete=False,
-            dir=filepath.parent,
-            prefix=f'.{filepath.name}.tmp'
-        ) as temp_file:
-            config.write(temp_file)
-            temp_path = temp_file.name
-
-        # 原子性重命名
-        shutil.move(temp_path, filepath)
-        logger.info(f"配置文件写入成功: {filename}")
-
-    except Exception as e:
-        # 清理临时文件
-        if temp_file and os.path.exists(temp_file.name):
-            try:
-                os.unlink(temp_file.name)
-            except OSError:
-                pass
-        raise OSError(f"写入配置文件失败 {filename}: {e}")
-
-
-def write_config(config, user_id, courses, video_type='both'):
-    """
-    将用户信息和课程信息写入配置文件。
-
-    参数:
-        config (ConfigParser): 配置解析器对象
-        user_id (str): 用户ID
-        courses (dict): 课程信息字典
-        video_type (str): 视频类型，默认为'both'
-
-    异常:
-        ValueError: 参数验证失败时
-        OSError: 文件操作失败时
-    """
-    if not user_id or not isinstance(user_id, str):
-        raise ValueError("用户ID不能为空且必须是字符串类型")
-
-    if not courses or not isinstance(courses, dict):
-        raise ValueError("课程信息不能为空且必须是字典类型")
-
-    if video_type not in ['both', 'ppt', 'teacher']:
-        raise ValueError("视频类型必须是 'both', 'ppt' 或 'teacher'")
-
-    try:
-        # 确定学期信息
-        current_date = datetime.now()
-        current_year = current_date.year
-        month = current_date.month
-
-        # 根据当前月份确定学期信息
-        term_year = current_year
-        term_id = 1 if month >= 9 else 2  # 9月及以后为第一学期，否则为第二学期
-        if month < 8:  # 如果是1-7月，说明还是上一学年的第二学期
-            term_year -= 1
-
-        # 清除现有配置并写入默认配置段
-        config.clear()
-        config['DEFAULT'] = {
-            'user_id': user_id,
-            'term_year': str(term_year),
-            'term_id': str(term_id),
-            'video_type': video_type
-        }
-
-        # 写入每门课程的配置信息
-        for course_id, course in courses.items():
-            if not isinstance(course, dict):
-                logger.warning(f"跳过无效的课程数据: {course_id}")
-                continue
-
-            config[str(course_id)] = {
-                'course_code': course.get('courseCode', ''),
-                'course_name': remove_invalid_chars(course.get('courseName', '')),
-                'live_id': str(course.get('id', '')),
-                'download': 'yes'  # 默认设置为下载
-            }
-
-        # 安全写入配置文件
-        safe_write_config(config, 'config.ini')
-        logger.info(f"配置文件已创建，包含 {len(courses)} 门课程")
-
-    except Exception as e:
-        logger.error(f"写入配置文件失败: {e}")
-        raise
-
-
-def read_config():
-    """
-    从config.ini文件读取配置信息，包含错误处理和验证。
-
-    返回:
-        ConfigParser: 包含配置信息的配置解析器对象
-
-    异常:
-        FileNotFoundError: 配置文件不存在时
-        configparser.Error: 配置文件格式错误时
-    """
-    config_file = 'config.ini'
-
-    if not os.path.exists(config_file):
-        raise FileNotFoundError(f"配置文件不存在: {config_file}")
-
-    config = configparser.ConfigParser()
-    try:
-        # 使用UTF-8编码读取配置文件
-        config.read(config_file, encoding='utf-8')
-
-        # 验证基本的配置结构
-        if 'DEFAULT' not in config:
-            raise configparser.Error("配置文件缺少 DEFAULT 段")
-
-        required_keys = ['user_id', 'term_year', 'term_id']
-        for key in required_keys:
-            if key not in config['DEFAULT']:
-                raise configparser.Error(f"配置文件缺少必要的配置项: {key}")
-
-        logger.info(f"配置文件读取成功: {config_file}")
-        return config
-
-    except configparser.Error as e:
-        logger.error(f"配置文件格式错误: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"读取配置文件失败: {e}")
-        raise
-
-
-def get_auth_cookies(fid=None):
-    """
-    获取身份验证所需的cookie信息，包含安全性改进。
-    如果配置文件中不存在，则提示用户输入并安全保存。
-
-    参数:
-        fid (str): 可选的FID值
-
-    返回:
-        dict: 包含身份验证cookie的字典
-
-    异常:
-        ValueError: 当认证信息无效时
-    """
-    config = configparser.ConfigParser(interpolation=None)
-    # 保持键的大小写
-    config.optionxform = str
-    auth_config_file = 'auth.ini'
-
-    # 尝试读取现有的认证配置
-    if os.path.exists(auth_config_file):
-        try:
-            config.read(auth_config_file, encoding='utf-8')
-            if 'AUTH' in config and all(key in config['AUTH'] for key in ['_d', 'UID', 'vc3']):
-                auth_data = dict(config['AUTH'])
-                auth_data['fid'] = fid or ''
-                logger.info("从配置文件读取认证信息成功")
-                return auth_data
-        except Exception as e:
-            logger.warning(f"读取认证配置失败: {e}")
-
-    # 如果配置不存在或不完整，则提示用户输入
-    print("\n" + "="*60)
-    print("需要进行身份验证以访问课程视频")
-    print("请按照以下步骤获取认证信息：")
-    print("1. 在浏览器中访问 https://chaoxing.com/ 并登录")
-    print("2. 访问 https://i.mooc.chaoxing.com/")
-    print("3. 按F12打开开发者工具，在Application->Cookies中找到以下值")
-    print("="*60)
-
-    # 验证函数
-    def validate_cookie_value(value):
-        return bool(value and len(value.strip()) > 0 and not any(char in value for char in ['\n', '\r', '\t']))
-
-    try:
-        auth_cookies = {}
-        auth_cookies['fid'] = fid or ''
-
-        # 获取认证信息，增加输入验证
-        auth_cookies['_d'] = user_input_with_check(
-            "请输入 _d 的值: ",
-            validate_cookie_value,
-            error_message="Cookie值不能为空且不能包含换行符，请重新输入"
-        ).strip()
-
-        auth_cookies['UID'] = user_input_with_check(
-            "请输入 UID 的值: ",
-            validate_cookie_value,
-            error_message="Cookie值不能为空且不能包含换行符，请重新输入"
-        ).strip()
-
-        auth_cookies['vc3'] = user_input_with_check(
-            "请输入 vc3 的值: ",
-            validate_cookie_value,
-            error_message="Cookie值不能为空且不能包含换行符，请重新输入"
-        ).strip()
-
-        # 安全保存到配置文件
-        config['AUTH'] = {k: v for k, v in auth_cookies.items() if k != 'fid'}
-        safe_write_config(config, auth_config_file)
-
-        # 设置配置文件权限（仅Unix系统）
-        if os.name == 'posix':
-            try:
-                os.chmod(auth_config_file, stat.S_IRUSR | stat.S_IWUSR)
-                logger.info("认证文件权限设置成功")
-            except OSError as e:
-                logger.warning(f"无法设置认证文件权限: {e}")
-
-        print("认证信息已安全保存")
-        logger.info("新的认证信息已保存")
-        return auth_cookies
-
-    except (KeyboardInterrupt, EOFError):
-        print("\n用户取消认证设置")
-        raise ValueError("用户取消认证设置")
-    except Exception as e:
-        logger.error(f"获取认证信息失败: {e}")
-        raise ValueError(f"获取认证信息失败: {e}")
-
-
-def format_auth_cookies(auth_cookies):
-    """
-    将认证cookie字典格式化为HTTP请求可用的cookie字符串。
-
-    参数:
-        auth_cookies (dict): 包含认证信息的字典
-
-    返回:
-        str: 格式化的cookie字符串
-
-    异常:
-        ValueError: 当认证信息格式错误时
-    """
-    if not isinstance(auth_cookies, dict):
-        raise ValueError("认证信息必须是字典类型")
-
-    required_keys = ['_d', 'UID', 'vc3']
-    for key in required_keys:
-        if key not in auth_cookies:
-            raise ValueError(f"缺少必要的认证信息: {key}")
-        if not auth_cookies[key]:
-            raise ValueError(f"认证信息不能为空: {key}")
-
-    fid_value = auth_cookies.get('fid', '')
-    cookie_string = f"fid={fid_value}; _d={auth_cookies['_d']}; UID={auth_cookies['UID']}; vc3={auth_cookies['vc3']}"
-
-    return cookie_string
 
 
 def handle_exception(e, message, level=logging.ERROR):
@@ -639,36 +330,10 @@ def format_file_size(size_bytes):
         return "0 B"
 
     size_names = ["B", "KB", "MB", "GB", "TB"]
-    import math
     i = int(math.floor(math.log(size_bytes, 1024)))
     p = math.pow(1024, i)
     s = round(size_bytes / p, 2)
     return f"{s} {size_names[i]}"
-
-
-def is_valid_url(url):
-    """
-    验证URL格式是否有效。
-
-    参数:
-        url (str): 待验证的URL
-
-    返回:
-        bool: URL是否有效
-    """
-    if not url or not isinstance(url, str):
-        return False
-
-    # 基本的URL格式验证
-    url_pattern = re.compile(
-        r'^https?://'  # http:// 或 https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # 域名
-        r'localhost|'  # localhost
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # IP地址
-        r'(?::\d+)?'  # 可选端口
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-
-    return bool(url_pattern.match(url))
 
 
 def get_safe_filename(filename, max_length=255):
@@ -699,89 +364,3 @@ def get_safe_filename(filename, max_length=255):
             safe_name = safe_name[:max_length]
 
     return safe_name or "unnamed_file"
-
-
-def safe_read_config(filename):
-    """
-    安全地读取配置文件。
-
-    参数:
-        filename (str): 配置文件路径
-
-    返回:
-        configparser.ConfigParser: 配置对象
-
-    异常:
-        FileNotFoundError: 配置文件不存在
-        configparser.Error: 配置文件格式错误
-    """
-    import configparser
-
-    if not Path(filename).exists():
-        raise FileNotFoundError(f"配置文件不存在: {filename}")
-
-    config = configparser.ConfigParser()
-
-    try:
-        config.read(filename, encoding='utf-8')
-        logger.debug(f"成功读取配置文件: {filename}")
-        return config
-    except configparser.Error as e:
-        logger.error(f"配置文件格式错误: {e}")
-        raise
-    except Exception as e:
-        logger.error(f"读取配置文件失败: {e}")
-        raise
-
-
-def validate_user_id(user_id):
-    """
-    验证用户ID的有效性。
-
-    参数:
-        user_id (str): 用户ID
-
-    返回:
-        bool: 是否有效
-    """
-    if not user_id or not isinstance(user_id, str):
-        return False
-
-    # 用户ID应该是数字字符串，长度在6-20之间
-    user_id = user_id.strip()
-    if not user_id.isdigit():
-        return False
-
-    if len(user_id) < 6 or len(user_id) > 20:
-        return False
-
-    return True
-
-
-def validate_term_params(year, term_id):
-    """
-    验证学期参数的有效性。
-
-    参数:
-        year (int): 学年
-        term_id (int): 学期ID
-
-    返回:
-        bool: 是否有效
-    """
-    try:
-        year = int(year)
-        term_id = int(term_id)
-
-        # 学年应该在合理范围内
-        current_year = datetime.now().year
-        if year < 2000 or year > current_year + 1:
-            return False
-
-        # 学期ID应该是1或2
-        if term_id not in [1, 2]:
-            return False
-
-        return True
-    except (ValueError, TypeError):
-        return False
