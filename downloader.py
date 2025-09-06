@@ -42,7 +42,8 @@ DOWNLOAD_TIMEOUT = 60  # 下载超时时间（秒）
 MAX_DOWNLOAD_RETRIES = 3  # 最大下载重试次数
 MIN_FILE_SIZE = 1024  # 最小有效文件大小（字节）
 MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
-MIN_SIZE_FOR_MULTITHREAD = 5 * 1024 * 1024  # 最小启用多线程的文件大小（5MB）
+MIN_SIZE_FOR_MULTITHREAD = 5 * 1024 * 1024  # 启用多线程下载的最小文件大小（5MB）
+
 
 
 def verify_file_integrity(filepath, expected_size=None):
@@ -721,19 +722,43 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         single_exists = any(f.exists() and verify_file_integrity(
             str(f)) for f in single_files)
 
-        # 检查可能的合并文件
-        merged_patterns = [
-            f"*第*-*节-{track_type}.mp4",
-            f"*第*-*节-{track_type}.ts"
-        ]
+        # 尝试解析当前的节号（例如 base_filename 中的 "第3节"）
+        current_jie = None
+        try:
+            m = re.search(r"第(\d+)节", base_filename)
+            if m:
+                current_jie = int(m.group(1))
+        except Exception:
+            current_jie = None
 
         merged_exists = False
         save_path = Path(save_dir)
-        for pattern in merged_patterns:
+
+        # 首先尝试匹配形如 "第A-B节-{track_type}.mp4/ts" 的合并文件，并判断当前节是否包含在区间内
+        for ext in ('.mp4', '.ts'):
+            pattern = f"*第*-*节-{track_type}{ext}"
             for merged_file in save_path.glob(pattern):
-                if base_filename in merged_file.name and verify_file_integrity(str(merged_file)):
+                name = merged_file.name
+                if not merged_file.exists():
+                    continue
+                # 解析合并文件的节区间，例如 "第2-4节"
+                m = re.search(r"第(\d+)-(\d+)节", name)
+                if m and current_jie is not None:
+                    try:
+                        min_j = int(m.group(1))
+                        max_j = int(m.group(2))
+                        if min_j <= current_jie <= max_j and verify_file_integrity(str(merged_file)):
+                            merged_exists = True
+                            break
+                    except Exception:
+                        # 解析失败则回退到包含检测
+                        pass
+
+                # 退回兼容旧的命名检测逻辑：检查 base_filename 是否为文件名子串
+                if base_filename in name and verify_file_integrity(str(merged_file)):
                     merged_exists = True
                     break
+
             if merged_exists:
                 break
 
