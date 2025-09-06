@@ -29,7 +29,7 @@ AUTOMATION_CONFIG_FILE = 'automation_config.ini'
 AUTH_CONFIG_FILE = 'auth.ini'
 
 
-def safe_write_config(config, filename, backup=True):
+def safe_write_config(config, filename, backup=False):
     """
     安全地写入配置文件，包含备份和原子性保证。
 
