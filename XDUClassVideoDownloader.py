@@ -42,8 +42,6 @@ from threading import Lock
 # 使用统一的日志配置
 logger = setup_logging('main_downloader', level=logging.INFO, console_level=logging.WARNING)
 
-# 程序启动时检查更新
-print("正在初始化程序...")
 try:
     # 检查程序更新
     try:
