@@ -97,9 +97,6 @@ def get_user_input_interactive():
     返回:
         tuple: (liveid, single, merge, video_type, skip_until)
     """
-    print("\n" + "="*60)
-    print("欢迎使用西安电子科技大学课程视频下载器")
-    print("="*60)
 
     try:
         # 获取课程ID
@@ -109,6 +106,19 @@ def get_user_input_interactive():
             error_message="课程ID必须是1-10位数字，请重新输入"
         )
         liveid = int(liveid)
+
+        # 辅助：清除之前打印的若干行（使用 ANSI 控制序列）
+        def _clear_prev_lines(n):
+            try:
+                for _ in range(n):
+                    # 上移一行并清除该行
+                    print('\033[F\033[K', end='')
+            except Exception:
+                # 如果终端不支持 ANSI，忽略清除
+                pass
+
+        # 用于显示累计选择的摘要
+        selections = []
 
         # 选择下载模式
         print("\n下载模式选择：")
@@ -122,8 +132,17 @@ def get_user_input_interactive():
             error_message="请输入 Y、n 或 s"
         ).lower()
 
-        single = 1 if mode_input in [
-            '', 'y'] else 2 if mode_input == 's' else 0
+        single = 1 if mode_input in ['', 'y'] else 2 if mode_input == 's' else 0
+
+        # 清除上面打印的菜单并显示摘要（包含输入提示行）
+        _clear_prev_lines(5)
+        if single == 1:
+            selections.append("下载单节课")
+        elif single == 2:
+            selections.append("仅下载单集")
+        else:
+            selections.append("下载这门课程的所有视频")
+        print('，'.join(selections), flush=True)
 
         # 选择是否合并视频
         print("\n视频合并选项：")
@@ -137,6 +156,11 @@ def get_user_input_interactive():
         ).lower()
 
         merge = merge_input != 'n'
+
+        # 清除合并菜单并更新摘要（包含输入提示行）
+        _clear_prev_lines(6)
+        selections.append("自动合并上下半节课视频" if merge else "不合并视频")
+        print('，'.join(selections), flush=True)
 
         # 选择视频类型
         print("\n视频类型选择：")
@@ -152,6 +176,16 @@ def get_user_input_interactive():
 
         video_type = 'ppt' if video_type_input == 'p' else 'teacher' if video_type_input == 't' else 'both'
 
+        # 清除视频类型菜单（包含输入提示行）并更新摘要
+        _clear_prev_lines(7)
+        if video_type == 'both':
+            selections.append("下载PPT和教师两种视频")
+        elif video_type == 'ppt':
+            selections.append("仅下载PPT演示视频")
+        else:
+            selections.append("仅下载教师讲课视频")
+        print('，'.join(selections), flush=True)
+
         # 设置跳过周数
         print("\n高级选项：")
         skip_input = user_input_with_check(
@@ -161,6 +195,12 @@ def get_user_input_interactive():
         ).strip()
 
         skip_until = int(skip_input) - 1 if skip_input.isdigit() else 0
+
+        # 清除高级选项菜单（占用2行）并更新摘要
+        _clear_prev_lines(4)
+        selections.append(f"从第 {skip_until + 1} 周开始下载")
+        # 打印最终摘要（替代原有菜单），并换行以保持输出整洁
+        print('，'.join(selections) + "\n", flush=True)
 
         return liveid, single, merge, video_type, skip_until
 
