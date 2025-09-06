@@ -12,12 +12,12 @@
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
 [![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
-## 🎉🎉 2.0+ 版本重大更新：增加 `Automation.py`，实现全学期课程全自动下载！🎉🎉
+## 🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适🎉🎉
 
-本项目经过重大更新，引入了强大的自动化功能。全新的 `Automation.py` 脚本能够实现全自动下载您整个学期的所有课程。它能够智能管理配置文件、自动发现新课程、跳过已下载的视频，让您随时运行，轻松追更新。
+本项目经过重大更新，在适配新版录直播平台接口同时，全面重构代码，大幅优化了下载速度和用户体验。
 
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
-  - [🎉🎉 2.0+ 版本重大更新：增加 `Automation.py`，实现全学期课程全自动下载！🎉🎉](#-20-版本重大更新增加-automationpy实现全学期课程全自动下载)
+  - [🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适🎉🎉](#-30-版本重大更新代码全面重构更快更舒适)
   - [**使用须知**](#使用须知)
   - [**项目简介**](#项目简介)
   - [**核心功能**](#核心功能)
@@ -71,13 +71,15 @@
     pip install requests tqdm psutil
     ```
 
-3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则必须下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。
+3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。
 
 ## **使用方法**
 
 ### **Windows 用户看这里！（懒人包）**
 
 您可以直接从项目的 [**Releases**](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 页面下载打包好的 `exe` 程序。该版本无需安装 Python 和任何依赖库，开箱即用。
+
+注意：如果需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)，并将压缩包 `bin` 文件夹中的 `ffmpeg.exe` 放在程序同目录下或者添加到系统环境变量 `PATH` 中。
 
 - 要下载特定课程，运行 `XDUClassVideoDownloader.exe`。
 - 要全自动下载所有课程，运行 `Automation.exe`。
