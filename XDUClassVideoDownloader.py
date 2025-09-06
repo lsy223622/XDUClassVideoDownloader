@@ -17,7 +17,6 @@
 - 用户友好的错误提示
 """
 
-import os
 import csv
 import time
 import traceback
@@ -29,15 +28,14 @@ from threading import Lock
 from datetime import datetime, timezone
 from tqdm import tqdm
 from argparse import ArgumentParser
-from api import get_initial_data, get_video_info_from_html, check_for_updates
+from api import get_initial_data, get_video_info_from_html, check_update
 from downloader import download_mp4, process_rows
 from utils import (
     setup_logging, user_input_with_check, remove_invalid_chars,
     create_directory, handle_exception
 )
 from utils import (day_to_chinese, user_input_with_check, create_directory, 
-                   handle_exception, remove_invalid_chars, calculate_optimal_threads,
-                   validate_input)
+                   handle_exception, remove_invalid_chars, calculate_optimal_threads)
 import concurrent.futures
 from threading import Lock
 
@@ -49,7 +47,7 @@ print("正在初始化程序...")
 try:
     # 检查程序更新
     try:
-        check_for_updates()
+        check_update()
     except Exception as e:
         logger.debug(f"检查更新时出现异常: {e}")
 except Exception as e:
@@ -479,7 +477,7 @@ def fetch_m3u8_links(entry, lock, pbar):
         
         # 计算日期信息
         start_time = entry["startTime"]
-        month = start_time["month"]
+        month = start_time["month"] + 1  # API返回的月份比实际月份小1，需要+1修正
         date = start_time["date"]
         jie = str(entry["jie"])
         
@@ -503,9 +501,12 @@ def fetch_m3u8_links(entry, lock, pbar):
         days_diff = (dt - term_start).days
         week_number = max(1, (days_diff // 7) + 1)
         
-        return [month, date, day, jie, week_number, 
-                video_info.get("pptVideo", ""), 
-                video_info.get("teacherTrack", "")]
+        # 正确提取视频链接 - 处理嵌套的videoPath结构
+        video_path = video_info.get("videoPath", {})
+        ppt_video = video_path.get("pptVideo", "")
+        teacher_track = video_path.get("teacherTrack", "")
+        
+        return [month, date, day, jie, week_number, ppt_video, teacher_track]
                 
     except Exception as e:
         logger.error(f"获取课程 {entry.get('id', 'unknown')} 的视频链接失败: {e}")

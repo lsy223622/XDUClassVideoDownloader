@@ -16,7 +16,6 @@
 - 用户友好的错误提示和进度反馈
 """
 
-import os
 import sys
 import time
 import traceback
@@ -60,7 +59,6 @@ def main():
         bool: 处理是否成功
     """
     try:
-        print("启动自动化批量下载...")
         logger.info("开始执行自动化批量下载任务")
         
         # 检查程序更新
@@ -338,10 +336,12 @@ def process_all_courses(config, video_type):
     """
     try:
         all_videos = {}
-        total_courses = len([s for s in config.sections() if s != 'DEFAULT'])
+        # 只统计配置中设置为 download = yes 的课程数
+        enabled_sections = [s for s in config.sections() if s != 'DEFAULT' and config[s].get('download') == 'yes']
+        total_enabled = len(enabled_sections)
         processed_courses = 0
 
-        print(f"\n开始处理 {total_courses} 门课程...")
+        print(f"\n开始处理选择下载的 {total_enabled} 门课程...")
 
         for course_id in config.sections():
             # 跳过DEFAULT段和未启用下载的课程
@@ -354,7 +354,7 @@ def process_all_courses(config, video_type):
             course_name = remove_invalid_chars(config[course_id]['course_name'])
             live_id = config[course_id]['live_id']
             
-            print(f"\n[{processed_courses}/{total_courses}] 处理课程：{course_name}")
+            print(f"\n[{processed_courses}/{total_enabled}] 处理课程：{course_name}")
             logger.info(f"正在检查课程：{course_code} - {course_name} (ID: {live_id})")
 
             try:
@@ -459,7 +459,7 @@ def get_course_videos(data, course_code, course_name, year, save_dir, video_type
 
         # 解析时间信息
         start_time = entry["startTime"]
-        month = start_time["month"]
+        month = start_time["month"] + 1  # API返回的月份比实际月份小1，需要+1修正
         date = start_time["date"]
         day = start_time["day"]
         jie = entry["jie"]
@@ -477,8 +477,10 @@ def get_course_videos(data, course_code, course_name, year, save_dir, video_type
                 logger.debug(f"课程 {entry['id']} 没有可用的视频信息")
                 continue
 
-            ppt_video = video_info.get("pptVideo", "")
-            teacher_track = video_info.get("teacherTrack", "")
+            # 正确提取视频链接 - 处理嵌套的videoPath结构
+            video_path = video_info.get("videoPath", {})
+            ppt_video = video_path.get("pptVideo", "")
+            teacher_track = video_path.get("teacherTrack", "")
 
             # 按视频类型选择所需的链接
             if video_type == 'ppt':

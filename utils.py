@@ -16,7 +16,6 @@ import os
 import sys
 import re
 import configparser
-import traceback
 import psutil
 import stat
 import tempfile
@@ -286,9 +285,14 @@ def safe_write_config(config, filename, backup=True):
     """
     filepath = Path(filename)
     
-    # 创建备份
+    # 创建备份到 logs 目录
     if backup and filepath.exists():
-        backup_path = filepath.with_suffix(f'.bak.{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+        # 确保 logs 目录存在
+        logs_dir = Path('logs')
+        logs_dir.mkdir(exist_ok=True)
+        
+        backup_filename = f"{filepath.stem}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}{filepath.suffix}"
+        backup_path = logs_dir / backup_filename
         try:
             shutil.copy2(filepath, backup_path)
             logger.info(f"配置文件备份已创建: {backup_path}")

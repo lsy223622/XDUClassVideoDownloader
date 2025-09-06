@@ -23,7 +23,6 @@ import re
 import requests
 import shutil
 import tempfile
-import hashlib
 import logging
 from pathlib import Path
 from tqdm import tqdm
