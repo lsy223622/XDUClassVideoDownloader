@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=logging.WARNING):
     """
     设置日志记录系统。
-    
+
     详细日志保存到文件中，用户界面只显示警告和错误信息。
 
     参数:
@@ -58,49 +58,50 @@ def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=loggi
     # 创建日志记录器
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    
+
     # 避免重复添加处理器
     if logger.handlers:
         return logger
-    
+
     # 创建日志目录
     log_dir = Path('logs')
     log_dir.mkdir(exist_ok=True)
-    
+
     # 创建文件处理器 - 记录所有日志信息
-    file_handler = logging.FileHandler(log_dir / f'{name}.log', encoding='utf-8')
+    file_handler = logging.FileHandler(
+        log_dir / f'{name}.log', encoding='utf-8')
     file_handler.setLevel(level)
-    
+
     # 创建控制台处理器 - 只显示重要信息
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
-    
+
     # 创建详细的文件格式化器
     file_formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    
+
     # 创建简洁的控制台格式化器
     console_formatter = logging.Formatter(
         '%(levelname)s: %(message)s'
     )
-    
+
     # 设置格式化器
     file_handler.setFormatter(file_formatter)
     console_handler.setFormatter(console_formatter)
-    
+
     # 添加处理器到日志记录器
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    
+
     return logger
 
 
 def remove_invalid_chars(course_name):
     """
     移除文件名中的非法字符，确保可以在文件系统中创建文件。
-    
+
     使用更安全和全面的字符过滤方法，同时保持文件名的可读性。
 
     参数:
@@ -114,36 +115,36 @@ def remove_invalid_chars(course_name):
     """
     if not course_name or not isinstance(course_name, str):
         raise ValueError("课程名称不能为空且必须是字符串类型")
-    
+
     # 定义 Windows/Linux 文件系统中不允许的字符
     # 包括控制字符和保留字符
     invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\0']
-    
+
     # 移除控制字符 (ASCII 0-31)
     cleaned_name = ''.join(char for char in course_name if ord(char) >= 32)
-    
+
     # 替换非法字符为下划线，保持可读性
     for char in invalid_chars:
         cleaned_name = cleaned_name.replace(char, '_')
-    
+
     # 移除首尾空白字符和点号（Windows不允许）
     cleaned_name = cleaned_name.strip(' .')
-    
+
     # 检查 Windows 保留文件名
     reserved_names = ['CON', 'PRN', 'AUX', 'NUL'] + \
-                    [f'COM{i}' for i in range(1, 10)] + \
-                    [f'LPT{i}' for i in range(1, 10)]
-    
+        [f'COM{i}' for i in range(1, 10)] + \
+        [f'LPT{i}' for i in range(1, 10)]
+
     if cleaned_name.upper() in reserved_names:
         cleaned_name = f"_{cleaned_name}"
-    
+
     # 限制文件名长度，避免路径过长问题
     if len(cleaned_name) > 100:
         cleaned_name = cleaned_name[:100].rstrip()
-    
+
     if not cleaned_name:
         raise ValueError("处理后的课程名称为空，请检查原始名称")
-    
+
     return cleaned_name
 
 
@@ -165,13 +166,13 @@ def day_to_chinese(day):
             day = int(day)
         except (TypeError, ValueError):
             raise ValueError(f"星期数字必须是整数，收到：{type(day).__name__}")
-    
+
     # 星期数字到中文的映射字典
     days = {0: "日", 1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六"}
-    
+
     if day not in days:
         raise ValueError(f"星期数字必须在0-6范围内，收到：{day}")
-    
+
     return days[day]
 
 
@@ -234,7 +235,7 @@ def user_input_with_check(prompt, validator, max_attempts=3, error_message="输�
         except EOFError:
             print("\n输入流结束")
             raise ValueError("输入流意外结束")
-    
+
     raise ValueError(f"超过最大尝试次数 ({max_attempts})，输入验证失败")
 
 
@@ -251,21 +252,21 @@ def create_directory(directory):
     """
     if not directory or not isinstance(directory, str):
         raise ValueError("目录路径不能为空且必须是字符串类型")
-    
+
     try:
         # 使用 Path 对象处理路径，更安全
         path = Path(directory)
         path.mkdir(parents=True, exist_ok=True)
-        
+
         # 设置适当的权限 (仅在Unix系统上有效)
         if os.name == 'posix':
             try:
                 os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
             except OSError:
                 logger.warning(f"无法设置目录权限: {directory}")
-        
+
         logger.info(f"目录创建成功: {directory}")
-        
+
     except OSError as e:
         logger.error(f"创建目录失败: {directory}, 错误: {e}")
         raise OSError(f"无法创建目录 {directory}: {e}")
@@ -284,13 +285,13 @@ def safe_write_config(config, filename, backup=True):
         OSError: 文件写入失败时
     """
     filepath = Path(filename)
-    
+
     # 创建备份到 logs 目录
     if backup and filepath.exists():
         # 确保 logs 目录存在
         logs_dir = Path('logs')
         logs_dir.mkdir(exist_ok=True)
-        
+
         backup_filename = f"{filepath.stem}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}{filepath.suffix}"
         backup_path = logs_dir / backup_filename
         try:
@@ -298,24 +299,24 @@ def safe_write_config(config, filename, backup=True):
             logger.info(f"配置文件备份已创建: {backup_path}")
         except OSError as e:
             logger.warning(f"无法创建配置文件备份: {e}")
-    
+
     # 原子性写入：先写入临时文件，再重命名
     temp_file = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode='w', 
-            encoding='utf-8', 
+            mode='w',
+            encoding='utf-8',
             delete=False,
             dir=filepath.parent,
             prefix=f'.{filepath.name}.tmp'
         ) as temp_file:
             config.write(temp_file)
             temp_path = temp_file.name
-        
+
         # 原子性重命名
         shutil.move(temp_path, filepath)
         logger.info(f"配置文件写入成功: {filename}")
-        
+
     except Exception as e:
         # 清理临时文件
         if temp_file and os.path.exists(temp_file.name):
@@ -342,13 +343,13 @@ def write_config(config, user_id, courses, video_type='both'):
     """
     if not user_id or not isinstance(user_id, str):
         raise ValueError("用户ID不能为空且必须是字符串类型")
-    
+
     if not courses or not isinstance(courses, dict):
         raise ValueError("课程信息不能为空且必须是字典类型")
-    
+
     if video_type not in ['both', 'ppt', 'teacher']:
         raise ValueError("视频类型必须是 'both', 'ppt' 或 'teacher'")
-    
+
     try:
         # 确定学期信息
         current_date = datetime.now()
@@ -369,24 +370,24 @@ def write_config(config, user_id, courses, video_type='both'):
             'term_id': str(term_id),
             'video_type': video_type
         }
-        
+
         # 写入每门课程的配置信息
         for course_id, course in courses.items():
             if not isinstance(course, dict):
                 logger.warning(f"跳过无效的课程数据: {course_id}")
                 continue
-            
+
             config[str(course_id)] = {
                 'course_code': course.get('courseCode', ''),
                 'course_name': remove_invalid_chars(course.get('courseName', '')),
                 'live_id': str(course.get('id', '')),
                 'download': 'yes'  # 默认设置为下载
             }
-        
+
         # 安全写入配置文件
         safe_write_config(config, 'config.ini')
         logger.info(f"配置文件已创建，包含 {len(courses)} 门课程")
-        
+
     except Exception as e:
         logger.error(f"写入配置文件失败: {e}")
         raise
@@ -404,27 +405,27 @@ def read_config():
         configparser.Error: 配置文件格式错误时
     """
     config_file = 'config.ini'
-    
+
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"配置文件不存在: {config_file}")
-    
+
     config = configparser.ConfigParser()
     try:
         # 使用UTF-8编码读取配置文件
         config.read(config_file, encoding='utf-8')
-        
+
         # 验证基本的配置结构
         if 'DEFAULT' not in config:
             raise configparser.Error("配置文件缺少 DEFAULT 段")
-        
+
         required_keys = ['user_id', 'term_year', 'term_id']
         for key in required_keys:
             if key not in config['DEFAULT']:
                 raise configparser.Error(f"配置文件缺少必要的配置项: {key}")
-        
+
         logger.info(f"配置文件读取成功: {config_file}")
         return config
-        
+
     except configparser.Error as e:
         logger.error(f"配置文件格式错误: {e}")
         raise
@@ -480,20 +481,20 @@ def get_auth_cookies(fid=None):
     try:
         auth_cookies = {}
         auth_cookies['fid'] = fid or ''
-        
+
         # 获取认证信息，增加输入验证
         auth_cookies['_d'] = user_input_with_check(
             "请输入 _d 的值: ",
             validate_cookie_value,
             error_message="Cookie值不能为空且不能包含换行符，请重新输入"
         ).strip()
-        
+
         auth_cookies['UID'] = user_input_with_check(
             "请输入 UID 的值: ",
             validate_cookie_value,
             error_message="Cookie值不能为空且不能包含换行符，请重新输入"
         ).strip()
-        
+
         auth_cookies['vc3'] = user_input_with_check(
             "请输入 vc3 的值: ",
             validate_cookie_value,
@@ -503,7 +504,7 @@ def get_auth_cookies(fid=None):
         # 安全保存到配置文件
         config['AUTH'] = {k: v for k, v in auth_cookies.items() if k != 'fid'}
         safe_write_config(config, auth_config_file)
-        
+
         # 设置配置文件权限（仅Unix系统）
         if os.name == 'posix':
             try:
@@ -515,7 +516,7 @@ def get_auth_cookies(fid=None):
         print("认证信息已安全保存")
         logger.info("新的认证信息已保存")
         return auth_cookies
-        
+
     except (KeyboardInterrupt, EOFError):
         print("\n用户取消认证设置")
         raise ValueError("用户取消认证设置")
@@ -539,17 +540,17 @@ def format_auth_cookies(auth_cookies):
     """
     if not isinstance(auth_cookies, dict):
         raise ValueError("认证信息必须是字典类型")
-    
+
     required_keys = ['_d', 'UID', 'vc3']
     for key in required_keys:
         if key not in auth_cookies:
             raise ValueError(f"缺少必要的认证信息: {key}")
         if not auth_cookies[key]:
             raise ValueError(f"认证信息不能为空: {key}")
-    
+
     fid_value = auth_cookies.get('fid', '')
     cookie_string = f"fid={fid_value}; _d={auth_cookies['_d']}; UID={auth_cookies['UID']}; vc3={auth_cookies['vc3']}"
-    
+
     return cookie_string
 
 
@@ -576,10 +577,11 @@ def handle_exception(e, message, level=logging.ERROR):
         user_message = f"{message}：找不到所需文件"
     else:
         user_message = f"{message}：操作失败"
-    
+
     # 记录详细的技术错误信息到日志
-    logger.log(level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
-    
+    logger.log(
+        level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
+
     # 向用户显示友好的错误消息
     print(user_message)
     return user_message
@@ -598,7 +600,8 @@ def calculate_optimal_threads():
         mem_usage = psutil.virtual_memory().percent
         cpu_count = os.cpu_count() or 4  # 提供默认值
 
-        logger.info(f"系统状态 - CPU使用率: {cpu_usage}%, 内存使用率: {mem_usage}%, CPU核心数: {cpu_count}")
+        logger.info(
+            f"系统状态 - CPU使用率: {cpu_usage}%, 内存使用率: {mem_usage}%, CPU核心数: {cpu_count}")
 
         # 根据系统负载动态调整线程数
         if cpu_usage > 80 or mem_usage > 85:
@@ -613,10 +616,10 @@ def calculate_optimal_threads():
 
         # 安全边界：确保线程数在合理范围内
         max_threads = max(1, min(max_threads, cpu_count * 4, 32))  # 最大不超过32个线程
-        
+
         logger.info(f"计算得出最佳线程数: {max_threads}")
         return int(max_threads)
-        
+
     except Exception as e:
         logger.warning(f"计算最佳线程数失败，使用默认值: {e}")
         return 4  # 保守的默认值
@@ -634,7 +637,7 @@ def format_file_size(size_bytes):
     """
     if size_bytes == 0:
         return "0 B"
-    
+
     size_names = ["B", "KB", "MB", "GB", "TB"]
     import math
     i = int(math.floor(math.log(size_bytes, 1024)))
@@ -655,7 +658,7 @@ def is_valid_url(url):
     """
     if not url or not isinstance(url, str):
         return False
-    
+
     # 基本的URL格式验证
     url_pattern = re.compile(
         r'^https?://'  # http:// 或 https://
@@ -664,7 +667,7 @@ def is_valid_url(url):
         r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # IP地址
         r'(?::\d+)?'  # 可选端口
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-    
+
     return bool(url_pattern.match(url))
 
 
@@ -681,10 +684,10 @@ def get_safe_filename(filename, max_length=255):
     """
     if not filename:
         return "unnamed_file"
-    
+
     # 移除非法字符
     safe_name = remove_invalid_chars(filename)
-    
+
     # 处理长度限制
     if len(safe_name) > max_length:
         # 保留文件扩展名
@@ -694,7 +697,7 @@ def get_safe_filename(filename, max_length=255):
             safe_name = name_part[:available_length] + ext_part
         else:
             safe_name = safe_name[:max_length]
-    
+
     return safe_name or "unnamed_file"
 
 
@@ -713,12 +716,12 @@ def safe_read_config(filename):
         configparser.Error: 配置文件格式错误
     """
     import configparser
-    
+
     if not Path(filename).exists():
         raise FileNotFoundError(f"配置文件不存在: {filename}")
-    
+
     config = configparser.ConfigParser()
-    
+
     try:
         config.read(filename, encoding='utf-8')
         logger.debug(f"成功读取配置文件: {filename}")
@@ -743,15 +746,15 @@ def validate_user_id(user_id):
     """
     if not user_id or not isinstance(user_id, str):
         return False
-    
+
     # 用户ID应该是数字字符串，长度在6-20之间
     user_id = user_id.strip()
     if not user_id.isdigit():
         return False
-    
+
     if len(user_id) < 6 or len(user_id) > 20:
         return False
-    
+
     return True
 
 
@@ -769,16 +772,16 @@ def validate_term_params(year, term_id):
     try:
         year = int(year)
         term_id = int(term_id)
-        
+
         # 学年应该在合理范围内
         current_year = datetime.now().year
         if year < 2000 or year > current_year + 1:
             return False
-        
+
         # 学期ID应该是1或2
         if term_id not in [1, 2]:
             return False
-        
+
         return True
     except (ValueError, TypeError):
         return False

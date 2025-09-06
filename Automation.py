@@ -27,19 +27,20 @@ from argparse import ArgumentParser
 
 # 本地模块导入
 from api import (
-    get_initial_data, get_video_info_from_html, 
+    get_initial_data, get_video_info_from_html,
     scan_courses, check_update
 )
 from downloader import process_rows
 from utils import (
-    create_directory, setup_logging, handle_exception, 
+    create_directory, setup_logging, handle_exception,
     day_to_chinese, remove_invalid_chars,
     safe_write_config, safe_read_config, validate_user_id,
     validate_term_params
 )
 
 # 设置日志 - 详细日志保存到文件，控制台只显示重要信息
-logger = setup_logging('automation', level=logging.INFO, console_level=logging.WARNING)
+logger = setup_logging('automation', level=logging.INFO,
+                       console_level=logging.WARNING)
 
 # 配置文件名
 CONFIG_FILE = 'automation_config.ini'
@@ -60,7 +61,7 @@ def main():
     """
     try:
         logger.info("开始执行自动化批量下载任务")
-        
+
         # 检查程序更新
         try:
             check_update()
@@ -69,7 +70,7 @@ def main():
 
         # 解析命令行参数
         args = parse_arguments()
-        
+
         # 计算默认学期参数
         current_time = time.localtime()
         term_year = current_time.tm_year
@@ -100,7 +101,8 @@ def main():
             print(f"\n{error_msg}")
             return False
 
-        video_type = args.video_type if args.video_type else config['DEFAULT'].get('video_type', 'both')
+        video_type = args.video_type if args.video_type else config['DEFAULT'].get(
+            'video_type', 'both')
 
         # 批量处理所有启用下载的课程
         return process_all_courses(config, video_type)
@@ -132,7 +134,7 @@ def create_initial_config(args, default_year, default_term):
             user_id = args.uid
         else:
             user_id = input("请输入用户ID：").strip()
-            
+
         if not validate_user_id(user_id):
             print("用户ID格式无效")
             return False
@@ -213,13 +215,16 @@ def update_existing_config(args, default_year, default_term):
     try:
         # 读取现有配置
         config = safe_read_config(CONFIG_FILE)
-        
+
         user_id = args.uid if args.uid else config['DEFAULT']['user_id']
-        term_year = args.year if args.year else int(config['DEFAULT'].get('term_year', default_year))
-        term_id = args.term if args.term else int(config['DEFAULT'].get('term_id', default_term))
+        term_year = args.year if args.year else int(
+            config['DEFAULT'].get('term_year', default_year))
+        term_id = args.term if args.term else int(
+            config['DEFAULT'].get('term_id', default_term))
 
         # 处理旧配置文件兼容性
-        video_type = args.video_type if args.video_type else config['DEFAULT'].get('video_type', 'both')
+        video_type = args.video_type if args.video_type else config['DEFAULT'].get(
+            'video_type', 'both')
 
         # 验证参数
         if not validate_user_id(user_id) or not validate_term_params(term_year, term_id):
@@ -283,15 +288,15 @@ def update_course_config(config, new_courses):
     """
     config_updated = False
     existing_courses = {
-        section: dict(config[section]) 
-        for section in config.sections() 
+        section: dict(config[section])
+        for section in config.sections()
         if section != 'DEFAULT'
     }
 
     # 处理新发现的课程
     for course_id, course in new_courses.items():
         course_id_str = str(course_id)
-        
+
         if course_id_str not in config.sections():
             # 添加新课程
             logger.info(f"添加新课程：{course_id_str} - {course['courseName']}")
@@ -308,8 +313,8 @@ def update_course_config(config, new_courses):
             existing_course = existing_courses[course_id_str]
             if (existing_course.get('course_code') != course['courseCode'] or
                 existing_course.get('course_name') != remove_invalid_chars(course['courseName']) or
-                existing_course.get('live_id') != str(course['id'])):
-                
+                    existing_course.get('live_id') != str(course['id'])):
+
                 logger.info(f"更新课程信息：{course_id_str} - {course['courseName']}")
                 print(f"更新课程：{course['courseName']}")
                 config[course_id_str] = {
@@ -337,7 +342,8 @@ def process_all_courses(config, video_type):
     try:
         all_videos = {}
         # 只统计配置中设置为 download = yes 的课程数
-        enabled_sections = [s for s in config.sections() if s != 'DEFAULT' and config[s].get('download') == 'yes']
+        enabled_sections = [s for s in config.sections(
+        ) if s != 'DEFAULT' and config[s].get('download') == 'yes']
         total_enabled = len(enabled_sections)
         processed_courses = 0
 
@@ -351,11 +357,13 @@ def process_all_courses(config, video_type):
             processed_courses += 1
             # 获取课程信息
             course_code = config[course_id]['course_code']
-            course_name = remove_invalid_chars(config[course_id]['course_name'])
+            course_name = remove_invalid_chars(
+                config[course_id]['course_name'])
             live_id = config[course_id]['live_id']
-            
+
             print(f"\n[{processed_courses}/{total_enabled}] 处理课程：{course_name}")
-            logger.info(f"正在检查课程：{course_code} - {course_name} (ID: {live_id})")
+            logger.info(
+                f"正在检查课程：{course_code} - {course_name} (ID: {live_id})")
 
             try:
                 # 获取课程数据
@@ -371,7 +379,8 @@ def process_all_courses(config, video_type):
                 create_directory(save_dir)
 
                 # 获取需要下载的视频
-                rows = get_course_videos(data, course_code, course_name, year, save_dir, video_type)
+                rows = get_course_videos(
+                    data, course_code, course_name, year, save_dir, video_type)
 
                 if rows:
                     all_videos[course_code] = {
@@ -395,30 +404,33 @@ def process_all_courses(config, video_type):
         if all_videos:
             print(f"\n开始下载 {len(all_videos)} 门课程的视频...")
             download_success = True
-            
+
             for course_code, course_info in all_videos.items():
                 try:
-                    print(f"\n正在下载课程：{course_code} - {course_info['course_name']}")
-                    
+                    print(
+                        f"\n正在下载课程：{course_code} - {course_info['course_name']}")
+
                     # 使用统一的处理函数下载视频
                     stats = process_rows(
-                        course_info["rows"], 
-                        course_code, 
-                        course_info["course_name"], 
-                        course_info["year"], 
+                        course_info["rows"],
+                        course_code,
+                        course_info["course_name"],
+                        course_info["year"],
                         course_info["save_dir"],
-                        command='', 
-                        merge=True, 
+                        command='',
+                        merge=True,
                         video_type=video_type
                     )
-                    
-                    print(f"课程 {course_code} 下载完成 - 成功:{stats.get('downloaded', 0)} 失败:{stats.get('failed', 0)}")
-                    
+
+                    print(
+                        f"课程 {course_code} 下载完成 - 成功:{stats.get('downloaded', 0)} 失败:{stats.get('failed', 0)}")
+
                     if stats.get('failed', 0) > 0:
                         download_success = False
-                        
+
                 except Exception as e:
-                    error_msg = handle_exception(e, f"下载课程 {course_code} 时发生错误")
+                    error_msg = handle_exception(
+                        e, f"下载课程 {course_code} 时发生错误")
                     print(f"{error_msg}")
                     download_success = False
 
@@ -472,7 +484,7 @@ def get_course_videos(data, course_code, course_name, year, save_dir, video_type
         try:
             # 获取视频下载链接
             video_info = get_video_info_from_html(entry["id"])
-            
+
             if not video_info:
                 logger.debug(f"课程 {entry['id']} 没有可用的视频信息")
                 continue
@@ -497,7 +509,8 @@ def get_course_videos(data, course_code, course_name, year, save_dir, video_type
                 continue
 
             # 添加到待下载列表
-            rows.append([month, date, day, jie, days, ppt_video, teacher_track])
+            rows.append([month, date, day, jie, days,
+                        ppt_video, teacher_track])
 
         except Exception as e:
             logger.error(f"获取课程 {entry['id']} 视频信息失败: {e}")
@@ -531,7 +544,7 @@ def is_video_exists(course_code, course_name, year, month, date, day, jie, days,
     # 生成可能的文件名模式
     ppt_patterns = []
     teacher_patterns = []
-    
+
     if video_type in ['both', 'ppt']:
         ppt_patterns = [
             f"{base_filename}-pptVideo.mp4",
@@ -540,7 +553,7 @@ def is_video_exists(course_code, course_name, year, month, date, day, jie, days,
             f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{int(jie)-1}-{jie}节-pptVideo.mp4",
             f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}-{int(jie)+1}节-pptVideo.mp4"
         ]
-    
+
     if video_type in ['both', 'teacher']:
         teacher_patterns = [
             f"{base_filename}-teacherTrack.mp4",
@@ -552,8 +565,10 @@ def is_video_exists(course_code, course_name, year, month, date, day, jie, days,
 
     # 检查文件是否存在
     save_path = Path(save_dir)
-    ppt_exists = any(save_path.joinpath(pattern).exists() for pattern in ppt_patterns) if ppt_patterns else False
-    teacher_exists = any(save_path.joinpath(pattern).exists() for pattern in teacher_patterns) if teacher_patterns else False
+    ppt_exists = any(save_path.joinpath(pattern).exists()
+                     for pattern in ppt_patterns) if ppt_patterns else False
+    teacher_exists = any(save_path.joinpath(pattern).exists()
+                         for pattern in teacher_patterns) if teacher_patterns else False
 
     if video_type == 'both':
         return ppt_exists and teacher_exists
@@ -571,9 +586,9 @@ def parse_arguments():
         argparse.Namespace: 包含所有命令行参数的对象
     """
     parser = ArgumentParser(description="西安电子科技大学录直播平台课程视频自动化批量下载工具")
-    parser.add_argument('-u', '--uid', default=None, 
+    parser.add_argument('-u', '--uid', default=None,
                         help="用户的 UID（用户ID）")
-    parser.add_argument('-y', '--year', type=int, default=None, 
+    parser.add_argument('-y', '--year', type=int, default=None,
                         help="学年，例如 2023 表示 2023-2024 学年")
     parser.add_argument('-t', '--term', type=int, choices=[1, 2], default=None,
                         help="学期：1表示第一学期（秋季），2表示第二学期（春季）")
@@ -586,10 +601,10 @@ if __name__ == "__main__":
     try:
         # 调用主函数开始自动化下载
         success = main()
-        
+
         # 根据执行结果设置退出码
         sys.exit(0 if success else 1)
-        
+
     except KeyboardInterrupt:
         print("\n\n程序被用户中断")
         sys.exit(130)  # SIGINT 退出码

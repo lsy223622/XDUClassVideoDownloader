@@ -28,8 +28,8 @@ import threading
 import math
 from pathlib import Path
 from tqdm import tqdm
-from utils import (day_to_chinese, handle_exception, get_auth_cookies, 
-                   format_auth_cookies, is_valid_url, get_safe_filename, 
+from utils import (day_to_chinese, handle_exception, get_auth_cookies,
+                   format_auth_cookies, is_valid_url, get_safe_filename,
                    format_file_size)
 from api import FID
 
@@ -59,19 +59,19 @@ def verify_file_integrity(filepath, expected_size=None):
     try:
         if not os.path.exists(filepath):
             return False
-        
+
         file_size = os.path.getsize(filepath)
-        
+
         # 检查文件大小是否合理
         if file_size < MIN_FILE_SIZE:
             logger.warning(f"文件大小过小，可能下载不完整: {filepath} ({file_size} bytes)")
             return False
-        
+
         # 如果提供了期望大小，进行比较
         if expected_size is not None and abs(file_size - expected_size) > 1024:
             logger.warning(f"文件大小不匹配，期望: {expected_size}, 实际: {file_size}")
             return False
-        
+
         # 简单的文件头验证（MP4文件应该以特定字节开头）
         try:
             with open(filepath, 'rb') as f:
@@ -86,7 +86,7 @@ def verify_file_integrity(filepath, expected_size=None):
         except Exception as e:
             logger.warning(f"文件头验证时出错: {e}")
             return False
-            
+
     except Exception as e:
         logger.error(f"文件完整性验证失败: {e}")
         return False
@@ -112,20 +112,20 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
     # 参数验证
     if not url or not isinstance(url, str):
         raise ValueError("URL不能为空且必须是字符串类型")
-    
+
     if not is_valid_url(url):
         logger.warning(f"URL格式可能无效: {url}")
-    
+
     if not filename or not isinstance(filename, str):
         raise ValueError("文件名不能为空且必须是字符串类型")
-    
+
     if not save_dir or not isinstance(save_dir, str):
         raise ValueError("保存目录不能为空且必须是字符串类型")
 
     # 确保文件名安全
     safe_filename = get_safe_filename(filename)
     output_path = Path(save_dir) / safe_filename
-    
+
     # 检查文件是否已存在且完整
     if output_path.exists():
         if verify_file_integrity(str(output_path)):
@@ -165,7 +165,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
     for attempt in range(max_attempts):
         temp_path = None
         try:
-            logger.info(f"开始下载 ({attempt + 1}/{max_attempts}): {safe_filename}")
+            logger.info(
+                f"开始下载 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
             # 首先发送HEAD请求获取文件信息
             try:
@@ -173,7 +174,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                     url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)
                 head_response.raise_for_status()
 
-                total_size = int(head_response.headers.get('content-length', 0))
+                total_size = int(
+                    head_response.headers.get('content-length', 0))
                 content_type = head_response.headers.get('content-type', '')
                 accept_ranges = head_response.headers.get('accept-ranges', '')
 
@@ -181,7 +183,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 if content_type and 'video' not in content_type and 'octet-stream' not in content_type:
                     logger.warning(f"内容类型可能不正确: {content_type}")
 
-                logger.info(f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
+                logger.info(
+                    f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
 
             except requests.RequestException as e:
                 logger.warning(f"获取文件信息失败，继续下载: {e}")
@@ -200,14 +203,16 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
 
             if use_multithread:
                 # Determine number of threads
-                num_threads = min(MAX_THREADS_PER_FILE, max(1, math.ceil(total_size / (MIN_SIZE_FOR_MULTITHREAD))))
+                num_threads = min(MAX_THREADS_PER_FILE, max(
+                    1, math.ceil(total_size / (MIN_SIZE_FOR_MULTITHREAD))))
                 num_threads = min(num_threads, MAX_THREADS_PER_FILE)
 
                 # split ranges
                 part_size = total_size // num_threads
 
                 # prepare part files
-                part_paths = [temp_path.with_suffix(f'.part{idx}') for idx in range(num_threads)]
+                part_paths = [temp_path.with_suffix(
+                    f'.part{idx}') for idx in range(num_threads)]
                 downloaded_lock = threading.Lock()
                 downloaded_total = {'value': 0}
 
@@ -225,19 +230,23 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                                         if chunk:
                                             pf.write(chunk)
                                             with downloaded_lock:
-                                                downloaded_total['value'] += len(chunk)
+                                                downloaded_total['value'] += len(
+                                                    chunk)
                             return
                         except Exception as e:
                             attempts_local += 1
-                            logger.warning(f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
+                            logger.warning(
+                                f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
                     raise Exception(f"分片 {idx} 下载失败，超过重试次数")
 
                 # start threads
                 threads = []
                 for i in range(num_threads):
                     start = i * part_size
-                    end = (start + part_size - 1) if i < num_threads - 1 else (total_size - 1)
-                    t = threading.Thread(target=worker, args=(i, start, end, part_paths[i]), daemon=True)
+                    end = (start + part_size - 1) if i < num_threads - \
+                        1 else (total_size - 1)
+                    t = threading.Thread(target=worker, args=(
+                        i, start, end, part_paths[i]), daemon=True)
                     threads.append(t)
                     t.start()
 
@@ -285,7 +294,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 if temp_path.exists():
                     resume_pos = temp_path.stat().st_size
                     if resume_pos > 0 and total_size > 0 and resume_pos < total_size:
-                        logger.info(f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
+                        logger.info(
+                            f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
                         headers['Range'] = f'bytes={resume_pos}-'
                     else:
                         # 删除无效的临时文件
@@ -339,7 +349,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
             # 原子性重命名
             shutil.move(str(temp_path), str(output_path))
 
-            logger.info(f"下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})")
+            logger.info(
+                f"下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})")
             return True
 
         except requests.Timeout:
@@ -401,7 +412,7 @@ def download_m3u8(url, filename, save_dir, command='', max_attempts=MAX_DOWNLOAD
     """
     if command:
         logger.warning("自定义下载命令参数已弃用，使用内置下载逻辑")
-    
+
     # 将.ts扩展名替换为.mp4
     if filename.endswith('.ts'):
         filename = filename[:-3] + '.mp4'
@@ -449,18 +460,18 @@ def merge_videos(files, output_file):
     # 参数验证
     if not files or not isinstance(files, list):
         raise ValueError("文件列表不能为空且必须是列表类型")
-    
+
     if len(files) < 2:
         logger.warning("文件数量少于2个，无需合并")
         return False
-    
+
     if not output_file or not isinstance(output_file, str):
         raise ValueError("输出文件路径不能为空且必须是字符串类型")
 
     # 检查FFmpeg可用性
     if not check_ffmpeg_availability():
         handle_exception(
-            Exception("FFmpeg不可用"), 
+            Exception("FFmpeg不可用"),
             "无法合并视频文件：未找到FFmpeg。请安装FFmpeg以启用视频合并功能"
         )
         return False
@@ -468,12 +479,12 @@ def merge_videos(files, output_file):
     # 验证输入文件
     valid_files = []
     missing_files = []
-    
+
     for file_path in files:
         if not isinstance(file_path, str):
             logger.warning(f"跳过无效的文件路径: {file_path}")
             continue
-            
+
         path_obj = Path(file_path)
         if path_obj.exists():
             if verify_file_integrity(str(path_obj)):
@@ -482,10 +493,10 @@ def merge_videos(files, output_file):
                 logger.warning(f"文件验证失败，跳过: {file_path}")
         else:
             missing_files.append(file_path)
-    
+
     if missing_files:
         logger.warning(f"以下文件不存在，跳过: {missing_files}")
-    
+
     if len(valid_files) < 2:
         logger.warning("有效文件数量不足，无法进行合并")
         return False
@@ -500,30 +511,32 @@ def merge_videos(files, output_file):
     # 创建临时文件列表
     temp_list_file = None
     temp_output_file = None
-    
+
     try:
         # 创建临时的文件列表文件
         with tempfile.NamedTemporaryFile(
-            mode='w', 
-            encoding='utf-8', 
+            mode='w',
+            encoding='utf-8',
             delete=False,
             dir=output_path.parent,
             prefix=f'.{output_path.name}.filelist.',
             suffix='.txt'
         ) as temp_file:
             temp_list_file = temp_file.name
-            
+
             # 写入文件列表，按文件名排序确保正确的合并顺序
             valid_files.sort(key=lambda f: Path(f).name)
             for file_path in valid_files:
                 # 使用绝对路径并转义，确保FFmpeg能正确处理
-                escaped_path = str(Path(file_path).resolve()).replace("'", r"\'").replace("\\", "/")
+                escaped_path = str(Path(file_path).resolve()).replace(
+                    "'", r"\'").replace("\\", "/")
                 temp_file.write(f"file '{escaped_path}'\n")
 
         logger.info(f"准备合并 {len(valid_files)} 个文件到: {output_file}")
-        
+
         # 创建临时输出文件
-        temp_output_file = str(output_path.with_suffix('.tmp' + output_path.suffix))
+        temp_output_file = str(
+            output_path.with_suffix('.tmp' + output_path.suffix))
 
         # 构建FFmpeg命令
         ffmpeg_cmd = [
@@ -551,7 +564,7 @@ def merge_videos(files, output_file):
             )
 
             logger.debug(f"FFmpeg输出: {result.stderr}")
-            
+
         except subprocess.TimeoutExpired:
             raise Exception("视频合并超时")
         except subprocess.CalledProcessError as e:
@@ -564,9 +577,9 @@ def merge_videos(files, output_file):
 
         # 原子性移动到最终位置
         shutil.move(temp_output_file, output_file)
-        
+
         logger.info(f"视频合并完成: {output_file}")
-        
+
         # 合并成功后删除原始文件
         for file_path in valid_files:
             try:
@@ -618,13 +631,13 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
     # 参数验证
     if not rows or not isinstance(rows, list):
         raise ValueError("视频行数据不能为空且必须是列表类型")
-    
+
     if not course_code or not isinstance(course_code, str):
         raise ValueError("课程代码不能为空且必须是字符串类型")
-    
+
     if not course_name or not isinstance(course_name, str):
         raise ValueError("课程名称不能为空且必须是字符串类型")
-    
+
     if video_type not in ['both', 'ppt', 'teacher']:
         raise ValueError("视频类型必须是 'both', 'ppt' 或 'teacher'")
 
@@ -663,9 +676,9 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             if not isinstance(row, list) or len(row) < 7:
                 logger.warning(f"行数据格式错误: {row}")
                 return None
-            
+
             month, date, day, jie, days = row[:5]
-            
+
             # 类型转换和验证
             try:
                 month = int(month)
@@ -680,15 +693,15 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             except (TypeError, ValueError) as e:
                 logger.warning(f"时间数据格式错误: {e}")
                 return None
-            
+
             try:
                 day_chinese = day_to_chinese(day)
             except ValueError as e:
                 logger.warning(f"星期转换失败: {e}")
                 return None
-            
+
             return month, date, day, jie, days, day_chinese
-            
+
         except Exception as e:
             logger.warning(f"解析行数据时出错: {e}")
             return None
@@ -704,15 +717,16 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             Path(save_dir) / f"{base_filename}-{track_type}.mp4",
             Path(save_dir) / f"{base_filename}-{track_type}.ts"  # 向后兼容
         ]
-        
-        single_exists = any(f.exists() and verify_file_integrity(str(f)) for f in single_files)
-        
+
+        single_exists = any(f.exists() and verify_file_integrity(
+            str(f)) for f in single_files)
+
         # 检查可能的合并文件
         merged_patterns = [
             f"*第*-*节-{track_type}.mp4",
             f"*第*-*节-{track_type}.ts"
         ]
-        
+
         merged_exists = False
         save_path = Path(save_dir)
         for pattern in merged_patterns:
@@ -722,7 +736,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
                     break
             if merged_exists:
                 break
-        
+
         return single_exists, merged_exists
 
     def process_single_video(video_url, track_type, row):
@@ -737,14 +751,15 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         返回:
             dict: 处理结果 {'downloaded': bool, 'merged': bool, 'skipped': bool, 'failed': bool}
         """
-        result = {'downloaded': False, 'merged': False, 'skipped': False, 'failed': False}
-        
+        result = {'downloaded': False, 'merged': False,
+                  'skipped': False, 'failed': False}
+
         # 验证URL
         if not video_url or not isinstance(video_url, str):
             logger.debug(f"跳过空URL: {track_type}")
             result['skipped'] = True
             return result
-        
+
         if not is_valid_url(video_url):
             logger.warning(f"URL格式可能无效: {video_url}")
 
@@ -754,7 +769,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             logger.error(f"无法解析行数据，跳过视频: {track_type}")
             result['failed'] = True
             return result
-        
+
         month, date, day, jie, days, day_chinese = components
 
         # 构建基础文件名和完整文件名
@@ -763,13 +778,14 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         filepath = Path(save_dir) / filename
 
         # 检查文件是否已存在
-        single_exists, merged_exists = check_existing_files(base_filename, track_type, save_dir)
-        
+        single_exists, merged_exists = check_existing_files(
+            base_filename, track_type, save_dir)
+
         if merged_exists:
             logger.info(f"合并后的视频已存在，跳过: {filename}")
             result['skipped'] = True
             return result
-        
+
         if single_exists:
             logger.info(f"文件已存在，跳过下载: {filename}")
             result['skipped'] = True
@@ -814,14 +830,15 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         # 查找相邻文件
         adjacent_files = []
         save_path = Path(save_dir)
-        
+
         # 检查前一节和后一节
         for adjacent_jie in [jie - 1, jie + 1]:
             if adjacent_jie < 1:
                 continue
-            
+
             for ext in ['.mp4', '.ts']:
-                adjacent_file = save_path / f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{adjacent_jie}节-{track_type}{ext}"
+                adjacent_file = save_path / \
+                    f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{adjacent_jie}节-{track_type}{ext}"
                 if adjacent_file.exists() and verify_file_integrity(str(adjacent_file)):
                     adjacent_files.append(str(adjacent_file))
                     break
@@ -835,7 +852,8 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         all_files.sort(key=lambda f: int(re.search(r"第(\d+)节", f).group(1)))
 
         # 生成合并后的文件名
-        jie_numbers = [int(re.search(r"第(\d+)节", f).group(1)) for f in all_files]
+        jie_numbers = [int(re.search(r"第(\d+)节", f).group(1))
+                       for f in all_files]
         merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{min(jie_numbers)}-{max(jie_numbers)}节-{track_type}.mp4"
         merged_filepath = save_path / merged_filename
 
@@ -845,7 +863,8 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             return True
 
         # 执行合并
-        logger.info(f"合并视频文件: {[Path(f).name for f in all_files]} -> {merged_filename}")
+        logger.info(
+            f"合并视频文件: {[Path(f).name for f in all_files]} -> {merged_filename}")
         return merge_videos(all_files, str(merged_filepath))
 
     # 处理所有视频
@@ -856,12 +875,12 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         total_tasks += len(rows)
 
     stats['total_videos'] = total_tasks
-    
+
     with tqdm(total=total_tasks, desc="处理视频", unit="个") as pbar:
         for i, row in enumerate(rows):
             try:
                 logger.debug(f"处理第 {i+1}/{len(rows)} 行数据")
-                
+
                 # 处理PPT视频
                 if video_type in ['both', 'ppt']:
                     result = process_single_video(row[5], 'pptVideo', row)
@@ -874,7 +893,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
                     if result['merged']:
                         stats['merged'] += 1
                     pbar.update(1)
-                
+
                 # 处理教师视频
                 if video_type in ['both', 'teacher']:
                     result = process_single_video(row[6], 'teacherTrack', row)
@@ -887,7 +906,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
                     if result['merged']:
                         stats['merged'] += 1
                     pbar.update(1)
-                    
+
             except Exception as e:
                 logger.error(f"处理第 {i+1} 行数据时出错: {e}")
                 stats['failed'] += 1
@@ -900,7 +919,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
     logger.info(f"  - 跳过: {stats['skipped']} 个")
     logger.info(f"  - 失败: {stats['failed']} 个")
     logger.info(f"  - 合并: {stats['merged']} 个")
-    
+
     if stats['failed'] > 0:
         logger.warning(f"有 {stats['failed']} 个视频处理失败，请检查网络连接或重试")
 
