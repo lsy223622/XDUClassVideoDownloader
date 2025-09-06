@@ -16,20 +16,21 @@
    - 访问 <https://i.mooc.chaoxing.com/>
 
 3. **打开 Cookies 菜单**
-   - 点击浏览器地址栏左侧的锁形图标
-   - 选择 "Cookies" 选项
+   - 方法一：
+     - 点击浏览器地址栏左侧的锁形图标
+     - 选择 "Cookies" 选项
+     - 展开 `chaoxing.com` 域名，下面会显示该域名下的所有 Cookies
+   - 方法二：
+     - 使用快捷键 `F12` 打开开发者工具
+     - 切换到 "应用程序（Application）" 标签
+     - 在左侧找到 "Cookies" 选项，点击左侧小三角展开域名列表
+     - 随便点一个域名，右边会显示该域名下的所有 Cookies
 
 4. **复制 Cookie 信息**
-   - 在 `chaoxing.com` 的 Cookies 中找到以下三个值：
-     - `_d`
-     - `UID`
-     - `vc3`
-
-### 示例 Cookie 格式
-
-```text
-_d=114514; UID=1919810; vc3=qwertyuiop
-```
+   - 在 Cookies 中找到以下三个值：
+     - `_d`：一串数字
+     - `UID`：一串数字
+     - `vc3`：一长串字符，不要勾选 `显示已解码的 URL`
 
 ## 使用说明
 
