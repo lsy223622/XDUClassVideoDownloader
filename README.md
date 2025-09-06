@@ -79,7 +79,7 @@
 
 您可以直接从项目的 [**Releases**](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 页面下载打包好的 `exe` 程序。该版本无需安装 Python 和任何依赖库，开箱即用。
 
-注意：如果需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)，并将压缩包 `bin` 文件夹中的 `ffmpeg.exe` 放在程序同目录下或者添加到系统环境变量 `PATH` 中。
+注意：如果需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)，并将压缩包 `bin` 文件夹中的 `ffmpeg.exe` 解压到程序同目录下或者添加到系统环境变量 `PATH` 中。
 
 - 要下载特定课程，运行 `XDUClassVideoDownloader.exe`。
 - 要全自动下载所有课程，运行 `Automation.exe`。
