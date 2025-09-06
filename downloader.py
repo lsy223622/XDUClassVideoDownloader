@@ -24,6 +24,8 @@ import requests
 import shutil
 import tempfile
 import logging
+import threading
+import math
 from pathlib import Path
 from tqdm import tqdm
 from utils import (day_to_chinese, handle_exception, get_auth_cookies, 
@@ -39,6 +41,8 @@ CHUNK_SIZE = 8192  # 下载块大小
 DOWNLOAD_TIMEOUT = 60  # 下载超时时间（秒）
 MAX_DOWNLOAD_RETRIES = 3  # 最大下载重试次数
 MIN_FILE_SIZE = 1024  # 最小有效文件大小（字节）
+MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
+MIN_SIZE_FOR_MULTITHREAD = 5 * 1024 * 1024  # 最小启用多线程的文件大小（5MB）
 
 
 def verify_file_integrity(filepath, expected_size=None):
@@ -168,83 +172,174 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 head_response = requests.head(
                     url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)
                 head_response.raise_for_status()
-                
+
                 total_size = int(head_response.headers.get('content-length', 0))
                 content_type = head_response.headers.get('content-type', '')
-                
+                accept_ranges = head_response.headers.get('accept-ranges', '')
+
                 # 验证内容类型
                 if content_type and 'video' not in content_type and 'octet-stream' not in content_type:
                     logger.warning(f"内容类型可能不正确: {content_type}")
-                
+
                 logger.info(f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
-                
+
             except requests.RequestException as e:
                 logger.warning(f"获取文件信息失败，继续下载: {e}")
                 total_size = 0
+                accept_ranges = ''
 
             # 创建临时文件
             temp_path = output_path.with_suffix('.tmp')
-            
-            # 检查是否支持断点续传
-            resume_pos = 0
-            if temp_path.exists():
-                resume_pos = temp_path.stat().st_size
-                if resume_pos > 0 and total_size > 0 and resume_pos < total_size:
-                    logger.info(f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
-                    headers['Range'] = f'bytes={resume_pos}-'
-                else:
-                    # 删除无效的临时文件
-                    temp_path.unlink()
-                    resume_pos = 0
 
-            # 发送GET请求下载文件
-            response = requests.get(
-                url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
-            response.raise_for_status()
+            # 如果服务器支持 Range 且文件较大，则使用多线程分片下载
+            use_multithread = (
+                total_size >= MIN_SIZE_FOR_MULTITHREAD and
+                accept_ranges and
+                'bytes' in accept_ranges.lower()
+            )
 
-            # 更新总大小（如果之前没有获取到）
-            if total_size == 0:
-                total_size = int(response.headers.get('content-length', 0))
+            if use_multithread:
+                # Determine number of threads
+                num_threads = min(MAX_THREADS_PER_FILE, max(1, math.ceil(total_size / (MIN_SIZE_FOR_MULTITHREAD))))
+                num_threads = min(num_threads, MAX_THREADS_PER_FILE)
 
-            # 下载文件
-            downloaded_size = resume_pos
-            with open(temp_path, 'ab' if resume_pos > 0 else 'wb') as f:
-                if total_size > 0:
-                    with tqdm(
-                        total=total_size,
-                        initial=downloaded_size,
-                        unit='B',
-                        unit_scale=True,
-                        desc=safe_filename,
-                        leave=False
-                    ) as pbar:
-                        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded_size += len(chunk)
-                                pbar.update(len(chunk))
-                else:
-                    # 如果无法获取文件大小，显示简单进度
-                    with tqdm(
-                        unit='B',
-                        unit_scale=True,
-                        desc=safe_filename,
-                        leave=False
-                    ) as pbar:
-                        for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                            if chunk:
-                                f.write(chunk)
-                                downloaded_size += len(chunk)
-                                pbar.update(len(chunk))
+                # split ranges
+                part_size = total_size // num_threads
+
+                # prepare part files
+                part_paths = [temp_path.with_suffix(f'.part{idx}') for idx in range(num_threads)]
+                downloaded_lock = threading.Lock()
+                downloaded_total = {'value': 0}
+
+                # If any part file exists and has full expected size, we will skip downloading that part
+                def worker(idx, start, end, part_path):
+                    headers_local = headers.copy()
+                    headers_local['Range'] = f'bytes={start}-{end}'
+                    attempts_local = 0
+                    while attempts_local < max_attempts:
+                        try:
+                            with requests.get(url, headers=headers_local, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
+                                r.raise_for_status()
+                                with open(part_path, 'wb') as pf:
+                                    for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
+                                        if chunk:
+                                            pf.write(chunk)
+                                            with downloaded_lock:
+                                                downloaded_total['value'] += len(chunk)
+                            return
+                        except Exception as e:
+                            attempts_local += 1
+                            logger.warning(f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
+                    raise Exception(f"分片 {idx} 下载失败，超过重试次数")
+
+                # start threads
+                threads = []
+                for i in range(num_threads):
+                    start = i * part_size
+                    end = (start + part_size - 1) if i < num_threads - 1 else (total_size - 1)
+                    t = threading.Thread(target=worker, args=(i, start, end, part_paths[i]), daemon=True)
+                    threads.append(t)
+                    t.start()
+
+                # show progress
+                with tqdm(total=total_size, desc=safe_filename, unit='B', unit_scale=True, leave=False) as pbar:
+                    prev = 0
+                    while any(t.is_alive() for t in threads):
+                        with downloaded_lock:
+                            cur = downloaded_total['value']
+                        delta = cur - prev
+                        if delta > 0:
+                            pbar.update(delta)
+                            prev = cur
+                        for t in threads:
+                            t.join(timeout=0.1)
+                    # final update
+                    with downloaded_lock:
+                        cur = downloaded_total['value']
+                    if cur - prev > 0:
+                        pbar.update(cur - prev)
+
+                # ensure threads finished and part files exist
+                for t in threads:
+                    if t.is_alive():
+                        raise Exception("部分线程未能完成下载")
+
+                # 合并分片到临时文件
+                with open(temp_path, 'wb') as out_f:
+                    for p in part_paths:
+                        if not p.exists():
+                            raise Exception(f"缺失分片文件: {p}")
+                        with open(p, 'rb') as pf:
+                            shutil.copyfileobj(pf, out_f)
+
+                # 删除分片文件
+                for p in part_paths:
+                    try:
+                        p.unlink()
+                    except Exception:
+                        logger.debug(f"无法删除分片文件: {p}")
+
+            else:
+                # 单线程/断点续传逻辑（保持原本行为）
+                resume_pos = 0
+                if temp_path.exists():
+                    resume_pos = temp_path.stat().st_size
+                    if resume_pos > 0 and total_size > 0 and resume_pos < total_size:
+                        logger.info(f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
+                        headers['Range'] = f'bytes={resume_pos}-'
+                    else:
+                        # 删除无效的临时文件
+                        temp_path.unlink()
+                        resume_pos = 0
+
+                # 发送GET请求下载文件
+                response = requests.get(
+                    url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
+                response.raise_for_status()
+
+                # 更新总大小（如果之前没有获取到）
+                if total_size == 0:
+                    total_size = int(response.headers.get('content-length', 0))
+
+                # 下载文件
+                downloaded_size = resume_pos
+                with open(temp_path, 'ab' if resume_pos > 0 else 'wb') as f:
+                    if total_size > 0:
+                        with tqdm(
+                            total=total_size,
+                            initial=downloaded_size,
+                            unit='B',
+                            unit_scale=True,
+                            desc=safe_filename,
+                            leave=False
+                        ) as pbar:
+                            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded_size += len(chunk)
+                                    pbar.update(len(chunk))
+                    else:
+                        # 如果无法获取文件大小，显示简单进度
+                        with tqdm(
+                            unit='B',
+                            unit_scale=True,
+                            desc=safe_filename,
+                            leave=False
+                        ) as pbar:
+                            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                if chunk:
+                                    f.write(chunk)
+                                    downloaded_size += len(chunk)
+                                    pbar.update(len(chunk))
 
             # 验证下载的文件
-            if not verify_file_integrity(str(temp_path), total_size):
+            if not verify_file_integrity(str(temp_path), total_size if total_size > 0 else None):
                 raise ValueError("下载的文件验证失败")
 
             # 原子性重命名
             shutil.move(str(temp_path), str(output_path))
-            
-            logger.info(f"下载完成: {safe_filename} ({format_file_size(downloaded_size)})")
+
+            logger.info(f"下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})")
             return True
 
         except requests.Timeout:
@@ -252,13 +347,13 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
                 handle_exception(Exception("下载超时"), f"下载 {safe_filename} 失败")
-        
+
         except requests.ConnectionError:
             error_msg = f"网络连接错误 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
                 handle_exception(Exception("网络连接失败"), f"下载 {safe_filename} 失败")
-        
+
         except requests.HTTPError as e:
             error_msg = f"HTTP错误 {e.response.status_code} ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
@@ -268,13 +363,13 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 break
             if attempt == max_attempts - 1:
                 handle_exception(e, f"下载 {safe_filename} 失败")
-        
+
         except Exception as e:
             error_msg = f"下载失败 ({attempt + 1}/{max_attempts}): {safe_filename}, 错误: {e}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
                 handle_exception(e, f"下载 {safe_filename} 最终失败")
-        
+
         finally:
             # 清理临时文件（下载失败时）
             if temp_path and temp_path.exists() and not output_path.exists():
@@ -450,10 +545,11 @@ def merge_videos(files, output_file):
                 ffmpeg_cmd,
                 check=True,
                 capture_output=True,
-                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=600  # 10分钟超时
             )
-            
+
             logger.debug(f"FFmpeg输出: {result.stderr}")
             
         except subprocess.TimeoutExpired:
