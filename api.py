@@ -23,9 +23,14 @@ import re
 import time
 import random
 import logging
+import base64
+import hashlib
 from functools import wraps
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from bs4 import BeautifulSoup
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
 from utils import remove_invalid_chars, setup_logging
 from config import get_auth_cookies, format_auth_cookies
 from validator import is_valid_url, validate_live_id, validate_scan_parameters
@@ -50,6 +55,146 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 
 # 上次请求时间，用于频率控制
 _last_request_time = 0
+
+
+def _derive_aes_key_iv(key_str):
+    """将任意长度的字符串派生为 AES key/iv。
+
+    - 如果原始字节长度为 16/24/32，直接使用；否则使用 SHA-256 摘要（32 字节）兼容任意输入。
+    - IV 固定为 key 的前 16 字节（与常见 CryptoJS 用法一致）。
+    """
+    raw = key_str.encode("utf-8")
+    if len(raw) in (16, 24, 32):
+        key = raw
+    else:
+        key = hashlib.sha256(raw).digest()
+    iv = key[:16]
+    return key, iv
+
+
+def aes_cbc_pkcs7_encrypt_base64(message, key_str):
+    """使用 AES/CBC/PKCS7 对 message 加密并返回 Base64 字符串。
+
+    设计目标是与 CryptoJS 中使用的 raw key + iv 行为兼容（当前脚本通过 _derive_aes_key_iv 保证 key/iv 长度）。
+    """
+    key, iv = _derive_aes_key_iv(key_str)
+    cipher = AES.new(key, AES.MODE_CBC, iv=iv)
+    ct = cipher.encrypt(pad(message.encode("utf-8"), AES.block_size))
+    return base64.b64encode(ct).decode("utf-8")
+
+
+def _extract_transfer_key_from_text(text):
+    """从传入文本中查找 transferKey 的简单正则表达式匹配。
+
+    返回匹配到的字符串或者 None。
+    """
+    m = re.search(r"transferKey\s*[:=]\s*['\"]([^'\"]+)['\"]", text)
+    return m.group(1) if m else None
+
+
+def _find_transfer_key(session, login_url, html, timeout):
+    """先在 HTML 中查找 transferKey，找不到时尝试寻找包含 'login' 的外部 script 并请求以提取 key。
+
+    如果最终仍未找到，返回空字符串（调用方可使用默认 key）。
+    """
+    key = _extract_transfer_key_from_text(html)
+    if key:
+        logger.debug("Found transferKey in page HTML")
+        return key
+
+    soup = BeautifulSoup(html, "html.parser")
+    # 优先寻找 name 或 src 中包含 login 的 script
+    script_src = None
+    for sc in soup.find_all("script", src=True):
+        src = sc["src"]
+        if "login" in src.lower():
+            script_src = src
+            break
+
+    if not script_src:
+        return ""
+
+    js_url = urllib.parse.urljoin(login_url, script_src)
+    try:
+        jr = session.get(js_url, timeout=timeout)
+        jr.raise_for_status()
+        return _extract_transfer_key_from_text(jr.text) or ""
+    except Exception as e:
+        logger.debug("Failed to fetch/parse JS %s: %s", js_url, e)
+        return ""
+
+
+def get_three_cookies_from_login(username, password, base_url="https://passport2.chaoxing.com", timeout=10):
+    """通过账号密码登录获取三个Cookie值。
+
+    参数:
+        username (str): 用户名
+        password (str): 密码
+        base_url (str): 登录基础URL
+        timeout (int): 请求超时时间
+
+    返回:
+        dict: 包含 _d, UID, vc3 的字典
+
+    异常:
+        RuntimeError: 登录失败时
+    """
+    session = requests.Session()
+
+    login_url = base_url.rstrip("/") + "/login"
+    resp = session.get(login_url, timeout=timeout)
+    resp.raise_for_status()
+
+    html = resp.text
+    soup = BeautifulSoup(html, "html.parser")
+
+    def _hid(name):
+        el = soup.find(id=name)
+        return el.get("value") if el and el.has_attr("value") else ""
+
+    t_flag = _hid("t")
+
+    transfer_key = _find_transfer_key(session, login_url, html, timeout)
+    if not transfer_key:
+        # 历史默认值，保留以兼容未提供 transferKey 的情况
+        transfer_key = "u2oh6Vu^HWe4_AES"
+        logger.debug("Using fallback transfer_key")
+
+    # 根据页面 t 值决定是否对用户名/密码进行加密
+    uname_payload = username
+    pwd_payload = password
+    if t_flag == "true":
+        uname_payload = aes_cbc_pkcs7_encrypt_base64(username, transfer_key)
+        pwd_payload = aes_cbc_pkcs7_encrypt_base64(password, transfer_key)
+
+    post_url = base_url.rstrip("/") + "/fanyalogin"
+    data = {
+        "fid": _hid("fid") or "-1",
+        "uname": uname_payload,
+        "password": pwd_payload,
+        "refer": _hid("refer") or "",
+        "t": t_flag,
+        "forbidotherlogin": _hid("forbidotherlogin") or "0",
+        "validate": _hid("validate") or "",
+        "doubleFactorLogin": _hid("doubleFactorLogin") or "0",
+        "independentId": _hid("independentId") or "0",
+        "independentNameId": _hid("independentNameId") or "0",
+    }
+
+    headers = {"User-Agent": "python-requests/2.x", "Referer": login_url}
+
+    r = session.post(post_url, data=data, headers=headers, timeout=timeout)
+    try:
+        j = r.json()
+    except Exception as e:
+        raise RuntimeError("登录请求未返回 JSON: %s" % e)
+
+    if not j.get("status"):
+        raise RuntimeError(j.get("msg2") or j.get("mes") or "登录失败")
+
+    # 从会话中提取 cookie，返回指定的三项（若不存在则为 None）
+    cookie_jar = requests.utils.dict_from_cookiejar(session.cookies)
+    return {"_d": cookie_jar.get("_d"), "UID": cookie_jar.get("UID"), "vc3": cookie_jar.get("vc3")}
 
 
 def rate_limit(func):

@@ -75,6 +75,16 @@ def main():
         except Exception as e:
             logger.debug(f"检查更新时出现异常: {e}")
 
+        # 初始化认证系统
+        try:
+            from config import get_auth_cookies
+            auth_cookies = get_auth_cookies()
+            logger.info("认证系统初始化成功")
+        except Exception as e:
+            logger.error(f"认证系统初始化失败: {e}")
+            print(f"认证失败: {e}")
+            return False
+
         # 解析命令行参数
         args = parse_automation_arguments()
 

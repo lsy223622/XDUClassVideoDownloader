@@ -215,6 +215,16 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
     try:
         logger.info("开始执行视频下载任务")
 
+        # 初始化认证系统
+        try:
+            from config import get_auth_cookies
+            auth_cookies = get_auth_cookies()
+            logger.info("认证系统初始化成功")
+        except Exception as e:
+            logger.error(f"认证系统初始化失败: {e}")
+            print(f"认证失败: {e}")
+            return False
+
         # 交互模式：用户输入参数
         if liveid is None:
             result = get_user_input_interactive()

@@ -117,7 +117,7 @@ def safe_read_config(filename):
 def get_auth_cookies(fid=None):
     """
     获取身份验证所需的cookie信息。
-    如果配置文件中不存在，则提示用户输入并安全保存。
+    支持两种认证方式：账号密码登录和直接使用cookies。
 
     参数:
         fid (str): 可选的FID值
@@ -132,38 +132,205 @@ def get_auth_cookies(fid=None):
     # 保持键的大小写
     config.optionxform = str
 
-    # 尝试读取现有的认证配置
+    # 读取认证配置
+    auth_method = 'cookies'  # 默认使用cookies方式
+    save_auth_info = True    # 默认保存认证信息
+    auth_data = {}
+
     if os.path.exists(AUTH_CONFIG_FILE):
         try:
             config.read(AUTH_CONFIG_FILE, encoding='utf-8')
-            if 'AUTH' in config and all(key in config['AUTH'] for key in ['_d', 'UID', 'vc3']):
-                auth_data = dict(config['AUTH'])
-                auth_data['fid'] = fid or ''
-                logger.info("从配置文件读取认证信息成功")
-                return auth_data
+            if 'SETTINGS' in config:
+                auth_method = config['SETTINGS'].get('auth_method', 'cookies')
+                save_auth_info = config['SETTINGS'].getboolean('save_auth_info', True)
+                logger.info(f"从配置文件读取认证设置: 方式={auth_method}, 保存={save_auth_info}")
         except Exception as e:
             logger.warning(f"读取认证配置失败: {e}")
 
-    # 如果配置不存在或不完整，则提示用户输入
+    # 如果保存认证信息，尝试从配置文件读取
+    if save_auth_info and os.path.exists(AUTH_CONFIG_FILE):
+        try:
+            if auth_method == 'cookies' and 'AUTH' in config:
+                if all(key in config['AUTH'] for key in ['_d', 'UID', 'vc3']):
+                    auth_data = dict(config['AUTH'])
+                    auth_data['fid'] = fid or ''
+                    logger.info("从配置文件读取cookies认证信息成功")
+                    return auth_data
+            elif auth_method == 'password' and 'CREDENTIALS' in config:
+                if all(key in config['CREDENTIALS'] for key in ['username', 'password']):
+                    username = config['CREDENTIALS']['username']
+                    password = config['CREDENTIALS']['password']
+                    logger.info("从配置文件读取账号密码，开始登录获取cookies")
+                    
+                    # 导入登录函数
+                    from api import get_three_cookies_from_login
+                    
+                    try:
+                        cookies = get_three_cookies_from_login(username, password)
+                        if all(cookies.get(key) for key in ['_d', 'UID', 'vc3']):
+                            cookies['fid'] = fid or ''
+                            logger.info("通过账号密码登录获取cookies成功")
+                            return cookies
+                        else:
+                            logger.error("登录成功但获取的cookies不完整")
+                    except Exception as e:
+                        logger.error(f"通过账号密码登录失败: {e}")
+                        # 登录失败，清除保存的认证信息并要求重新输入
+                        print(f"使用保存的账号密码登录失败: {e}")
+                        print("将要求重新输入认证信息")
+        except Exception as e:
+            logger.warning(f"读取保存的认证信息失败: {e}")
+
+    # 需要重新获取认证信息
+    return _get_auth_info_interactively(config, fid)
+
+
+def _get_auth_info_interactively(config, fid):
+    """
+    交互式获取认证信息。
+
+    参数:
+        config: 配置对象
+        fid: FID值
+
+    返回:
+        dict: 认证cookie字典
+    """
     print("\n" + "="*60)
     print("需要进行身份验证以访问课程视频")
-    print("请按照以下步骤获取认证信息：")
+    print("="*60)
+
+    # 选择认证方式
+    print("\n请选择认证方式：")
+    print("1. 使用账号密码（推荐，自动获取最新cookies）")
+    print("2. 手动输入cookies")
+
+    def validate_auth_method_choice(choice):
+        return choice in ['1', '2']
+
+    try:
+        from utils import user_input_with_check
+
+        auth_method_choice = user_input_with_check(
+            "请输入选择（1或2）: ",
+            validate_auth_method_choice,
+            error_message="选择无效，请输入1或2"
+        ).strip()
+
+        auth_method = 'password' if auth_method_choice == '1' else 'cookies'
+
+        # 选择是否保存认证信息
+        print("\n是否保存认证信息以便下次使用？")
+        print("1. 是（推荐）")
+        print("2. 否（每次都重新输入）")
+
+        def validate_save_choice(choice):
+            return choice in ['1', '2']
+
+        save_choice = user_input_with_check(
+            "请输入选择（1或2）: ",
+            validate_save_choice,
+            error_message="选择无效，请输入1或2"
+        ).strip()
+
+        save_auth_info = save_choice == '1'
+
+        # 根据选择的方式获取认证信息
+        if auth_method == 'password':
+            auth_cookies = _get_cookies_from_password(fid)
+        else:
+            auth_cookies = _get_cookies_manually(fid)
+
+        # 保存设置和认证信息
+        if save_auth_info:
+            _save_auth_config(config, auth_method, save_auth_info, auth_cookies, auth_method == 'password')
+        else:
+            # 只保存设置，不保存认证信息
+            _save_auth_settings(config, auth_method, save_auth_info)
+
+        return auth_cookies
+
+    except (KeyboardInterrupt, EOFError):
+        print("\n用户取消认证设置")
+        raise ValueError("用户取消认证设置")
+    except Exception as e:
+        logger.error(f"获取认证信息失败: {e}")
+        raise ValueError(f"获取认证信息失败: {e}")
+
+
+def _get_cookies_from_password(fid):
+    """
+    通过账号密码获取cookies。
+
+    参数:
+        fid: FID值
+
+    返回:
+        dict: 认证cookie字典
+    """
+    def validate_non_empty(value):
+        return bool(value and len(value.strip()) > 0)
+
+    try:
+        from utils import user_input_with_check
+        from api import get_three_cookies_from_login
+
+        print("\n请输入您的超星账号信息：")
+        username = user_input_with_check(
+            "用户名: ",
+            validate_non_empty,
+            error_message="用户名不能为空，请重新输入"
+        ).strip()
+
+        password = user_input_with_check(
+            "密码: ",
+            validate_non_empty,
+            error_message="密码不能为空，请重新输入"
+        ).strip()
+
+        print("正在登录并获取认证信息...")
+        cookies = get_three_cookies_from_login(username, password)
+        
+        if not all(cookies.get(key) for key in ['_d', 'UID', 'vc3']):
+            raise ValueError("登录成功但获取的cookies不完整")
+
+        cookies['fid'] = fid or ''
+        cookies['username'] = username  # 保存用户名用于配置文件
+        cookies['password'] = password  # 保存密码用于配置文件
+        
+        print("登录成功，认证信息获取完成")
+        logger.info("通过账号密码登录获取cookies成功")
+        return cookies
+
+    except Exception as e:
+        logger.error(f"账号密码登录失败: {e}")
+        raise ValueError(f"账号密码登录失败: {e}")
+
+
+def _get_cookies_manually(fid):
+    """
+    手动输入cookies。
+
+    参数:
+        fid: FID值
+
+    返回:
+        dict: 认证cookie字典
+    """
+    print("\n请按照以下步骤获取认证信息：")
     print("1. 在浏览器中访问 https://chaoxing.com/ 并登录")
     print("2. 访问 https://i.mooc.chaoxing.com/")
     print("3. 按F12打开开发者工具，在Application->Cookies中找到以下值")
-    print("="*60)
+    print("-" * 60)
 
-    # 验证函数
     def validate_cookie_value(value):
         return bool(value and len(value.strip()) > 0 and not any(char in value for char in ['\n', '\r', '\t']))
 
     try:
         from utils import user_input_with_check
 
-        auth_cookies = {}
-        auth_cookies['fid'] = fid or ''
+        auth_cookies = {'fid': fid or ''}
 
-        # 获取认证信息，增加输入验证
         auth_cookies['_d'] = user_input_with_check(
             "请输入 _d 的值: ",
             validate_cookie_value,
@@ -182,8 +349,42 @@ def get_auth_cookies(fid=None):
             error_message="Cookie值不能为空且不能包含换行符，请重新输入"
         ).strip()
 
-        # 安全保存到配置文件
-        config['AUTH'] = {k: v for k, v in auth_cookies.items() if k != 'fid'}
+        print("认证信息输入完成")
+        logger.info("手动输入cookies完成")
+        return auth_cookies
+
+    except Exception as e:
+        logger.error(f"手动输入cookies失败: {e}")
+        raise ValueError(f"手动输入cookies失败: {e}")
+
+
+def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include_credentials):
+    """
+    保存认证配置到文件。
+
+    参数:
+        config: 配置对象
+        auth_method: 认证方式
+        save_auth_info: 是否保存认证信息
+        auth_cookies: 认证cookie字典
+        include_credentials: 是否包含账号密码
+    """
+    try:
+        # 保存设置
+        config['SETTINGS'] = {
+            'auth_method': auth_method,
+            'save_auth_info': str(save_auth_info)
+        }
+
+        # 保存认证信息
+        if auth_method == 'cookies':
+            config['AUTH'] = {k: v for k, v in auth_cookies.items() if k in ['_d', 'UID', 'vc3']}
+        elif auth_method == 'password' and include_credentials:
+            config['CREDENTIALS'] = {
+                'username': auth_cookies.get('username', ''),
+                'password': auth_cookies.get('password', '')
+            }
+
         safe_write_config(config, AUTH_CONFIG_FILE)
 
         # 设置配置文件权限（仅Unix系统）
@@ -196,15 +397,34 @@ def get_auth_cookies(fid=None):
                 logger.warning(f"无法设置认证文件权限: {e}")
 
         print("认证信息已安全保存")
-        logger.info("新的认证信息已保存")
-        return auth_cookies
+        logger.info("认证配置已保存")
 
-    except (KeyboardInterrupt, EOFError):
-        print("\n用户取消认证设置")
-        raise ValueError("用户取消认证设置")
     except Exception as e:
-        logger.error(f"获取认证信息失败: {e}")
-        raise ValueError(f"获取认证信息失败: {e}")
+        logger.error(f"保存认证配置失败: {e}")
+        raise ValueError(f"保存认证配置失败: {e}")
+
+
+def _save_auth_settings(config, auth_method, save_auth_info):
+    """
+    只保存认证设置，不保存认证信息。
+
+    参数:
+        config: 配置对象
+        auth_method: 认证方式
+        save_auth_info: 是否保存认证信息
+    """
+    try:
+        config['SETTINGS'] = {
+            'auth_method': auth_method,
+            'save_auth_info': str(save_auth_info)
+        }
+
+        safe_write_config(config, AUTH_CONFIG_FILE)
+        logger.info("认证设置已保存")
+
+    except Exception as e:
+        logger.error(f"保存认证设置失败: {e}")
+        raise ValueError(f"保存认证设置失败: {e}")
 
 
 def format_auth_cookies(auth_cookies):
@@ -380,7 +600,7 @@ def create_initial_config(args, default_year, default_term, config_file):
 
             safe_write_config(config, config_file)
             print(f"配置文件已生成，包含 {len(courses)} 门课程")
-            print("请修改配置文件后按回车继续...")
+            print("请修改配置文件 automation_config.ini 后按回车继续...")
             input()
             return True
 
@@ -460,7 +680,7 @@ def update_existing_config(args, default_year, default_term, config, config_file
 
         # 如果有新课程，提示用户检查配置
         if config_updated:
-            print("配置文件已更新，请修改配置文件后按回车继续...")
+            print("配置文件已更新，请修改配置文件 automation_config.ini 后按回车继续...")
             input()
 
         return True
