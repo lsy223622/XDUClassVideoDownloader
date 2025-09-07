@@ -306,6 +306,7 @@ if __name__ == "__main__":
         success = main(liveid=args.liveid, single=args.single, merge=args.merge, video_type=args.video_type, skip_weeks=args.skip_weeks)
 
         # 根据执行结果设置退出码
+        input("按回车键退出...")
         sys.exit(0 if success else 1)
 
     except KeyboardInterrupt:
@@ -317,4 +318,5 @@ if __name__ == "__main__":
         print(f"发生错误：{e}")
         if logger.getEffectiveLevel() <= logging.DEBUG:
             print(traceback.format_exc())
+        input("按回车键退出...")
         sys.exit(1)
