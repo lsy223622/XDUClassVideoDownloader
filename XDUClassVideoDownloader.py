@@ -271,6 +271,7 @@ if __name__ == "__main__":
         )
 
         # 根据执行结果设置退出码
+        input("按回车键退出...")
         sys.exit(0 if success else 1)
 
     except KeyboardInterrupt:
@@ -282,4 +283,5 @@ if __name__ == "__main__":
         print(f"发生错误：{e}")
         if logger.getEffectiveLevel() <= logging.DEBUG:
             print(traceback.format_exc())
+        input("按回车键退出...")
         sys.exit(1)
