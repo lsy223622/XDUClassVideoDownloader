@@ -793,30 +793,29 @@ def check_update():
             print("\r检查更新失败：服务器响应格式错误")
             return
 
-        # 显示服务器返回的消息
-        if data.get("message"):
-            print(f"\r{data['message']}")
+        # 先检查是否有新版本并提示用户（优先级高）
+        latest_version = data.get("latest_version")
+        if latest_version:
+            try:
+                if compare_versions(latest_version, VERSION) > 0:
+                    print(f"\r有新版本可用: {latest_version}")
+                    print("请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载")
+                    logger.info(f"发现新版本: {latest_version}")
+                else:
+                    # 没有新版本，清除"正在检查更新..."文字
+                    print("\r" + " " * 30 + "\r", end="", flush=True)
+                    logger.debug("当前版本已是最新版本")
+            except Exception as e:
+                logger.warning(f"版本号比较失败: {e}")
+                print("\r版本检查完成")
         else:
-            # 检查是否有新版本
-            latest_version = data.get("latest_version")
-            if latest_version:
-                try:
-                    # 比较版本号，如果有新版本则提示用户
-                    if compare_versions(latest_version, VERSION) > 0:
-                        print(f"\r有新版本可用: {latest_version}")
-                        print(
-                            "请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载")
-                        logger.info(f"发现新版本: {latest_version}")
-                    else:
-                        # 没有新版本，清除"正在检查更新..."文字
-                        print("\r" + " " * 30 + "\r", end="", flush=True)
-                        logger.debug("当前版本已是最新版本")
-                except Exception as e:
-                    logger.warning(f"版本号比较失败: {e}")
-                    print("\r版本检查完成")
-            else:
-                # 清除"正在检查更新..."文字
-                print("\r" + " " * 30 + "\r", end="", flush=True)
+            # 未返回版本信息，清除提示占位
+            print("\r" + " " * 30 + "\r", end="", flush=True)
+
+        # 然后显示服务器返回的 message（如果有）
+        if data.get("message"):
+            # 将服务器消息放在单独一行，保留前面的版本提示
+            print(f"\r{data['message']}")
 
     except requests.Timeout:
         print("\r检查更新超时，跳过版本检查")
