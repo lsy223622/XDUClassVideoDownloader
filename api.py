@@ -40,7 +40,7 @@ logger = setup_logging('api', level=logging.INFO,
                        console_level=logging.WARNING)
 
 # 应用版本和配置
-VERSION = "3.1.0"  # 更新版本号以反映改进
+VERSION = "3.1.1"  # 更新版本号以反映改进
 FID = '16820'
 
 # 请求配置
