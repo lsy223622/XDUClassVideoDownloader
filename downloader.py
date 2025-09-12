@@ -1221,8 +1221,9 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
         # 处理不同的下载模式
         if single:
             original_data = data[:]
-            # 筛选出指定liveId的条目
-            data = [entry for entry in original_data if entry["id"] == live_id]
+            # 筛选出指定 liveId 的条目（谨慎处理类型差异：entry['id'] 可能为 int，而 live_id 可能为 str）
+            live_id_str = str(live_id)
+            data = [entry for entry in original_data if str(entry.get("id", "")) == live_id_str]
 
             if not data:
                 logger.error(f"没有找到课程ID {live_id} 对应的课程记录")
@@ -1230,12 +1231,12 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
                 return False
 
             if single == 1:
-                # 单节课模式：下载同一天的所有课程
-                start_time = data[0]["startTime"]
+                # 单节课模式：下载同一天的所有课程（根据第一个匹配条目的日期/月进行过滤）
+                start_time = data[0].get("startTime", {})
                 data = [
                     entry for entry in original_data
-                    if (entry["startTime"]["date"] == start_time["date"] and
-                        entry["startTime"]["month"] == start_time["month"])
+                    if (entry.get("startTime", {}).get("date") == start_time.get("date") and
+                        entry.get("startTime", {}).get("month") == start_time.get("month"))
                 ]
                 print(f"单节课模式：将下载 {len(data)} 个视频片段")
 
