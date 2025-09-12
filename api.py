@@ -56,6 +56,11 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 # 上次请求时间，用于频率控制
 _last_request_time = 0
 
+# 自定义异常：表示视频回看仍在生成中（尚不可下载）
+class VideoGeneratingError(Exception):
+    """Raised when the replay video is still being generated (页面提示: 视频回看生成中)."""
+    pass
+
 
 def _derive_aes_key_iv(key_str):
     """将任意长度的字符串派生为 AES key/iv。
@@ -426,6 +431,13 @@ def get_video_info_from_html(live_id, retry_count=0):
         if not html_content:
             raise ValueError("服务器返回空响应")
 
+        # 检测“视频回看生成中”提示页：无需继续解析，直接视为尚未结束/不可下载
+        # 关键字可能包含：视频回看生成中，需要1-3天处理完成
+        if "视频回看生成中" in html_content or "需要1-3天处理完成" in html_content:
+            logger.info(f"liveId {validated_live_id} 回看仍在生成中，跳过此次解析")
+            # 不进入重试逻辑，直接抛出特殊异常供上层跳过
+            raise VideoGeneratingError(f"回看生成中: {validated_live_id}")
+
         # 从HTML中提取infostr变量，使用更严格的正则表达式
         # 查找: var infostr = "...";
         pattern = r'var\s+infostr\s*=\s*"([^"]+)"\s*;'
@@ -444,6 +456,7 @@ def get_video_info_from_html(live_id, retry_count=0):
                     break
 
             if not match:
+                # 若不是“生成中”页面但缺少infostr，保持原有重试策略
                 if retry_count < MAX_RETRIES:
                     logger.warning(f"未找到infostr变量，重试中...")
                     return get_video_info_from_html(live_id, retry_count + 1)
@@ -503,7 +516,9 @@ def get_video_info_from_html(live_id, retry_count=0):
             return get_video_info_from_html(live_id, retry_count + 1)
         else:
             raise ValueError(error_msg)
-
+    except VideoGeneratingError:
+        # 直接向上抛出，不做重试也不包装
+        raise
     except Exception as e:
         logger.warning(f"获取视频信息时发生未知错误: {e}")
         if retry_count < MAX_RETRIES:
@@ -565,6 +580,10 @@ def get_mp4_links(live_id):
 
         return ppt_video, teacher_track
 
+    except VideoGeneratingError as e:
+        # 特殊情况：视频尚未生成，记录为 warning 并向上游表明应跳过
+        logger.warning(str(e))
+        raise
     except Exception as e:
         logger.error(f"获取视频链接失败，课程ID: {live_id}, 错误: {e}")
         raise ValueError(f"获取视频链接失败: {str(e)}")
@@ -895,6 +914,12 @@ def fetch_m3u8_links(entry, lock, desc):
         logger.debug(f"成功获取课程 {entry['id']} 的视频链接")
         return row
 
+    except VideoGeneratingError:
+        # 回看仍在生成中：不视为错误，按需求用 warning 级别以示区别
+        with lock:
+            desc.update(1)
+        logger.warning(f"课程 {entry.get('id')} 回看仍在生成中，跳过")
+        return None
     except Exception as e:
         # 记录获取视频链接失败的错误信息
         error_msg = f"获取视频链接时发生错误：{e}，liveId: {entry.get('id', '未知')}"
