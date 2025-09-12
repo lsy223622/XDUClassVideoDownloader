@@ -28,7 +28,7 @@ from validator import validate_download_parameters, validate_live_id
 
 # 使用统一的日志配置
 logger = setup_logging('main_downloader', level=logging.INFO,
-                       console_level=logging.WARNING)
+                       console_level=logging.ERROR)
 
 try:
     # 检查程序更新

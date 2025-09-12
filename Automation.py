@@ -31,7 +31,7 @@ from downloader import process_all_courses
 
 # 设置日志 - 详细日志保存到文件，控制台只显示重要信息
 logger = setup_logging('automation', level=logging.INFO,
-                       console_level=logging.WARNING)
+                       console_level=logging.ERROR)
 
 
 def parse_automation_arguments():

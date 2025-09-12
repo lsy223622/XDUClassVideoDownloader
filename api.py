@@ -37,7 +37,7 @@ from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
 # 配置日志
 logger = setup_logging('api', level=logging.INFO,
-                       console_level=logging.WARNING)
+                       console_level=logging.ERROR)
 
 # 应用版本和配置
 VERSION = "3.1.3"  # 更新版本号以反映改进
@@ -448,7 +448,7 @@ def get_video_info_from_html(live_id, retry_count=0):
                     logger.warning(f"未找到infostr变量，重试中...")
                     return get_video_info_from_html(live_id, retry_count + 1)
                 else:
-                    logger.error(
+                    logger.warning(
                         f"无法在HTML响应中找到视频信息变量，liveId: {validated_live_id}")
                     raise ValueError(f"无法获取视频信息，课程ID: {validated_live_id}")
 
@@ -505,7 +505,7 @@ def get_video_info_from_html(live_id, retry_count=0):
             raise ValueError(error_msg)
 
     except Exception as e:
-        logger.error(f"获取视频信息时发生未知错误: {e}")
+        logger.warning(f"获取视频信息时发生未知错误: {e}")
         if retry_count < MAX_RETRIES:
             return get_video_info_from_html(live_id, retry_count + 1)
         else:
@@ -899,7 +899,6 @@ def fetch_m3u8_links(entry, lock, desc):
         # 记录获取视频链接失败的错误信息
         error_msg = f"获取视频链接时发生错误：{e}，liveId: {entry.get('id', '未知')}"
         logger.error(error_msg)
-        print(error_msg)
 
         with lock:
             desc.update(1)

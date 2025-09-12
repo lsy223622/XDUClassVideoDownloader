@@ -18,7 +18,7 @@ from utils import setup_logging
 
 # 配置日志
 logger = setup_logging('validator', level=logging.INFO,
-                       console_level=logging.WARNING)
+                       console_level=logging.ERROR)
 
 
 def validate_live_id(live_id):

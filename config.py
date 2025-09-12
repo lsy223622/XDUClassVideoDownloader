@@ -22,7 +22,7 @@ from validator import validate_user_id, validate_term_params
 
 # 配置日志
 logger = setup_logging('config', level=logging.INFO,
-                       console_level=logging.WARNING)
+                       console_level=logging.ERROR)
 
 # 配置文件名
 AUTOMATION_CONFIG_FILE = 'automation_config.ini'

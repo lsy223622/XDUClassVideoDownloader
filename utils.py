@@ -34,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=logging.WARNING):
+def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=logging.ERROR):
     """
     设置日志记录系统。
 
@@ -65,7 +65,7 @@ def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=loggi
         log_dir / f'{name}.log', encoding='utf-8')
     file_handler.setLevel(level)
 
-    # 创建控制台处理器 - 只显示重要信息
+    # 创建控制台处理器 - 默认只显示 ERROR 和 CRITICAL
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
 
