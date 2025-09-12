@@ -512,7 +512,7 @@ def get_video_info_from_html(live_id, retry_count=0):
             raise ValueError(f"获取视频信息失败: {e}")
 
 
-def get_m3u8_links(live_id):
+def get_mp4_links(live_id):
     """
     从直播ID获取PPT视频和教师视频的下载链接（增强版）。
 
@@ -859,7 +859,7 @@ def fetch_m3u8_links(entry, lock, desc):
 
     try:
         # 获取PPT视频和教师视频的链接
-        ppt_video, teacher_track = get_m3u8_links(entry["id"])
+        ppt_video, teacher_track = get_mp4_links(entry["id"])
 
         # 验证和解析开始时间
         start_time = entry["startTime"]
