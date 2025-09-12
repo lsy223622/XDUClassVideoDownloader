@@ -1316,15 +1316,18 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
             if filtered_count > 0:
                 print(f"根据设置跳过了前 {skip_until} 周的 {filtered_count} 个视频")
 
-        # 保存视频信息到CSV文件
-        csv_filename = f"{save_dir}.csv"
+        # 保存视频信息到CSV文件（保存到 logs/ 目录以便集中管理日志/元数据）
         try:
+            logs_dir = Path('logs')
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            csv_filename = logs_dir / f"{save_dir}.csv"
             with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
                 writer.writerow(['month', 'date', 'day', 'jie',
                                 'days', 'pptVideo', 'teacherTrack'])
                 writer.writerows(rows)
             print(f"视频信息已保存到：{csv_filename}")
+            logger.info(f"视频信息CSV已保存: {csv_filename}")
         except Exception as e:
             logger.warning(f"保存CSV文件失败: {e}")
 

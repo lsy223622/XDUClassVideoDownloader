@@ -64,7 +64,7 @@
 - 文件：
   - MP4：`...第{周}周星期{X}第{节}节-pptVideo.mp4` 与 `-teacherTrack.mp4`
   - 自动合并产物：`...第{A}-{B}节-pptVideo.mp4` / `-teacherTrack.mp4`
-  - CSV：`{保存目录}.csv`，列包含：month,date,day,jie,days,pptVideo,teacherTrack
+  - CSV：保存到 `logs/` 目录，文件名为 `{保存目录}.csv`，列包含：month,date,day,jie,days,pptVideo,teacherTrack
 
 提示：脚本仅下载已结束的课程场次；支持断点续传与完整性校验，失败会自动重试有限次数。
 
