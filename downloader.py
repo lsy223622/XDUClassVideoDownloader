@@ -48,7 +48,7 @@ DOWNLOAD_TIMEOUT = 60  # 下载超时时间（秒）
 MAX_DOWNLOAD_RETRIES = 3  # 最大下载重试次数
 MIN_FILE_SIZE = 1024  # 最小有效文件大小（字节）
 MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
-MIN_SIZE_FOR_MULTITHREAD = 5 * 1024 * 1024  # 启用多线程下载的最小文件大小（5MB)
+MIN_SIZE_FOR_MULTITHREAD = 10 * 1024 * 1024  # 启用多线程下载的最小文件大小（10MB）
 
 
 def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
@@ -175,7 +175,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 downloaded_lock = threading.Lock()
                 downloaded_total = {'value': 0}
 
-                # If any part file exists and has full expected size, we will skip downloading that part
+                fail_parts = []  # 记录失败的分片索引
+
                 def worker(idx, start, end, part_path):
                     headers_local = headers.copy()
                     headers_local['Range'] = f'bytes={start}-{end}'
@@ -191,12 +192,14 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                                             with downloaded_lock:
                                                 downloaded_total['value'] += len(
                                                     chunk)
-                            return
+                            return True
                         except Exception as e:
                             attempts_local += 1
                             logger.warning(
                                 f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
-                    raise Exception(f"分片 {idx} 下载失败，超过重试次数")
+                    # 记录失败（不抛异常，避免线程级大量 traceback 噪音）
+                    fail_parts.append(idx)
+                    return False
 
                 # start threads
                 threads = []
@@ -227,25 +230,66 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                     if cur - prev > 0:
                         pbar.update(cur - prev)
 
-                # ensure threads finished and part files exist
+                # ensure threads finished
                 for t in threads:
                     if t.is_alive():
-                        raise Exception("部分线程未能完成下载")
+                        t.join()
 
-                # 合并分片到临时文件
-                with open(temp_path, 'wb') as out_f:
+                # 如果有失败的分片，回退到单线程下载
+                if fail_parts:
+                    logger.warning(
+                        f"检测到 {len(fail_parts)} 个分片下载失败，回退到单线程下载：{fail_parts}")
+                    # 清理已下载分片
                     for p in part_paths:
-                        if not p.exists():
-                            raise Exception(f"缺失分片文件: {p}")
-                        with open(p, 'rb') as pf:
-                            shutil.copyfileobj(pf, out_f)
+                        if p.exists():
+                            try:
+                                p.unlink()
+                            except Exception:
+                                pass
+                    # 改为普通单线程下载逻辑（与下面 else 分支基本相同）
+                    if temp_path.exists():
+                        try:
+                            temp_path.unlink()
+                        except Exception:
+                            pass
 
-                # 删除分片文件
-                for p in part_paths:
-                    try:
-                        p.unlink()
-                    except Exception:
-                        logger.debug(f"无法删除分片文件: {p}")
+                    response = requests.get(
+                        url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
+                    response.raise_for_status()
+                    if total_size == 0:
+                        total_size = int(
+                            response.headers.get('content-length', 0))
+                    downloaded_size = 0
+                    with open(temp_path, 'wb') as f:
+                        if total_size > 0:
+                            with tqdm(total=total_size, unit='B', unit_scale=True, desc=safe_filename, leave=False) as pbar:
+                                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded_size += len(chunk)
+                                        pbar.update(len(chunk))
+                        else:
+                            with tqdm(unit='B', unit_scale=True, desc=safe_filename, leave=False) as pbar:
+                                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded_size += len(chunk)
+                                        pbar.update(len(chunk))
+                else:
+                    # 合并分片到临时文件
+                    with open(temp_path, 'wb') as out_f:
+                        for p in part_paths:
+                            if not p.exists():
+                                raise Exception(f"缺失分片文件: {p}")
+                            with open(p, 'rb') as pf:
+                                shutil.copyfileobj(pf, out_f)
+
+                    # 删除分片文件
+                    for p in part_paths:
+                        try:
+                            p.unlink()
+                        except Exception:
+                            logger.debug(f"无法删除分片文件: {p}")
 
             else:
                 # 单线程/断点续传逻辑（保持原本行为）
@@ -738,34 +782,63 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
 
         merged_exists = False
         save_path = Path(save_dir)
+        # ===== 改进的合并存在判定逻辑 =====
+        # 之前的实现：如果当前节号落在任意一个 “第A-B节” 文件的范围内就认定存在（忽略了“日期/周/星期”等前缀），
+        # 导致不同日期但相同节次范围的文件被误判为同一天，从而跳过下载。
+        # 新策略：要求“节次片段前的完整前缀”完全一致，才会进行区间覆盖判断。
 
-        # 首先尝试匹配形如 "第A-B节-{track_type}.mp4/ts" 的合并文件，并判断当前节是否包含在区间内
-        for ext in ('.mp4', '.ts'):
-            pattern = f"*第*-*节-{track_type}{ext}"
-            for merged_file in save_path.glob(pattern):
-                name = merged_file.name
-                if not merged_file.exists():
-                    continue
-                # 解析合并文件的节区间，例如 "第2-4节"
-                m = re.search(r"第(\d+)-(\d+)节", name)
-                if m and current_jie is not None:
-                    try:
-                        min_j = int(m.group(1))
-                        max_j = int(m.group(2))
-                        if min_j <= current_jie <= max_j and verify_file_integrity(str(merged_file)):
+        # 解析当前 base_filename 的前缀和节次区间
+        # 形如：<prefix>第7节 或 <prefix>第7-8节
+        range_pattern = re.compile(
+            r'^(?P<prefix>.+?)第(?P<start>\d+)(?:-(?P<end>\d+))?节$')
+        current_match = range_pattern.match(base_filename)
+        if current_match:
+            prefix = current_match.group('prefix')  # 含课程/日期/周/星期等完整信息
+            cur_start = int(current_match.group('start'))
+            cur_end = int(current_match.group('end')
+                          or current_match.group('start'))
+
+            # 针对同一 prefix 下的所有同类型(track_type)文件进行扫描
+            # 我们只关心 prefix 相同的文件（确保同一天同课程同周次）
+            candidates = []
+            for ext in ('.mp4', '.ts'):
+                # 按 track_type 过滤，使用 glob 扫描，再用前缀精确判断
+                for f in save_path.glob(f"*{track_type}{ext}"):
+                    if not f.exists():
+                        continue
+                    name = f.name
+                    if not name.endswith(f"-{track_type}{ext}"):
+                        continue
+                    # 去掉结尾的 -{track_type}.ext
+                    # 去掉 -pptVideo.mp4 之类的部分
+                    core = name[:-(len(track_type) + len(ext) + 1)]
+                    # 与 base_filename 同样结构：<prefix>第X(|-Y)节
+                    m2 = range_pattern.match(core)
+                    if not m2:
+                        continue
+                    if m2.group('prefix') != prefix:
+                        # 日期/周/星期不同，忽略
+                        continue
+                    candidates.append((f, m2))
+
+            for f, m2 in candidates:
+                try:
+                    f_start = int(m2.group('start'))
+                    f_end = int(m2.group('end') or m2.group('start'))
+                    # 只要当前节次区间完全被文件区间覆盖即可判定已存在
+                    if f_start <= cur_start and f_end >= cur_end and verify_file_integrity(str(f)):
+                        merged_exists = True
+                        break
+                    # 兼容用户需求：如果当前是单节 (7) 允许被 (6-7) 或 (7-8) 覆盖
+                    if cur_start == cur_end and verify_file_integrity(str(f)):
+                        if (f_start == cur_start - 1 and f_end == cur_end) or (f_start == cur_start and f_end == cur_end + 1):
                             merged_exists = True
                             break
-                    except Exception:
-                        # 解析失败则回退到包含检测
-                        pass
-
-                # 退回兼容旧的命名检测逻辑：检查 base_filename 是否为文件名子串
-                if base_filename in name and verify_file_integrity(str(merged_file)):
-                    merged_exists = True
-                    break
-
-            if merged_exists:
-                break
+                except Exception:
+                    continue
+        else:
+            # 如果无法解析（非常规命名），退回到严格的精确文件匹配（已在 single_files 中处理）
+            merged_exists = False
 
         return single_exists, merged_exists
 
