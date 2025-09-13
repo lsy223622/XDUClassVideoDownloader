@@ -172,8 +172,7 @@ def get_auth_cookies(fid=None, *, force_refresh=False):
                     auth_data = dict(config['AUTH'])
                     auth_data['fid'] = fid or ''
                     logger.info("从配置文件读取cookies认证信息成功")
-                    # 写入运行期缓存
-                    global _runtime_auth_cache
+                    # 写入运行期缓存（函数顶部已声明 global）
                     _runtime_auth_cache = dict(auth_data)
                     return auth_data
             elif auth_method == 'password' and 'CREDENTIALS' in config:
@@ -330,7 +329,7 @@ def _get_cookies_from_password(fid):
 
         print("登录成功，认证信息获取完成")
         logger.info("通过账号密码登录获取cookies成功")
-        # 写入运行期缓存
+        # 写入运行期缓存（函数外已有 global 定义，且此处在函数作用域需保留 global）
         global _runtime_auth_cache
         _runtime_auth_cache = dict(cookies)
         return cookies
