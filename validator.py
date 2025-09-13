@@ -279,8 +279,7 @@ def validate_course_data(entry):
         logger.warning(f"课程数据格式错误，期望字典但收到: {type(entry)}")
         return False
 
-    required_fields = ['id', 'courseCode',
-                       'courseName', 'startTime', 'endTime']
+    required_fields = ['id', 'courseCode', 'courseName', 'startTime', 'endTime']
     missing_fields = [field for field in required_fields if field not in entry]
 
     if missing_fields:

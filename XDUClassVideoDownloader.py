@@ -152,8 +152,7 @@ def get_user_input_interactive():
         mode_desc = {0: "全部视频", 1: "单节课模式", 2: "半节课模式"}
         print(f"下载模式: {mode_desc[single]}")
         print(f"自动合并: {'是' if merge else '否'}")
-        video_type_desc = {'both': '两种都下载',
-                           'ppt': '仅pptVideo', 'teacher': '仅teacherTrack'}
+        video_type_desc = {'both': '两种都下载', 'ppt': '仅pptVideo', 'teacher': '仅teacherTrack'}
         print(f"视频类型: {video_type_desc[video_type]}")
         if skip_weeks:
             print(f"跳过周数: {skip_weeks}")
@@ -229,8 +228,7 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
             skip_until = 0  # 简化处理
         else:
             # 验证命令行参数
-            liveid, single, video_type = validate_download_parameters(
-                liveid, single, video_type)
+            liveid, single, video_type = validate_download_parameters(liveid, single, video_type)
             skip_until = 0  # 非交互模式下，默认不跳过任何周
 
             if command:

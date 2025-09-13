@@ -107,15 +107,13 @@ def main():
         # 处理配置文件
         if not Path(AUTOMATION_CONFIG_FILE).exists():
             # 首次运行：创建配置文件
-            success = create_initial_config(
-                args, term_year, term_id, AUTOMATION_CONFIG_FILE)
+            success = create_initial_config(args, term_year, term_id, AUTOMATION_CONFIG_FILE)
             if not success:
                 return False
         else:
             # 已存在配置文件：读取并更新
             config = safe_read_config(AUTOMATION_CONFIG_FILE)
-            success = update_existing_config(
-                args, term_year, term_id, config, AUTOMATION_CONFIG_FILE)
+            success = update_existing_config(args, term_year, term_id, config, AUTOMATION_CONFIG_FILE)
             if not success:
                 return False
 
@@ -127,8 +125,7 @@ def main():
             print(f"\n{error_msg}")
             return False
 
-        video_type = args.video_type if args.video_type else config['DEFAULT'].get(
-            'video_type', 'both')
+        video_type = args.video_type if args.video_type else config['DEFAULT'].get('video_type', 'both')
 
         # 批量处理所有启用下载的课程
         return process_all_courses(config, video_type)

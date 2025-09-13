@@ -27,7 +27,8 @@ AUTOMATION_CONFIG_FILE = 'automation_config.ini'
 AUTH_CONFIG_FILE = 'auth.ini'
 
 # 运行期（进程内）认证信息缓存：确保一次运行内仅登录一次
-_runtime_auth_cache = None  # 形如 {'_d': '...', 'UID': '...', 'vc3': '...', 'fid': '...'}
+# 形如 {'_d': '...', 'UID': '...', 'vc3': '...', 'fid': '...'}
+_runtime_auth_cache = None
 
 
 def safe_write_config(config, filename, backup=False):
@@ -180,10 +181,10 @@ def get_auth_cookies(fid=None, *, force_refresh=False):
                     username = config['CREDENTIALS']['username']
                     password = config['CREDENTIALS']['password']
                     logger.info("从配置文件读取账号密码，开始登录获取cookies")
-                    
+
                     # 导入登录函数
                     from api import get_three_cookies_from_login
-                    
+
                     try:
                         cookies = get_three_cookies_from_login(username, password)
                         if all(cookies.get(key) for key in ['_d', 'UID', 'vc3']):
@@ -319,14 +320,14 @@ def _get_cookies_from_password(fid):
 
         print("正在登录并获取认证信息...")
         cookies = get_three_cookies_from_login(username, password)
-        
+
         if not all(cookies.get(key) for key in ['_d', 'UID', 'vc3']):
             raise ValueError("登录成功但获取的cookies不完整")
 
         cookies['fid'] = fid or ''
         cookies['username'] = username  # 保存用户名用于配置文件
         cookies['password'] = password  # 保存密码用于配置文件
-        
+
         print("登录成功，认证信息获取完成")
         logger.info("通过账号密码登录获取cookies成功")
         # 写入运行期缓存
@@ -380,7 +381,7 @@ def _get_cookies_manually(fid):
             validate_cookie_value,
             error_message="Cookie值不能为空且不能包含换行符，请重新输入"
         ).strip()
-        
+
         print("认证信息输入完成")
         logger.info("手动输入cookies完成")
         # 写入运行期缓存
@@ -668,14 +669,11 @@ def update_existing_config(args, default_year, default_term, config, config_file
         from api import scan_courses
 
         user_id = args.uid if args.uid else config['DEFAULT']['user_id']
-        term_year = args.year if args.year else int(
-            config['DEFAULT'].get('term_year', default_year))
-        term_id = args.term if args.term else int(
-            config['DEFAULT'].get('term_id', default_term))
+        term_year = args.year if args.year else int(config['DEFAULT'].get('term_year', default_year))
+        term_id = args.term if args.term else int(config['DEFAULT'].get('term_id', default_term))
 
         # 处理旧配置文件兼容性
-        video_type = args.video_type if args.video_type else config['DEFAULT'].get(
-            'video_type', 'both')
+        video_type = args.video_type if args.video_type else config['DEFAULT'].get('video_type', 'both')
 
         # 验证参数
         if not validate_user_id(user_id) or not validate_term_params(term_year, term_id):

@@ -123,14 +123,12 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
     for attempt in range(max_attempts):
         temp_path = None
         try:
-            logger.info(
-                f"开始下载 ({attempt + 1}/{max_attempts}): {safe_filename}")
+            logger.info(f"开始下载 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
             # 首先发送HEAD请求获取文件信息
             try:
                 logger.debug(f"HEAD {url}")
-                head_response = requests.head(
-                    url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)
+                head_response = requests.head(url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)
                 head_response.raise_for_status()
 
                 total_size = int(head_response.headers.get('content-length', 0))
@@ -141,8 +139,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 if content_type and 'video' not in content_type and 'octet-stream' not in content_type:
                     logger.warning(f"内容类型可能不正确: {content_type}")
 
-                logger.info(
-                    f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
+                logger.info(f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
 
             except requests.RequestException as e:
                 logger.warning(f"获取文件信息失败，继续下载: {e}")
@@ -153,24 +150,18 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
             temp_path = output_path.with_suffix('.tmp')
 
             # 如果服务器支持 Range 且文件较大，则使用多线程分片下载
-            use_multithread = (
-                total_size >= MIN_SIZE_FOR_MULTITHREAD and
-                accept_ranges and
-                'bytes' in accept_ranges.lower()
-            )
+            use_multithread = (total_size >= MIN_SIZE_FOR_MULTITHREAD and accept_ranges and 'bytes' in accept_ranges.lower())
 
             if use_multithread:
                 # Determine number of threads
-                num_threads = min(MAX_THREADS_PER_FILE, max(
-                    1, math.ceil(total_size / (MIN_SIZE_FOR_MULTITHREAD))))
+                num_threads = min(MAX_THREADS_PER_FILE, max(1, math.ceil(total_size / (MIN_SIZE_FOR_MULTITHREAD))))
                 num_threads = min(num_threads, MAX_THREADS_PER_FILE)
 
                 # split ranges
                 part_size = total_size // num_threads
 
                 # prepare part files
-                part_paths = [temp_path.with_suffix(
-                    f'.part{idx}') for idx in range(num_threads)]
+                part_paths = [temp_path.with_suffix(f'.part{idx}') for idx in range(num_threads)]
                 downloaded_lock = threading.Lock()
                 downloaded_total = {'value': 0}
 
@@ -190,13 +181,11 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                                         if chunk:
                                             pf.write(chunk)
                                             with downloaded_lock:
-                                                downloaded_total['value'] += len(
-                                                    chunk)
+                                                downloaded_total['value'] += len(chunk)
                             return True
                         except Exception as e:
                             attempts_local += 1
-                            logger.warning(
-                                f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
+                            logger.warning(f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
                     # 记录失败（不抛异常，避免线程级大量 traceback 噪音）
                     fail_parts.append(idx)
                     return False
@@ -205,10 +194,8 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 threads = []
                 for i in range(num_threads):
                     start = i * part_size
-                    end = (start + part_size - 1) if i < num_threads - \
-                        1 else (total_size - 1)
-                    t = threading.Thread(target=worker, args=(
-                        i, start, end, part_paths[i]), daemon=True)
+                    end = (start + part_size - 1) if i < num_threads - 1 else (total_size - 1)
+                    t = threading.Thread(target=worker, args=(i, start, end, part_paths[i]), daemon=True)
                     threads.append(t)
                     t.start()
 
@@ -237,8 +224,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
 
                 # 如果有失败的分片，回退到单线程下载
                 if fail_parts:
-                    logger.warning(
-                        f"检测到 {len(fail_parts)} 个分片下载失败，回退到单线程下载：{fail_parts}")
+                    logger.warning(f"检测到 {len(fail_parts)} 个分片下载失败，回退到单线程下载：{fail_parts}")
                     # 清理已下载分片
                     for p in part_paths:
                         if p.exists():
@@ -254,12 +240,10 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                             pass
 
                     logger.debug(f"GET {url} (fallback single-thread after parts) ")
-                    response = requests.get(
-                        url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
+                    response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
                     response.raise_for_status()
                     if total_size == 0:
-                        total_size = int(
-                            response.headers.get('content-length', 0))
+                        total_size = int(response.headers.get('content-length', 0))
                     downloaded_size = 0
                     with open(temp_path, 'wb') as f:
                         if total_size > 0:
@@ -298,8 +282,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                 if temp_path.exists():
                     resume_pos = temp_path.stat().st_size
                     if resume_pos > 0 and total_size > 0 and resume_pos < total_size:
-                        logger.info(
-                            f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
+                        logger.info(f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
                         headers['Range'] = f'bytes={resume_pos}-'
                     else:
                         # 删除无效的临时文件
@@ -307,8 +290,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                         resume_pos = 0
 
                 # 发送GET请求下载文件
-                response = requests.get(
-                    url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
+                response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
                 response.raise_for_status()
 
                 # 更新总大小（如果之前没有获取到）
@@ -480,12 +462,7 @@ def check_ffmpeg_availability():
         bool: FFmpeg是否可用
     """
     try:
-        result = subprocess.run(
-            ['ffmpeg', '-version'],
-            capture_output=True,
-            check=True,
-            timeout=10
-        )
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True, timeout=10)
         logger.debug("FFmpeg可用")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
@@ -579,15 +556,13 @@ def merge_videos(files, output_file):
             valid_files.sort(key=lambda f: Path(f).name)
             for file_path in valid_files:
                 # 使用绝对路径并转义，确保FFmpeg能正确处理
-                escaped_path = str(Path(file_path).resolve()).replace(
-                    "'", r"\'").replace("\\", "/")
+                escaped_path = str(Path(file_path).resolve()).replace("'", r"\'").replace("\\", "/")
                 temp_file.write(f"file '{escaped_path}'\n")
 
         logger.info(f"准备合并 {len(valid_files)} 个文件到: {output_file}")
 
         # 创建临时输出文件
-        temp_output_file = str(
-            output_path.with_suffix('.tmp' + output_path.suffix))
+        temp_output_file = str(output_path.with_suffix('.tmp' + output_path.suffix))
 
         # 构建FFmpeg命令
         ffmpeg_cmd = [
@@ -790,14 +765,12 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
 
         # 解析当前 base_filename 的前缀和节次区间
         # 形如：<prefix>第7节 或 <prefix>第7-8节
-        range_pattern = re.compile(
-            r'^(?P<prefix>.+?)第(?P<start>\d+)(?:-(?P<end>\d+))?节$')
+        range_pattern = re.compile(r'^(?P<prefix>.+?)第(?P<start>\d+)(?:-(?P<end>\d+))?节$')
         current_match = range_pattern.match(base_filename)
         if current_match:
             prefix = current_match.group('prefix')  # 含课程/日期/周/星期等完整信息
             cur_start = int(current_match.group('start'))
-            cur_end = int(current_match.group('end')
-                          or current_match.group('start'))
+            cur_end = int(current_match.group('end') or current_match.group('start'))
 
             # 针对同一 prefix 下的所有同类型(track_type)文件进行扫描
             # 我们只关心 prefix 相同的文件（确保同一天同课程同周次）
@@ -882,8 +855,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         filepath = Path(save_dir) / filename
 
         # 检查文件是否已存在
-        single_exists, merged_exists = check_existing_files(
-            base_filename, track_type, save_dir)
+        single_exists, merged_exists = check_existing_files(base_filename, track_type, save_dir)
 
         if merged_exists:
             logger.info(f"合并后的视频已存在，跳过: {filename}")
@@ -956,8 +928,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         all_files.sort(key=lambda f: int(re.search(r"第(\d+)节", f).group(1)))
 
         # 生成合并后的文件名
-        jie_numbers = [int(re.search(r"第(\d+)节", f).group(1))
-                       for f in all_files]
+        jie_numbers = [int(re.search(r"第(\d+)节", f).group(1)) for f in all_files]
         merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{min(jie_numbers)}-{max(jie_numbers)}节-{track_type}.mp4"
         merged_filepath = save_path / merged_filename
 
@@ -967,8 +938,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
             return True
 
         # 执行合并
-        logger.info(
-            f"合并视频文件: {[Path(f).name for f in all_files]} -> {merged_filename}")
+        logger.info(f"合并视频文件: {[Path(f).name for f in all_files]} -> {merged_filename}")
         return merge_videos(all_files, str(merged_filepath))
 
     # 处理所有视频
@@ -1245,8 +1215,7 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
         first_entry = data[0]
         year = time.gmtime(first_entry["startTime"]["time"] / 1000).tm_year
         course_code = first_entry.get("courseCode", "未知课程")
-        course_name = remove_invalid_chars(
-            first_entry.get("courseName", "未知课程名"))
+        course_name = remove_invalid_chars(first_entry.get("courseName", "未知课程名"))
 
         save_dir = f"{year}年{course_code}{course_name}"
 
@@ -1325,8 +1294,7 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
             csv_filename = logs_dir / f"{save_dir}.csv"
             with open(csv_filename, mode='w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
-                writer.writerow(['month', 'date', 'day', 'jie',
-                                'days', 'pptVideo', 'teacherTrack'])
+                writer.writerow(['month', 'date', 'day', 'jie', 'days', 'pptVideo', 'teacherTrack'])
                 writer.writerows(rows)
             print(f"视频信息已保存到：{csv_filename}")
             logger.info(f"视频信息CSV已保存: {csv_filename}")
@@ -1353,14 +1321,10 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
         else:
             # 批量下载处理
             try:
-                stats = process_rows(
-                    download_rows, course_code, course_name, year,
-                    save_dir, '', merge, video_type
-                )
+                stats = process_rows(download_rows, course_code, course_name, year, save_dir, '', merge, video_type)
 
                 print(f"\n下载任务完成！")
-                print(
-                    f"总计 {stats['total_videos']} 个 | 下载 {stats['downloaded']} 个 | 跳过 {stats['skipped']} 个 | 失败 {stats['failed']} 个 | 合并 {stats['merged']} 个")
+                print(f"总计 {stats['total_videos']} 个 | 下载 {stats['downloaded']} 个 | 跳过 {stats['skipped']} 个 | 失败 {stats['failed']} 个 | 合并 {stats['merged']} 个")
 
                 if stats['failed'] > 0:
                     print(f"\n注意：有 {stats['failed']} 个视频下载失败")
@@ -1415,8 +1379,7 @@ def process_all_courses(config, video_type='both'):
         try:
             # 下载课程视频 - 使用提取的核心下载函数
             clear_overwrite_line()
-            success = download_course_videos(
-                live_id, single=0, merge=True, video_type=video_type)
+            success = download_course_videos(live_id, single=0, merge=True, video_type=video_type)
             if success:
                 success_count += 1
             else:
@@ -1425,8 +1388,7 @@ def process_all_courses(config, video_type='both'):
 
         except Exception as e:
             clear_overwrite_line()
-            error_msg = handle_exception(
-                e, f"处理课程失败 ({course_code} {course_name})")
+            error_msg = handle_exception(e, f"处理课程失败 ({course_code} {course_name})")
             logger.error(error_msg)
             print(f"\n课程 {course_code} {course_name} 处理时发生错误: {error_msg}")
 

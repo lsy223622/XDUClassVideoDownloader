@@ -348,8 +348,7 @@ def calculate_optimal_threads():
         mem_usage = psutil.virtual_memory().percent
         cpu_count = os.cpu_count() or 4  # 提供默认值
 
-        logger.info(
-            f"系统状态 - CPU使用率: {cpu_usage}%, 内存使用率: {mem_usage}%, CPU核心数: {cpu_count}")
+        logger.info(f"系统状态 - CPU使用率: {cpu_usage}%, 内存使用率: {mem_usage}%, CPU核心数: {cpu_count}")
 
         # 根据系统负载动态调整线程数
         if cpu_usage > 80 or mem_usage > 85:

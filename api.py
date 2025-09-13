@@ -54,7 +54,7 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 # 上次请求时间，用于频率控制
 _last_request_time = 0
 
-# 自定义异常：表示视频回看仍在生成中（尚不可下载）
+
 class VideoGeneratingError(Exception):
     """Raised when the replay video is still being generated (页面提示: 视频回看生成中)."""
     pass
@@ -307,10 +307,7 @@ def get_initial_data(liveid):
         session = create_session()
 
         # 构建请求数据
-        request_data = {
-            "liveId": validated_liveid,
-            "fid": FID
-        }
+        request_data = {"liveId": validated_liveid, "fid": FID}
 
         logger.info(f"正在获取课程 {validated_liveid} 的初始数据")
 
@@ -345,15 +342,13 @@ def get_initial_data(liveid):
             return []
 
         # 验证数据完整性
-        required_fields = ['id', 'courseCode',
-                           'courseName', 'startTime', 'endTime']
+        required_fields = ['id', 'courseCode', 'courseName', 'startTime', 'endTime']
         for i, item in enumerate(data):
             if not isinstance(item, dict):
                 logger.warning(f"第 {i} 项数据格式错误，跳过")
                 continue
 
-            missing_fields = [
-                field for field in required_fields if field not in item]
+            missing_fields = [field for field in required_fields if field not in item]
             if missing_fields:
                 logger.warning(f"第 {i} 项数据缺少字段: {missing_fields}")
 
@@ -406,8 +401,7 @@ def get_video_info_from_html(live_id, retry_count=0):
     if retry_count > 0:
         logger.info(f"正在进行第 {retry_count + 1}/{MAX_RETRIES + 1} 次尝试获取视频信息")
         # 指数退避
-        sleep_time = RETRY_BACKOFF_FACTOR * \
-            (2 ** retry_count) + random.uniform(0, 1)
+        sleep_time = RETRY_BACKOFF_FACTOR * ((2 ** retry_count) + random.uniform(0, 1))
         time.sleep(sleep_time)
 
     try:
@@ -463,8 +457,7 @@ def get_video_info_from_html(live_id, retry_count=0):
                     logger.warning(f"未找到infostr变量，重试中...")
                     return get_video_info_from_html(live_id, retry_count + 1)
                 else:
-                    logger.warning(
-                        f"无法在HTML响应中找到视频信息变量，liveId: {validated_live_id}")
+                    logger.warning(f"无法在HTML响应中找到视频信息变量，liveId: {validated_live_id}")
                     raise ValueError(f"无法获取视频信息，课程ID: {validated_live_id}")
 
         encoded_info = match.group(1)
@@ -494,16 +487,14 @@ def get_video_info_from_html(live_id, retry_count=0):
 
     except requests.Timeout:
         if retry_count < MAX_RETRIES:
-            logger.warning(
-                f"请求超时，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
+            logger.warning(f"请求超时，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
             return get_video_info_from_html(live_id, retry_count + 1)
         else:
             raise ValueError(f"请求超时，课程ID: {validated_live_id}")
 
     except requests.ConnectionError:
         if retry_count < MAX_RETRIES:
-            logger.warning(
-                f"网络连接错误，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
+            logger.warning(f"网络连接错误，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
             return get_video_info_from_html(live_id, retry_count + 1)
         else:
             raise ValueError(f"网络连接失败，课程ID: {validated_live_id}")
@@ -513,8 +504,7 @@ def get_video_info_from_html(live_id, retry_count=0):
         logger.error(error_msg)
 
         if e.response.status_code in [429, 503] and retry_count < MAX_RETRIES:
-            logger.warning(
-                f"服务器繁忙，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
+            logger.warning(f"服务器繁忙，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
             return get_video_info_from_html(live_id, retry_count + 1)
         else:
             raise ValueError(error_msg)
@@ -577,8 +567,7 @@ def get_mp4_links(live_id):
         if not ppt_video and not teacher_track:
             logger.warning(f"没有找到有效的视频链接，课程ID: {live_id}")
         else:
-            logger.info(
-                f"成功获取视频链接，课程ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}")
+            logger.info(f"成功获取视频链接，课程ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}")
 
         return ppt_video, teacher_track
 
@@ -704,21 +693,17 @@ def scan_courses(user_id, term_year, term_id):
                     if course_id not in first_classes:
                         try:
                             # 验证必要字段
-                            required_fields = [
-                                'courseCode', 'courseName', 'id']
+                            required_fields = ['courseCode', 'courseName', 'id']
                             for field in required_fields:
                                 if field not in item:
-                                    logger.warning(
-                                        f"课程 {course_id} 缺少字段 {field}")
+                                    logger.warning(f"课程 {course_id} 缺少字段 {field}")
 
                             # 移除课程名称中的非法字符
                             if 'courseName' in item:
-                                item['courseName'] = remove_invalid_chars(
-                                    item['courseName'])
+                                item['courseName'] = remove_invalid_chars(item['courseName'])
 
                             first_classes[course_id] = item
-                            logger.debug(
-                                f"添加新课程: {course_id} - {item.get('courseName', '未知')}")
+                            logger.debug(f"添加新课程: {course_id} - {item.get('courseName', '未知')}")
                         except Exception as e:
                             logger.warning(f"处理课程 {course_id} 时出错: {e}")
                             continue

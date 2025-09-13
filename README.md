@@ -12,12 +12,12 @@
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
 [![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
-## 🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适🎉🎉
+## 🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适 🎉🎉
 
 本项目经过重大更新，在适配新版录直播平台接口同时，全面重构代码，大幅优化了下载速度和用户体验。
 
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
-  - [🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适🎉🎉](#-30-版本重大更新代码全面重构更快更舒适)
+  - [🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适 🎉🎉](#-30-版本重大更新代码全面重构更快更舒适-)
   - [**使用须知**](#使用须知)
   - [**项目简介**](#项目简介)
   - [**核心功能**](#核心功能)
@@ -45,10 +45,11 @@
 本项目是为西安电子科技大学录播平台设计的课程视频下载工具，包含两个核心脚本：
 
 - **`XDUClassVideoDownloader.py`**：基础下载脚本，通过课程的 `liveId` 来下载指定视频。您可以选择下载单节课（上下两集）、单集（半节课）或该课程的全部视频。
-    > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到。例如：`http://newes.chaoxing.com/xidianpj/live/viewNewCourseLive1?isStudent=1&liveId=12345678` 中的 `12345678`。
+
+  > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到。例如：`http://newes.chaoxing.com/xidianpj/live/viewNewCourseLive1?isStudent=1&liveId=12345678` 中的 `12345678`。
 
 - **`Automation.py`**：强大的自动化脚本，通过您的超星 `UID` 来自动发现并下载当前学期的所有课程。
-    > 您的超星 `UID` 可以在浏览器开发者工具中查看 `chaoxing.com` 域下的 Cookie 找到。
+  > 您的超星 `UID` 可以在浏览器开发者工具中查看 `chaoxing.com` 域下的 Cookie 找到。
 
 ## **核心功能**
 
@@ -67,9 +68,9 @@
 1. **Python**: 建议使用 `Python 3.8+` 版本（作者开发时使用 3.11.7）。[从 Python 官网下载](https://www.python.org/downloads/)
 2. **依赖库**: 使用 `pip` 安装所需的库：
 
-    ```shell
-    pip install requests tqdm psutil
-    ```
+   ```shell
+   pip install requests tqdm psutil
+   ```
 
 3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。
 
@@ -93,39 +94,39 @@
 此脚本适用于下载特定的一门课或一节课。
 
 - **交互模式**:
-    1. 在 Windows 上双击 `windows_run.bat`，或在其他系统上运行 `python XDUClassVideoDownloader.py`。
-    2. 根据提示输入 `liveId`。
-    3. 选择下载范围:
-        - `1` (或直接回车): 下载这门课的**所有视频**。
-        - `2`: 下载该 `liveId` 对应的**单节课**（上下两集）。
-        - `3`: 仅下载该 `liveId` 对应的**单集视频**（半节课）。
-    4. 选择是否自动合并视频：
-        - `1` (或直接回车): 自动合并视频。
-        - `2`: 不自动合并视频。
-    5. 选择要下载的视频类型:
-        - `1` (或直接回车): 下载两种视频（pptVideo和teacherTrack，默认）。
-        - `2`: 仅下载 pptVideo（课件视频）。
-        - `3`: 仅下载 teacherTrack（教师视频）。
-    6. 输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从第一周开始下载。
-    7. 按照提示登录并找到超星平台的 Cookie，依次输入 `_d`,`UID`,`vc3` 的值。
+  1. 在 Windows 上双击 `windows_run.bat`，或在其他系统上运行 `python XDUClassVideoDownloader.py`。
+  2. 根据提示输入 `liveId`。
+  3. 选择下载范围:
+     - `1` (或直接回车): 下载这门课的**所有视频**。
+     - `2`: 下载该 `liveId` 对应的**单节课**（上下两集）。
+     - `3`: 仅下载该 `liveId` 对应的**单集视频**（半节课）。
+  4. 选择是否自动合并视频：
+     - `1` (或直接回车): 自动合并视频。
+     - `2`: 不自动合并视频。
+  5. 选择要下载的视频类型:
+     - `1` (或直接回车): 下载两种视频（pptVideo 和 teacherTrack，默认）。
+     - `2`: 仅下载 pptVideo（课件视频）。
+     - `3`: 仅下载 teacherTrack（教师视频）。
+  6. 输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从第一周开始下载。
+  7. 按照提示登录并找到超星平台的 Cookie，依次输入 `_d`,`UID`,`vc3` 的值。
 
 #### **`Automation.py`** (全自动下载)
 
 这是推荐的使用方式，可以一劳永逸地管理您的所有课程视频。
 
 - **使用流程**:
-    1. 在 Windows 上双击 `automation.bat`，或在其他系统上运行 `python Automation.py`。
-    2. **首次运行**:
-        - 程序会提示您输入超星 `UID`。
-        - 输入后，脚本会自动扫描您当前学期的所有课程，并生成一个 `config.ini` 文件。
-        - 此时，您可以打开 `config.ini` 文件，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
-        - 配置文件中的 `video_type` 字段控制全局视频类型（`both`/`ppt`/`teacher`），默认为 `both`。
-        - 保存配置文件后，回到程序窗口按回车键，即可开始下载。
-    3. **后续运行**:
-        - 程序会自动读取 `config.ini`，并检查是否有新课程加入。
-        - 如果发现新课程，会将其添加到配置文件中并提示您修改。确认后即可开始增量下载。
-        - 程序会自动检查并更新旧版本的配置文件，确保包含 `video_type` 参数。
-        - 若要重新扫描所有课程或更换学期，只需删除 `config.ini` 文件后重新运行脚本即可。
+  1. 在 Windows 上双击 `automation.bat`，或在其他系统上运行 `python Automation.py`。
+  2. **首次运行**:
+     - 程序会提示您输入超星 `UID`。
+     - 输入后，脚本会自动扫描您当前学期的所有课程，并生成一个 `config.ini` 文件。
+     - 此时，您可以打开 `config.ini` 文件，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
+     - 配置文件中的 `video_type` 字段控制全局视频类型（`both`/`ppt`/`teacher`），默认为 `both`。
+     - 保存配置文件后，回到程序窗口按回车键，即可开始下载。
+  3. **后续运行**:
+     - 程序会自动读取 `config.ini`，并检查是否有新课程加入。
+     - 如果发现新课程，会将其添加到配置文件中并提示您修改。确认后即可开始增量下载。
+     - 程序会自动检查并更新旧版本的配置文件，确保包含 `video_type` 参数。
+     - 若要重新扫描所有课程或更换学期，只需删除 `config.ini` 文件后重新运行脚本即可。
 
 ## **命令行参数详解**
 
