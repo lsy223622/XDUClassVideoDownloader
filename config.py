@@ -27,6 +27,9 @@ logger = setup_logging('config')
 AUTOMATION_CONFIG_FILE = 'automation_config.ini'
 AUTH_CONFIG_FILE = 'auth.ini'
 
+# 运行期（进程内）认证信息缓存：确保一次运行内仅登录一次
+_runtime_auth_cache = None  # 形如 {'_d': '...', 'UID': '...', 'vc3': '...', 'fid': '...'}
+
 
 def safe_write_config(config, filename, backup=False):
     """
@@ -113,7 +116,7 @@ def safe_read_config(filename):
         raise
 
 
-def get_auth_cookies(fid=None):
+def get_auth_cookies(fid=None, *, force_refresh=False):
     """
     获取身份验证所需的cookie信息。
     支持两种认证方式：账号密码登录和直接使用cookies。
@@ -127,6 +130,21 @@ def get_auth_cookies(fid=None):
     异常:
         ValueError: 当认证信息无效时
     """
+    global _runtime_auth_cache
+
+    # 运行期缓存优先（除非强制刷新）
+    if not force_refresh and isinstance(_runtime_auth_cache, dict):
+        try:
+            if all(_runtime_auth_cache.get(k) for k in ['_d', 'UID', 'vc3']):
+                # 按需覆盖/补充 fid（不改变其它键）
+                if fid is not None:
+                    _runtime_auth_cache['fid'] = fid or ''
+                logger.debug("使用运行期缓存的认证信息（本次运行内复用）")
+                return _runtime_auth_cache
+        except Exception:
+            # 缓存结构异常则丢弃，走后续正常流程
+            _runtime_auth_cache = None
+
     config = configparser.ConfigParser(interpolation=None)
     # 保持键的大小写
     config.optionxform = str
@@ -154,6 +172,9 @@ def get_auth_cookies(fid=None):
                     auth_data = dict(config['AUTH'])
                     auth_data['fid'] = fid or ''
                     logger.info("从配置文件读取cookies认证信息成功")
+                    # 写入运行期缓存
+                    global _runtime_auth_cache
+                    _runtime_auth_cache = dict(auth_data)
                     return auth_data
             elif auth_method == 'password' and 'CREDENTIALS' in config:
                 if all(key in config['CREDENTIALS'] for key in ['username', 'password']):
@@ -169,7 +190,9 @@ def get_auth_cookies(fid=None):
                         if all(cookies.get(key) for key in ['_d', 'UID', 'vc3']):
                             cookies['fid'] = fid or ''
                             logger.info("通过账号密码登录获取cookies成功")
-                            return cookies
+                            # 写入运行期缓存，确保本次运行仅登录一次
+                            _runtime_auth_cache = dict(cookies)
+                            return _runtime_auth_cache
                         else:
                             logger.error("登录成功但获取的cookies不完整")
                     except Exception as e:
@@ -181,7 +204,15 @@ def get_auth_cookies(fid=None):
             logger.warning(f"读取保存的认证信息失败: {e}")
 
     # 需要重新获取认证信息
-    return _get_auth_info_interactively(config, fid)
+    # 交互式获取：获取成功后也写入运行期缓存
+    cookies = _get_auth_info_interactively(config, fid)
+    try:
+        if isinstance(cookies, dict) and all(cookies.get(k) for k in ['_d', 'UID', 'vc3']):
+            _runtime_auth_cache = dict(cookies)
+            logger.debug("已缓存认证信息用于本次运行")
+    except Exception:
+        pass
+    return cookies
 
 
 def _get_auth_info_interactively(config, fid):
@@ -299,6 +330,9 @@ def _get_cookies_from_password(fid):
         
         print("登录成功，认证信息获取完成")
         logger.info("通过账号密码登录获取cookies成功")
+        # 写入运行期缓存
+        global _runtime_auth_cache
+        _runtime_auth_cache = dict(cookies)
         return cookies
 
     except Exception as e:
@@ -347,9 +381,12 @@ def _get_cookies_manually(fid):
             validate_cookie_value,
             error_message="Cookie值不能为空且不能包含换行符，请重新输入"
         ).strip()
-
+        
         print("认证信息输入完成")
         logger.info("手动输入cookies完成")
+        # 写入运行期缓存
+        global _runtime_auth_cache
+        _runtime_auth_cache = dict(auth_cookies)
         return auth_cookies
 
     except Exception as e:
