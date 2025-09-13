@@ -25,13 +25,12 @@ from argparse import ArgumentParser
 
 # 本地模块导入
 from api import check_update
-from utils import setup_logging, handle_exception
+from utils import setup_logging, handle_exception, enable_debug_file_logging
 from config import safe_read_config, AUTOMATION_CONFIG_FILE, create_initial_config, update_existing_config
 from downloader import process_all_courses
 
-# 设置日志 - 详细日志保存到文件，控制台只显示重要信息
-logger = setup_logging('automation', level=logging.INFO,
-                       console_level=logging.ERROR)
+# 设置日志（模块日志 + 总日志；控制台仅 error+）
+logger = setup_logging('automation')
 
 
 def parse_automation_arguments():
@@ -50,6 +49,8 @@ def parse_automation_arguments():
                         help="学期：1表示第一学期（秋季），2表示第二学期（春季）")
     parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None,
                         help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+    parser.add_argument('--debug', action='store_true', dest='debug', default=False,
+                        help="启用调试日志（写入 logs/debug.log）")
     return parser.parse_args()
 
 
@@ -69,6 +70,14 @@ def main():
     try:
         logger.info("开始执行自动化批量下载任务")
 
+        # 解析命令行参数
+        args = parse_automation_arguments()
+
+        # 根据 --debug 参数启用调试日志文件（尽早，使后续网络请求有调试日志）
+        if getattr(args, 'debug', False):
+            enable_debug_file_logging()
+            logger.info("已启用调试日志输出（logs/debug.log）")
+
         # 检查程序更新
         try:
             check_update()
@@ -81,12 +90,9 @@ def main():
             auth_cookies = get_auth_cookies()
             logger.info("认证系统初始化成功")
         except Exception as e:
-            logger.error(f"认证系统初始化失败: {e}")
+            logger.critical(f"认证系统初始化失败: {e}")
             print(f"认证失败: {e}")
             return False
-
-        # 解析命令行参数
-        args = parse_automation_arguments()
 
         # 计算默认学期参数
         current_time = time.localtime()

@@ -20,9 +20,8 @@ from datetime import datetime
 from utils import remove_invalid_chars, setup_logging, handle_exception
 from validator import validate_user_id, validate_term_params
 
-# 配置日志
-logger = setup_logging('config', level=logging.INFO,
-                       console_level=logging.ERROR)
+# 配置日志（模块日志 + 总日志；控制台仅 error+）
+logger = setup_logging('config')
 
 # 配置文件名
 AUTOMATION_CONFIG_FILE = 'automation_config.ini'

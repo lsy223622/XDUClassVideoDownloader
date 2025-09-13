@@ -35,9 +35,8 @@ from utils import remove_invalid_chars, setup_logging
 from config import get_auth_cookies, format_auth_cookies
 from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
-# 配置日志
-logger = setup_logging('api', level=logging.INFO,
-                       console_level=logging.ERROR)
+# 配置日志（模块日志 + 总日志；控制台仅 error+）
+logger = setup_logging('api')
 
 # 应用版本和配置
 VERSION = "3.1.4"  # 更新版本号以反映改进
@@ -147,6 +146,7 @@ def get_three_cookies_from_login(username, password, base_url="https://passport2
     session = requests.Session()
 
     login_url = base_url.rstrip("/") + "/login"
+    logger.debug(f"GET {login_url}")
     resp = session.get(login_url, timeout=timeout)
     resp.raise_for_status()
 
@@ -173,6 +173,7 @@ def get_three_cookies_from_login(username, password, base_url="https://passport2
         pwd_payload = aes_cbc_pkcs7_encrypt_base64(password, transfer_key)
 
     post_url = base_url.rstrip("/") + "/fanyalogin"
+    logger.debug(f"POST {post_url} (encrypted={'true' if t_flag=='true' else 'false'})")
     data = {
         "fid": _hid("fid") or "-1",
         "uname": uname_payload,
@@ -315,6 +316,7 @@ def get_initial_data(liveid):
         logger.info(f"正在获取课程 {validated_liveid} 的初始数据")
 
         # 发送POST请求
+        logger.debug(f"POST http://newes.chaoxing.com/xidianpj/live/listSignleCourse with data={request_data}")
         response = session.post(
             "http://newes.chaoxing.com/xidianpj/live/listSignleCourse",
             headers=headers,
@@ -423,6 +425,7 @@ def get_video_info_from_html(live_id, retry_count=0):
         logger.debug(f"正在获取视频信息: {validated_live_id}")
 
         # 发送GET请求获取HTML页面
+        logger.debug(f"GET {url}")
         response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
@@ -626,7 +629,7 @@ def fetch_data(url):
         session = create_session()
 
         logger.debug(f"正在请求URL: {url}")
-
+        logger.debug(f"GET {url}")
         response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
@@ -799,10 +802,9 @@ def check_update():
     try:
         # 向API服务器请求最新版本信息
         session = create_session()
-        response = session.get(
-            f"https://api.lsy223622.com/xcvd.php?version={VERSION}",
-            timeout=10
-        )
+        url = f"https://api.lsy223622.com/xcvd.php?version={VERSION}"
+        logger.debug(f"GET {url}")
+        response = session.get(url, timeout=10)
         response.raise_for_status()
 
         try:

@@ -18,77 +18,134 @@ import stat
 from pathlib import Path
 import logging
 import math
+from typing import Optional
 
 
-# 配置基础日志记录 - 只保存到文件
-logs_dir = Path('logs')
-logs_dir.mkdir(exist_ok=True)
+# ========== 统一日志系统 ==========
+# 控制是否将 DEBUG 级别输出到单独文件（默认关闭），通过主程序/自动化脚本的命令行参数 --debug 启用。
+DEBUG_LOG_TO_FILE = False
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-    handlers=[
-        logging.FileHandler(logs_dir / 'xdu_downloader.log', encoding='utf-8')
-    ]
-)
-logger = logging.getLogger(__name__)
+_GLOBAL_LOGGING_INITIALIZED = False
 
 
-def setup_logging(name='xdu_downloader', level=logging.INFO, console_level=logging.ERROR):
+def _ensure_global_handlers(console_level=logging.ERROR, info_file: Optional[Path] = None, debug_file: Optional[Path] = None):
+    """初始化全局/root 日志处理器：
+    - 控制台：error 及以上
+    - 总日志：info 及以上
+    - 可选 debug 日志：debug 及以上
+    该函数只在首次调用时生效，防止重复添加处理器。
     """
-    设置日志记录系统。
+    global _GLOBAL_LOGGING_INITIALIZED
+    if _GLOBAL_LOGGING_INITIALIZED:
+        return
 
-    详细日志保存到文件中，用户界面只显示警告和错误信息。
-
-    参数:
-        name (str): 日志记录器名称
-        level: 文件日志级别
-        console_level: 控制台日志级别（默认只显示WARNING及以上）
-
-    返回:
-        logging.Logger: 配置好的日志记录器
-    """
-    # 创建日志记录器
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-
-    # 避免重复添加处理器
-    if logger.handlers:
-        return logger
-
-    # 创建日志目录
     log_dir = Path('logs')
-    log_dir.mkdir(exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    # 创建文件处理器 - 记录所有日志信息
-    file_handler = logging.FileHandler(
-        log_dir / f'{name}.log', encoding='utf-8')
-    file_handler.setLevel(level)
+    root_logger = logging.getLogger('xdu')
+    root_logger.setLevel(logging.DEBUG)  # 捕获所有级别，具体输出看 handler 设置
 
-    # 创建控制台处理器 - 默认只显示 ERROR 和 CRITICAL
+    # 控制台 handler（仅 error+）
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
+    console_handler.set_name('xdu_console')
+    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    root_logger.addHandler(console_handler)
 
-    # 创建详细的文件格式化器
-    file_formatter = logging.Formatter(
+    # 总日志（info+）
+    info_path = info_file or (log_dir / 'all.log')
+    file_handler = logging.FileHandler(info_path, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    file_handler.set_name('all_file')
+    file_handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    ))
+    root_logger.addHandler(file_handler)
 
-    # 创建简洁的控制台格式化器
-    console_formatter = logging.Formatter(
-        '%(levelname)s: %(message)s'
-    )
+    # 可选 debug 文件（debug+）
+    if DEBUG_LOG_TO_FILE:
+        debug_path = debug_file or (log_dir / 'debug.log')
+        dbg_handler = logging.FileHandler(debug_path, encoding='utf-8')
+        dbg_handler.setLevel(logging.DEBUG)
+        dbg_handler.set_name('debug_file')
+        dbg_handler.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        root_logger.addHandler(dbg_handler)
 
-    # 设置格式化器
-    file_handler.setFormatter(file_formatter)
-    console_handler.setFormatter(console_formatter)
+    _GLOBAL_LOGGING_INITIALIZED = True
 
-    # 添加处理器到日志记录器
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
 
+def enable_debug_file_logging(path: Optional[str] = None):
+    """启用调试日志文件输出。通常由命令行参数 --debug 触发。
+    若已开启则忽略；可指定自定义路径。
+    """
+    global DEBUG_LOG_TO_FILE
+    if DEBUG_LOG_TO_FILE:
+        return
+    DEBUG_LOG_TO_FILE = True
+    # 重新挂载 debug handler（若 root 已初始化）
+    if _GLOBAL_LOGGING_INITIALIZED:
+        root = logging.getLogger('xdu')
+        # 若已存在则不重复添加
+        if not any(getattr(h, 'name', '') == 'debug_file' for h in root.handlers):
+            log_dir = Path('logs')
+            log_dir.mkdir(parents=True, exist_ok=True)
+            debug_path = Path(path) if path else (log_dir / 'debug.log')
+            dbg_handler = logging.FileHandler(debug_path, encoding='utf-8')
+            dbg_handler.setLevel(logging.DEBUG)
+            dbg_handler.set_name('debug_file')
+            dbg_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            ))
+            root.addHandler(dbg_handler)
+
+
+def setup_logging(name='app', level=logging.INFO, console_level=logging.ERROR):
+    """
+    设置并返回模块日志记录器：
+    - 仅首次调用时配置全局/root 处理器（控制台、总日志、可选 debug 文件）
+    - 为当前模块添加一个独立文件（info+）：logs/{name}.log
+
+    参数:
+        name (str): 模块名（会映射到 logger 名字 "xdu.{name}"）
+        level: 模块文件日志级别（默认 INFO）
+        console_level: 控制台日志级别（仅首次全局初始化时生效，默认 ERROR）
+
+    返回:
+        logging.Logger: 配置好的模块日志记录器
+    """
+    _ensure_global_handlers(console_level=console_level)
+
+    logger_name = f"xdu.{name}" if not str(name).startswith('xdu.') else str(name)
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)  # 模块 logger 接收所有级别，输出交由 handler 控制
+
+    # 避免重复添加模块文件 handler（按自定义 name 区分）
+    handler_marker = f"xdu_module_file::{logger_name}"
+    if not any(getattr(h, 'name', '') == handler_marker for h in logger.handlers):
+        log_dir = Path('logs')
+        log_dir.mkdir(parents=True, exist_ok=True)
+        module_file = log_dir / f"{name}.log"
+        fh = logging.FileHandler(module_file, encoding='utf-8')
+        fh.setLevel(level)
+        fh.set_name(handler_marker)
+        fh.setFormatter(logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        ))
+        logger.addHandler(fh)
+
+    # 让模块日志向上冒泡到 root（写入总日志/控制台/调试文件）
+    logger.propagate = True
     return logger
+
+
+# 初始化本模块日志器
+logger = setup_logging('utils')
 
 
 def remove_invalid_chars(course_name):

@@ -23,21 +23,14 @@ import logging
 from argparse import ArgumentParser
 from api import check_update
 from downloader import download_course_videos
-from utils import setup_logging, handle_exception, user_input_with_check
+from utils import setup_logging, handle_exception, user_input_with_check, enable_debug_file_logging
 from validator import validate_download_parameters, validate_live_id
 
-# 使用统一的日志配置
-logger = setup_logging('main_downloader', level=logging.INFO,
-                       console_level=logging.ERROR)
+# 使用统一的日志配置（模块日志 + 总日志；控制台仅 error+）
+logger = setup_logging('main')
 
-try:
-    # 检查程序更新
-    try:
-        check_update()
-    except Exception as e:
-        logger.debug(f"检查更新时出现异常: {e}")
-except Exception as e:
-    logger.warning(f"版本检查失败，程序继续运行: {e}")
+# 注意：是否启用 debug 日志，将在 __main__ 中根据命令行参数决定；
+# 版本检查也延后到参数解析之后，确保若开启 debug 能记录网络日志。
 
 
 def get_user_input_interactive():
@@ -195,6 +188,8 @@ def parse_main_arguments():
                         help="禁用自动合并相邻节次的视频文件")
     parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both',
                         help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
+    parser.add_argument('--debug', action='store_true', dest='debug', default=False,
+                        help="启用调试日志（写入 logs/debug.log）")
     return parser.parse_args()
 
 
@@ -221,7 +216,7 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
             auth_cookies = get_auth_cookies()
             logger.info("认证系统初始化成功")
         except Exception as e:
-            logger.error(f"认证系统初始化失败: {e}")
+            logger.critical(f"认证系统初始化失败: {e}")
             print(f"认证失败: {e}")
             return False
 
@@ -259,6 +254,17 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
 if __name__ == "__main__":
     # 解析命令行参数
     args = parse_main_arguments()
+
+    # 根据 --debug 参数启用调试日志文件
+    if getattr(args, 'debug', False):
+        enable_debug_file_logging()
+        logger.info("已启用调试日志输出（logs/debug.log）")
+
+    # 现在执行版本检查（可记录网络调试日志）
+    try:
+        check_update()
+    except Exception as e:
+        logger.debug(f"检查更新时出现异常: {e}")
 
     try:
         # 调用主函数，传入解析后的参数

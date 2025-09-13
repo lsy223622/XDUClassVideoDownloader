@@ -34,13 +34,13 @@ from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from tqdm import tqdm
-from utils import day_to_chinese, handle_exception, get_safe_filename, format_file_size, remove_invalid_chars, create_directory, calculate_optimal_threads
+from utils import day_to_chinese, handle_exception, get_safe_filename, format_file_size, remove_invalid_chars, create_directory, calculate_optimal_threads, setup_logging
 from config import get_auth_cookies, format_auth_cookies
 from validator import is_valid_url, validate_file_integrity as verify_file_integrity
 from api import FID, get_initial_data, fetch_m3u8_links
 
-# 配置日志
-logger = logging.getLogger(__name__)
+# 配置日志（统一到模块日志 + 总日志；控制台仅 error+）
+logger = setup_logging('downloader')
 
 # 下载配置
 CHUNK_SIZE = 8192  # 下载块大小
@@ -129,12 +129,12 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
 
             # 首先发送HEAD请求获取文件信息
             try:
+                logger.debug(f"HEAD {url}")
                 head_response = requests.head(
                     url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)
                 head_response.raise_for_status()
 
-                total_size = int(
-                    head_response.headers.get('content-length', 0))
+                total_size = int(head_response.headers.get('content-length', 0))
                 content_type = head_response.headers.get('content-type', '')
                 accept_ranges = head_response.headers.get('accept-ranges', '')
 
@@ -183,6 +183,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                     attempts_local = 0
                     while attempts_local < max_attempts:
                         try:
+                            logger.debug(f"GET {url} Range={start}-{end} (part {idx})")
                             with requests.get(url, headers=headers_local, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                                 r.raise_for_status()
                                 with open(part_path, 'wb') as pf:
@@ -253,6 +254,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                         except Exception:
                             pass
 
+                    logger.debug(f"GET {url} (fallback single-thread after parts) ")
                     response = requests.get(
                         url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
                     response.raise_for_status()

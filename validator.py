@@ -16,9 +16,8 @@ import logging
 from datetime import datetime
 from utils import setup_logging
 
-# 配置日志
-logger = setup_logging('validator', level=logging.INFO,
-                       console_level=logging.ERROR)
+# 配置日志（模块日志 + 总日志；控制台仅 error+）
+logger = setup_logging('validator')
 
 
 def validate_live_id(live_id):
