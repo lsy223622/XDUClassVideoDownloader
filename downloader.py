@@ -22,7 +22,6 @@ import re
 import requests
 import shutil
 import tempfile
-import logging
 import threading
 import math
 import sys

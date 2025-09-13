@@ -22,7 +22,6 @@ import json
 import re
 import time
 import random
-import logging
 import base64
 import hashlib
 from functools import wraps

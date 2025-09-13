@@ -14,7 +14,6 @@ import os
 import configparser
 import tempfile
 import shutil
-import logging
 from pathlib import Path
 from datetime import datetime
 from utils import remove_invalid_chars, setup_logging, handle_exception

@@ -12,7 +12,6 @@
 
 import re
 import os
-import logging
 from datetime import datetime
 from utils import setup_logging
 
