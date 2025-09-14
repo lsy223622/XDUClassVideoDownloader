@@ -193,4 +193,4 @@ Automation.exe --video-type teacher
 ## **依赖的二进制文件**
 
 - 项目已完成重构：不再依赖 `vsd` 或 `upx`。
-- 下载逻辑改为内置 MP4 直链（支持断点续传），合并步骤使用本地 `ffmpeg`（可在项目根目录放置 `ffmpeg` 可执行程序，或将系统 FFmpeg 加入 PATH）。
+- 下载逻辑改为内置 MP4 链接（支持断点续传），合并步骤使用本地 `ffmpeg`（可在项目根目录放置 `ffmpeg` 可执行程序，或将系统 FFmpeg 加入 PATH）。

@@ -329,40 +329,4 @@ def validate_cookie_value(value):
     return bool(value and len(value.strip()) > 0 and not any(char in value for char in ['\n', '\r', '\t']))
 
 
-def validate_filename_components(row):
-    """
-    验证从行数据中提取的文件名组件。
-
-    参数:
-        row (list): 视频信息行
-
-    返回:
-        tuple: (month, date, day, jie, days) 或 None（如果验证失败）
-    """
-    try:
-        if not isinstance(row, list) or len(row) < 7:
-            logger.warning(f"行数据格式错误: {row}")
-            return None
-
-        month, date, day, jie, days = row[:5]
-
-        # 类型转换和验证
-        try:
-            month = int(month)
-            date = int(date)
-            jie = int(jie)
-            if not (1 <= month <= 12):
-                raise ValueError(f"月份无效: {month}")
-            if not (1 <= date <= 31):
-                raise ValueError(f"日期无效: {date}")
-            if jie < 1:
-                raise ValueError(f"节次无效: {jie}")
-        except (TypeError, ValueError) as e:
-            logger.warning(f"时间数据格式错误: {e}")
-            return None
-
-        return month, date, day, jie, days
-
-    except Exception as e:
-        logger.warning(f"解析行数据时出错: {e}")
-        return None
+        

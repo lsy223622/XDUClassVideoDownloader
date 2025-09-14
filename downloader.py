@@ -36,7 +36,7 @@ from tqdm import tqdm
 from utils import day_to_chinese, handle_exception, get_safe_filename, format_file_size, remove_invalid_chars, create_directory, calculate_optimal_threads, setup_logging
 from config import get_auth_cookies, format_auth_cookies
 from validator import is_valid_url, validate_file_integrity as verify_file_integrity
-from api import FID, get_initial_data, fetch_m3u8_links
+from api import FID, get_initial_data, fetch_video_links
 
 # 配置日志（统一到模块日志 + 总日志；控制台仅 error+）
 logger = setup_logging('downloader')
@@ -1065,87 +1065,7 @@ def download_single_video(row, course_code, course_name, year, save_dir, video_t
         return False
 
 
-def is_video_exists(save_path, video_info, video_type):
-    """
-    检查视频文件是否已存在。
-
-    参数:
-        save_path: 保存路径
-        video_info: 视频信息
-        video_type: 视频类型 ('ppt' 或 'teacher')
-
-    返回:
-        bool: 文件是否存在
-    """
-    # 解析视频信息中的详情
-    course_code = video_info.get('courseCode', 'Unknown')
-    course_name = video_info.get('courseName', 'Unknown')
-    course_name = remove_invalid_chars(course_name)
-    year = video_info.get('year', datetime.now().year)
-    month = video_info.get('month', 1)
-    date = video_info.get('date', 1)
-    day = video_info.get('day', 1)
-    jie = video_info.get('jie', 1)
-    days = video_info.get('days', 1)
-
-    day_chinese = day_to_chinese(day)
-    base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
-
-    # 根据视频类型生成文件名
-    if video_type == 'ppt':
-        filename = f"{base_filename}-pptVideo.mp4"
-    else:  # teacher
-        filename = f"{base_filename}-teacherTrack.mp4"
-
-    file_path = os.path.join(save_path, filename)
-    return os.path.exists(file_path)
-
-
-def get_course_videos(live_id, video_type='both'):
-    """
-    获取指定课程的视频数据。
-
-    参数:
-        live_id: 课程直播ID
-        video_type: 视频类型 ('both', 'ppt', 'teacher')
-
-    返回:
-        tuple: (videos, save_path, course_name, course_code)
-    """
-    try:
-        # 获取课程信息
-        videos = get_initial_data(live_id)
-        if not videos:
-            return None, None, None, None
-
-        # 构建保存路径 - 从第一个视频获取课程信息
-        first_video = videos[0] if videos else None
-        if not first_video:
-            return None, None, None, None
-
-        course_code = first_video.get('courseCode', 'Unknown')
-        course_name = first_video.get('courseName', 'Unknown')
-        # 从startTime提取年份
-        start_time = first_video.get('startTime', '')
-        if start_time:
-            try:
-                year = int(start_time[:4])
-            except (ValueError, IndexError):
-                year = datetime.now().year
-        else:
-            year = datetime.now().year
-
-        course_name_clean = remove_invalid_chars(course_name)
-        save_path = f"{year}年{course_code}{course_name_clean}"
-
-        # 转换为字典格式以保持兼容性
-        videos_dict = {i: video for i, video in enumerate(videos)}
-
-        return videos_dict, save_path, course_name, course_code
-    except Exception as e:
-        error_msg = handle_exception(e, f"获取课程视频失败 (liveId: {live_id})")
-        logger.error(error_msg)
-        return None, None, None, None
+        
 
 
 def download_course_videos(live_id, single=0, merge=True, video_type='both', skip_until=0):
@@ -1233,7 +1153,7 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
             print(f"\n{error_msg}")
             return False
 
-        # 多线程获取所有视频的M3U8链接
+        # 多线程获取所有视频链接
         overwrite_print(f"正在获取视频链接...")
         rows = []
         lock = Lock()
@@ -1259,7 +1179,7 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
                 # 提交所有任务
                 futures = [
-                    executor.submit(fetch_m3u8_links, entry, lock, desc)
+                    executor.submit(fetch_video_links, entry, lock, desc)
                     for entry in valid_entries
                 ]
 

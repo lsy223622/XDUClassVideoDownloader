@@ -580,17 +580,6 @@ def get_mp4_links(live_id):
         raise ValueError(f"获取视频链接失败: {str(e)}")
 
 
-# 保留旧函数但标记为废弃
-def get_m3u8_text(live_id, u=0):
-    """
-    废弃的函数：获取M3U8播放列表的原始文本内容。
-
-    注意：此函数已废弃，新版本使用get_video_info_from_html。
-    """
-    logger.warning("get_m3u8_text函数已废弃，请使用新的API函数")
-    return ''
-
-
 @rate_limit
 def fetch_data(url):
     """
@@ -834,9 +823,9 @@ def check_update():
         logger.warning(f"版本检查失败: {e}")
 
 
-def fetch_m3u8_links(entry, lock, desc):
+def fetch_video_links(entry, lock, desc):
     """
-    获取单个课程条目的视频链接，用于多线程环境中安全地获取视频链接。
+    获取单个课程条目的视频链接（pptVideo / teacherTrack），用于多线程环境中安全地获取视频链接。
     包含完整的错误处理和数据验证。
 
     参数:
@@ -896,7 +885,6 @@ def fetch_m3u8_links(entry, lock, desc):
         # 使用线程锁安全地更新进度条
         with lock:
             desc.update(1)
-
         logger.debug(f"成功获取课程 {entry['id']} 的视频链接")
         return row
 
