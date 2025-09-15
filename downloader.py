@@ -29,7 +29,6 @@ import os
 import csv
 import time
 import concurrent.futures
-from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from tqdm import tqdm
@@ -428,32 +427,6 @@ def clear_overwrite_line():
         _last_overwrite = False
 
 
-def download_m3u8(url, filename, save_dir, command='', max_attempts=MAX_DOWNLOAD_RETRIES):
-    """
-    兼容性函数：将M3U8下载调用重定向到MP4下载。
-    保持向后兼容性，同时使用新的下载逻辑。
-
-    参数:
-        url (str): 视频文件的URL
-        filename (str): 保存的文件名
-        save_dir (str): 保存目录
-        command (str): 自定义下载命令（已弃用，保持兼容性）
-        max_attempts (int): 最大重试次数
-
-    返回:
-        bool: 下载是否成功
-    """
-    if command:
-        logger.warning("自定义下载命令参数已弃用，使用内置下载逻辑")
-
-    # 将.ts扩展名替换为.mp4
-    if filename.endswith('.ts'):
-        filename = filename[:-3] + '.mp4'
-        logger.debug(f"自动转换文件扩展名为: {filename}")
-
-    return download_mp4(url, filename, save_dir, max_attempts)
-
-
 def check_ffmpeg_availability():
     """
     检查系统是否安装了FFmpeg。
@@ -633,7 +606,7 @@ def merge_videos(files, output_file):
                     logger.warning(f"清理临时文件失败: {temp_file}, 错误: {e}")
 
 
-def process_rows(rows, course_code, course_name, year, save_dir, command='', merge=True, video_type='both'):
+def process_rows(rows, course_code, course_name, year, save_dir, merge=True, video_type='both'):
     """
     处理视频行数据，下载视频并可选择性地合并相邻节次的视频。
     包含完整的错误处理、进度跟踪和数据验证。
@@ -644,7 +617,6 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
         course_name (str): 课程名称
         year (int): 年份
         save_dir (str): 保存目录
-        command (str): 自定义下载命令（已弃用，保持兼容性）
         merge (bool): 是否自动合并相邻节次的视频
         video_type (str): 视频类型('both', 'ppt', 'teacher')
 
@@ -667,8 +639,7 @@ def process_rows(rows, course_code, course_name, year, save_dir, command='', mer
     if video_type not in ['both', 'ppt', 'teacher']:
         raise ValueError("视频类型必须是 'both', 'ppt' 或 'teacher'")
 
-    if command:
-        logger.warning("自定义下载命令参数已弃用")
+    # 保持简洁：已移除自定义下载命令参数
 
     # 确保保存目录存在
     try:
@@ -1241,7 +1212,7 @@ def download_course_videos(live_id, single=0, merge=True, video_type='both', ski
         else:
             # 批量下载处理
             try:
-                stats = process_rows(download_rows, course_code, course_name, year, save_dir, '', merge, video_type)
+                stats = process_rows(download_rows, course_code, course_name, year, save_dir, merge, video_type)
 
                 print(f"\n下载任务完成！")
                 print(f"总计 {stats['total_videos']} 个 | 下载 {stats['downloaded']} 个 | 跳过 {stats['skipped']} 个 | 失败 {stats['failed']} 个 | 合并 {stats['merged']} 个")

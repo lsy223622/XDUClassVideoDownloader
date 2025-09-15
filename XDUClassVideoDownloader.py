@@ -192,13 +192,12 @@ def parse_main_arguments():
     return parser.parse_args()
 
 
-def main(liveid=None, command='', single=0, merge=True, video_type='both'):
+def main(liveid=None, single=0, merge=True, video_type='both'):
     """
     主函数：下载指定课程的视频，包含完整的错误处理和用户体验优化。
 
     参数:
         liveid (int): 课程直播ID，为None时进入交互模式
-        command (str): 自定义下载命令（已弃用）
         single (int): 下载模式 (0=全部, 1=单节课, 2=半节课)
         merge (bool): 是否自动合并相邻节次视频
         video_type (str): 视频类型 ('both', 'ppt', 'teacher')
@@ -224,15 +223,14 @@ def main(liveid=None, command='', single=0, merge=True, video_type='both'):
             result = get_user_input_interactive()
             if result is None or result[0] is None:
                 return False
-            liveid, command, single, merge, video_type = result
+            liveid, _, single, merge, video_type = result
             skip_until = 0  # 简化处理
         else:
             # 验证命令行参数
             liveid, single, video_type = validate_download_parameters(liveid, single, video_type)
             skip_until = 0  # 非交互模式下，默认不跳过任何周
 
-            if command:
-                logger.warning("自定义下载命令参数已弃用")
+            # 无 command 参数
 
         logger.info(
             f"下载参数 - 课程ID: {liveid}, 模式: {single}, 合并: {merge}, 类型: {video_type}")
@@ -268,7 +266,6 @@ if __name__ == "__main__":
         # 调用主函数，传入解析后的参数
         success = main(
             liveid=args.liveid,
-            command='',  # 已弃用
             single=args.single,
             merge=args.merge,
             video_type=args.video_type
