@@ -1,0 +1,9 @@
+# Requirements for XDUClassVideoDownloader
+# Notes:
+# - FFmpeg is an external binary (not a Python package). See README.md for how to install it.
+
+requests>=2.32.5
+beautifulsoup4>=4.13.5
+pycryptodome>=3.23.0
+tqdm>=4.67.1
+psutil>=7.0.0
