@@ -54,11 +54,12 @@
 ## **核心功能**
 
 - **全自动批量下载**：运行 `Automation.py`，只有第一次需要输入一次 `UID` 和超星平台的鉴权 cookies，即可自动下载该学期所有已订阅的课程。
+- **支持账号登录**：支持“账号密码一键登录获取 Cookies（推荐）”或“手动输入 Cookies”。详见 `AUTHENTICATION.md`。
 - **智能化配置文件**：首次运行 `Automation.py` 会生成 `automation_config.ini` 文件，列出您的所有课程。您可以自由编辑此文件，决定哪些课程需要下载。
 - **新课程自动发现**：自动化脚本能自动检测到您课表中的新课程，并将其添加到配置文件中，提醒您进行确认。
 - **自动增量下载**：自动跳过已存在的视频文件，您可以随时运行脚本来下载新增的录播视频，无需担心重复下载。
 - **灵活的视频类型选择**：支持选择下载 pptVideo（课件视频）、teacherTrack（教师视频），或两种视频都下载。默认为两种都下载。
-- **视频智能合并**：自动将同一节课的上下两个部分（`pptVideo` 和 `teacherTrack`）合并为一个文件，方便观看。
+- **视频智能合并**：自动对同一节课的上下半节或相邻节次（同一轨道）进行无损合并（FFmpeg `-c copy`），方便观看。
 - **视频链接导出**：在下载的同时，会将所有视频的下载链接保存到对应的 `.csv` 文件中，方便您使用其他下载工具。
 - **性能优化**：根据系统负载（CPU、内存）动态调整并发线程数，在保证系统稳定性的前提下，最大化下载效率。
 - **自动更新检查**：启动时会检查项目是否有新版本，并给出提示。
@@ -69,7 +70,7 @@
 2. **依赖库**: 使用 `pip` 安装所需的库：
 
    ```shell
-   pip install requests tqdm psutil
+   pip install requests tqdm psutil beautifulsoup4 pycryptodome
    ```
 
 3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。
@@ -107,8 +108,10 @@
      - `1` (或直接回车): 下载两种视频（pptVideo 和 teacherTrack，默认）。
      - `2`: 仅下载 pptVideo（课件视频）。
      - `3`: 仅下载 teacherTrack（教师视频）。
-  6. 输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从第一周开始下载。
-  7. 按照提示登录并找到超星平台的 Cookie，依次输入 `_d`,`UID`,`vc3` 的值。
+  6. 可选：输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从第一周开始下载。
+  7. 首次运行会进入认证向导：
+     - 选择“账号密码（推荐）”自动登录并获取 Cookies，或
+     - 选择“手动输入 Cookies”并依次输入 `_d`、`UID`、`vc3`。
 
 #### **`Automation.py`** (全自动下载)
 
@@ -116,17 +119,17 @@
 
 - **使用流程**:
   1. 在 Windows 上双击 `automation.bat`，或在其他系统上运行 `python Automation.py`。
-  2. **首次运行**:
-     - 程序会提示您输入超星 `UID`。
-     - 输入后，脚本会自动扫描您当前学期的所有课程，并生成一个 `config.ini` 文件。
-     - 此时，您可以打开 `config.ini` 文件，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
+  1. **首次运行**:
+     - 程序会先进行认证（可选账号密码登录或手动 Cookies）。
+     - 随后提示输入超星 `UID`，并扫描当前学期课程，生成一个 `automation_config.ini` 文件。
+     - 您可以打开 `automation_config.ini`，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
      - 配置文件中的 `video_type` 字段控制全局视频类型（`both`/`ppt`/`teacher`），默认为 `both`。
      - 保存配置文件后，回到程序窗口按回车键，即可开始下载。
-  3. **后续运行**:
-     - 程序会自动读取 `config.ini`，并检查是否有新课程加入。
+  1. **后续运行**:
+     - 程序会自动读取 `automation_config.ini`，并检查是否有新课程加入。
      - 如果发现新课程，会将其添加到配置文件中并提示您修改。确认后即可开始增量下载。
      - 程序会自动检查并更新旧版本的配置文件，确保包含 `video_type` 参数。
-     - 若要重新扫描所有课程或更换学期，只需删除 `config.ini` 文件后重新运行脚本即可。
+     - 若要重新扫描所有课程或更换学期，只需删除 `automation_config.ini` 文件后重新运行脚本即可。
 
 ## **命令行参数详解**
 
@@ -136,7 +139,7 @@
 
 ```shell
 # 用法
-python XDUClassVideoDownloader.py [LIVEID] [-s] [--no-merge] [--video-type {both,ppt,teacher}]
+python XDUClassVideoDownloader.py [LIVEID] [-s | -ss] [--no-merge] [--video-type {both,ppt,teacher}] [--debug]
 ```
 
 - `LIVEID` (可选): 课程的 `liveId`。如果省略，将进入交互模式。
@@ -148,6 +151,7 @@ python XDUClassVideoDownloader.py [LIVEID] [-s] [--no-merge] [--video-type {both
   - `both`: 下载两种视频（pptVideo 和 teacherTrack，默认）
   - `ppt`: 仅下载 pptVideo（课件视频）
   - `teacher`: 仅下载 teacherTrack（教师视频）
+- `--debug` (可选): 启用调试日志（写入 `logs/debug.log`）。
 
 **示例:**
 
@@ -163,7 +167,7 @@ XDUClassVideoDownloader.exe 1234567890 --video-type teacher
 
 ```shell
 # 用法
-python Automation.py [-u UID] [-y YEAR] [-t TERM] [--video-type {both,ppt,teacher}]
+python Automation.py [-u UID] [-y YEAR] [-t TERM] [--video-type {both,ppt,teacher}] [--debug]
 ```
 
 - `-u UID` (可选): 您的超星 `UID`。
@@ -173,6 +177,7 @@ python Automation.py [-u UID] [-y YEAR] [-t TERM] [--video-type {both,ppt,teache
   - `both`: 下载两种视频（pptVideo 和 teacherTrack，默认）
   - `ppt`: 仅下载 pptVideo（课件视频）
   - `teacher`: 仅下载 teacherTrack（教师视频）
+- `--debug` (可选): 启用调试日志（写入 `logs/debug.log`）。
 
 **示例:**
 
