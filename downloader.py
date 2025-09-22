@@ -49,6 +49,36 @@ MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
 MIN_SIZE_FOR_MULTITHREAD = 10 * 1024 * 1024  # 启用多线程下载的最小文件大小（10MB）
 
 
+def _bundle_base_dir() -> Path:
+    """返回程序运行目录（onedir 架构：可执行旁目录；源码运行：当前文件目录）。"""
+    try:
+        if getattr(sys, 'frozen', False):
+            # PyInstaller onedir: 可执行文件所在目录即资源所在目录
+            return Path(sys.executable).resolve().parent
+        # 源码运行
+        return Path(__file__).resolve().parent
+    except Exception:
+        return Path.cwd()
+
+
+def get_ffmpeg_path() -> str:
+    """
+    获取 FFmpeg 可执行路径，优先顺序：
+    1) 同目录 ffmpeg_min.exe
+    2) 同目录 ffmpeg.exe
+    3) PATH 中的 ffmpeg
+    """
+    base = _bundle_base_dir()
+    for name in ('ffmpeg_min.exe', 'ffmpeg.exe'):
+        p = base / name
+        try:
+            if p.exists():
+                return str(p)
+        except Exception:
+            pass
+    return 'ffmpeg'
+
+
 def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
     """
     下载MP4视频文件，支持断点续传和完整性验证。
@@ -435,7 +465,8 @@ def check_ffmpeg_availability():
         bool: FFmpeg是否可用
     """
     try:
-        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True, timeout=10)
+        ffmpeg_bin = get_ffmpeg_path()
+        result = subprocess.run([ffmpeg_bin, '-version'], capture_output=True, check=True, timeout=10)
         logger.debug("FFmpeg可用")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
@@ -539,7 +570,7 @@ def merge_videos(files, output_file):
 
         # 构建FFmpeg命令
         ffmpeg_cmd = [
-            'ffmpeg',
+            get_ffmpeg_path(),
             '-f', 'concat',
             '-safe', '0',
             '-i', temp_list_file,
