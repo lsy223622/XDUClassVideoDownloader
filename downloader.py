@@ -26,6 +26,7 @@ import threading
 import math
 import sys
 import os
+import stat
 import csv
 import time
 import concurrent.futures
@@ -73,18 +74,59 @@ def _bundle_base_dir() -> Path:
 def get_ffmpeg_path() -> str:
     """
     获取 FFmpeg 可执行路径，优先顺序：
-    1) 同目录 ffmpeg_min.exe
-    2) 同目录 ffmpeg.exe
-    3) PATH 中的 ffmpeg
+    1) 环境变量指定：FFMPEG_BINARY / FFMPEG_PATH（可为绝对路径或命令名）
+    2) 程序目录：
+       - Windows: ffmpeg_min.exe / ffmpeg.exe
+       - POSIX:   ffmpeg_min / ffmpeg（无扩展名）
+    3) PATH 中的 ffmpeg（通过 shutil.which 查找）
     """
-    base = _bundle_base_dir()
-    for name in ('ffmpeg_min.exe', 'ffmpeg.exe'):
-        p = base / name
+    def _ensure_posix_executable(p: Path):
+        if os.name != 'nt':
+            try:
+                mode = p.stat().st_mode
+                if not (mode & stat.S_IXUSR):
+                    os.chmod(p, mode | stat.S_IXUSR)
+            except Exception:
+                pass
+
+    # 1) env override
+    for env_key in ('FFMPEG_BINARY', 'FFMPEG_PATH'):
+        val = os.environ.get(env_key)
+        if not val:
+            continue
         try:
+            p = Path(val)
             if p.exists():
+                _ensure_posix_executable(p)
                 return str(p)
         except Exception:
             pass
+        # allow command names in PATH
+        found = shutil.which(val)
+        if found:
+            return found
+
+    # 2) local bundled names
+    base = _bundle_base_dir()
+    if os.name == 'nt':
+        names = ('ffmpeg_min.exe', 'ffmpeg.exe')
+    else:
+        names = ('ffmpeg_min', 'ffmpeg')
+    for name in names:
+        p = base / name
+        try:
+            if p.exists():
+                _ensure_posix_executable(p)
+                return str(p)
+        except Exception:
+            pass
+
+    # 3) PATH
+    found = shutil.which('ffmpeg')
+    if found:
+        return found
+
+    # fallback: let subprocess resolve
     return 'ffmpeg'
 
 
@@ -476,7 +518,7 @@ def check_ffmpeg_availability():
     try:
         ffmpeg_bin = get_ffmpeg_path()
         result = subprocess.run([ffmpeg_bin, '-version'], capture_output=True, check=True, timeout=10)
-        logger.debug("FFmpeg可用")
+        logger.debug(f"FFmpeg可用: {ffmpeg_bin}")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         logger.warning("FFmpeg不可用")
