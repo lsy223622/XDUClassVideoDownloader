@@ -75,15 +75,13 @@
    pip install requests tqdm psutil beautifulsoup4 pycryptodome
    ```
 
-3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。
+3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
 
 ## **使用方法**
 
 ### **Windows 用户看这里！（懒人包）**
 
 您可以直接从项目的 [**Releases**](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 页面下载打包好的 `exe` 程序。该版本无需安装 Python 和任何依赖库，开箱即用。
-
-注意：如果需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)，并将压缩包 `bin` 文件夹中的 `ffmpeg.exe` 解压到程序同目录下或者添加到系统环境变量 `PATH` 中。
 
 - 要下载特定课程，运行 `XDUClassVideoDownloader.exe`。
 - 要全自动下载所有课程，运行 `Automation.exe`。
@@ -199,5 +197,4 @@ Automation.exe --video-type teacher
 
 ## **依赖的二进制文件**
 
-- 项目已完成重构：不再依赖 `vsd` 或 `upx`。
-- 下载逻辑改为内置 MP4 链接（支持断点续传），合并步骤使用本地 `ffmpeg`（可在项目根目录放置 `ffmpeg` 可执行程序，或将系统 FFmpeg 加入 PATH）。
+- 合并步骤使用本地 `ffmpeg`（可在项目根目录放置 `ffmpeg` 可执行程序，或将系统 FFmpeg 加入 PATH）。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
