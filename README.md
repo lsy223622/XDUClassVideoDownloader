@@ -12,6 +12,8 @@
 [![Static Badge](https://img.shields.io/badge/HOME-lsy223622.com-white?labelColor=396aa9)](https://lsy223622.com)
 [![Static Badge](https://img.shields.io/badge/BLOG-blog.lsy223622.com-white?labelColor=a6c4c2)](https://blog.lsy223622.com)
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lsy223622/XDUClassVideoDownloader)
+
 ## 🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适 🎉🎉
 
 本项目经过重大更新，在适配新版录直播平台接口同时，全面重构代码，大幅优化了下载速度和用户体验。
