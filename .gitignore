@@ -168,3 +168,4 @@ automation_config.ini
 # 忽略所有以 test_ 开头的 Python 文件
 test_*.py
 ffmpeg.exe
+ffmpeg_min.exe
