@@ -38,7 +38,7 @@ from validator import is_valid_url, validate_live_id, validate_scan_parameters
 logger = setup_logging('api')
 
 # 应用版本和配置
-VERSION = "3.1.4"  # 更新版本号以反映改进
+VERSION = "3.2.0"  # 更新版本号以反映改进
 FID = '16820'
 
 # 请求配置
