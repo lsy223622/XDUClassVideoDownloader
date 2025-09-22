@@ -50,12 +50,21 @@ MIN_SIZE_FOR_MULTITHREAD = 10 * 1024 * 1024  # 启用多线程下载的最小文
 
 
 def _bundle_base_dir() -> Path:
-    """返回程序运行目录（onedir 架构：可执行旁目录；源码运行：当前文件目录）。"""
+    """
+    返回程序运行目录：
+    - onefile：PyInstaller 会把资源解压到临时目录 sys._MEIPASS
+    - onedir：资源与可执行同目录（sys.executable 的父目录）
+    - 源码运行：当前文件目录
+    """
+    try:
+        meipass = getattr(sys, '_MEIPASS', None)
+    except Exception:
+        meipass = None
+    if meipass:
+        return Path(meipass)
     try:
         if getattr(sys, 'frozen', False):
-            # PyInstaller onedir: 可执行文件所在目录即资源所在目录
             return Path(sys.executable).resolve().parent
-        # 源码运行
         return Path(__file__).resolve().parent
     except Exception:
         return Path.cwd()
