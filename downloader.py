@@ -33,6 +33,7 @@ import concurrent.futures
 from pathlib import Path
 from threading import Lock
 from tqdm import tqdm
+from contextlib import closing
 from utils import day_to_chinese, handle_exception, get_safe_filename, format_file_size, remove_invalid_chars, create_directory, calculate_optimal_threads, setup_logging
 from config import get_auth_cookies, format_auth_cookies
 from validator import is_valid_url, validate_file_integrity as verify_file_integrity
@@ -169,12 +170,11 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
         if verify_file_integrity(str(output_path)):
             logger.info(f"文件已存在且完整，跳过下载: {safe_filename}")
             return True
-        else:
-            logger.warning(f"文件已存在但不完整，将重新下载: {safe_filename}")
-            try:
-                output_path.unlink()
-            except OSError as e:
-                logger.warning(f"删除不完整文件失败: {e}")
+        logger.warning(f"文件已存在但不完整，将重新下载: {safe_filename}")
+        try:
+            output_path.unlink()
+        except OSError as e:
+            logger.warning(f"删除不完整文件失败: {e}")
 
     # 创建保存目录
     try:
@@ -206,21 +206,20 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
             logger.info(f"开始下载 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
             # 首先发送HEAD请求获取文件信息
+            total_size = 0
+            accept_ranges = ''
             try:
                 logger.debug(f"HEAD {url}")
-                head_response = requests.head(url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)
-                head_response.raise_for_status()
-
-                total_size = int(head_response.headers.get('content-length', 0))
-                content_type = head_response.headers.get('content-type', '')
-                accept_ranges = head_response.headers.get('accept-ranges', '')
-
-                # 验证内容类型
-                if content_type and 'video' not in content_type and 'octet-stream' not in content_type:
-                    logger.warning(f"内容类型可能不正确: {content_type}")
-
-                logger.info(f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
-
+                with closing(requests.head(url, headers=headers, allow_redirects=True, timeout=DOWNLOAD_TIMEOUT)) as head_response:
+                    head_response.raise_for_status()
+                    total_size = int(head_response.headers.get('content-length', 0) or 0)
+                    content_type = head_response.headers.get('content-type', '')
+                    accept_ranges = head_response.headers.get('accept-ranges', '')
+                    
+                    # 验证内容类型
+                    if content_type and 'video' not in content_type and 'octet-stream' not in content_type:
+                        logger.warning(f"内容类型可能不正确: {content_type}")
+                    logger.info(f"文件大小: {format_file_size(total_size) if total_size > 0 else '未知'}")
             except requests.RequestException as e:
                 logger.warning(f"获取文件信息失败，继续下载: {e}")
                 total_size = 0
@@ -233,19 +232,13 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
             use_multithread = (total_size >= MIN_SIZE_FOR_MULTITHREAD and accept_ranges and 'bytes' in accept_ranges.lower())
 
             if use_multithread:
-                # Determine number of threads
-                num_threads = min(MAX_THREADS_PER_FILE, max(1, math.ceil(total_size / (MIN_SIZE_FOR_MULTITHREAD))))
+                num_threads = min(MAX_THREADS_PER_FILE, max(1, math.ceil(total_size / MIN_SIZE_FOR_MULTITHREAD)))
                 num_threads = min(num_threads, MAX_THREADS_PER_FILE)
-
-                # split ranges
                 part_size = total_size // num_threads
-
-                # prepare part files
                 part_paths = [temp_path.with_suffix(f'.part{idx}') for idx in range(num_threads)]
                 downloaded_lock = threading.Lock()
                 downloaded_total = {'value': 0}
-
-                fail_parts = []  # 记录失败的分片索引
+                fail_parts = []
 
                 def worker(idx, start, end, part_path):
                     headers_local = headers.copy()
@@ -266,7 +259,6 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                         except Exception as e:
                             attempts_local += 1
                             logger.warning(f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
-                    # 记录失败（不抛异常，避免线程级大量 traceback 噪音）
                     fail_parts.append(idx)
                     return False
 
@@ -320,26 +312,26 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
                             pass
 
                     logger.debug(f"GET {url} (fallback single-thread after parts) ")
-                    response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
-                    response.raise_for_status()
-                    if total_size == 0:
-                        total_size = int(response.headers.get('content-length', 0))
-                    downloaded_size = 0
-                    with open(temp_path, 'wb') as f:
-                        if total_size > 0:
-                            with tqdm(total=total_size, unit='B', unit_scale=True, desc=safe_filename, leave=False) as pbar:
-                                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded_size += len(chunk)
-                                        pbar.update(len(chunk))
-                        else:
-                            with tqdm(unit='B', unit_scale=True, desc=safe_filename, leave=False) as pbar:
-                                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                                    if chunk:
-                                        f.write(chunk)
-                                        downloaded_size += len(chunk)
-                                        pbar.update(len(chunk))
+                    with closing(requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)) as response:
+                        response.raise_for_status()
+                        if total_size == 0:
+                            total_size = int(response.headers.get('content-length', 0) or 0)
+                        downloaded_size = 0
+                        with open(temp_path, 'wb') as f:
+                            if total_size > 0:
+                                with tqdm(total=total_size, unit='B', unit_scale=True, desc=safe_filename, leave=False) as pbar:
+                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                        if chunk:
+                                            f.write(chunk)
+                                            downloaded_size += len(chunk)
+                                            pbar.update(len(chunk))
+                            else:
+                                with tqdm(unit='B', unit_scale=True, desc=safe_filename, leave=False) as pbar:
+                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                        if chunk:
+                                            f.write(chunk)
+                                            downloaded_size += len(chunk)
+                                            pbar.update(len(chunk))
                 else:
                     # 合并分片到临时文件
                     with open(temp_path, 'wb') as out_f:
@@ -359,54 +351,58 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
             else:
                 # 单线程/断点续传逻辑（保持原本行为）
                 resume_pos = 0
+                added_range = False
                 if temp_path.exists():
                     resume_pos = temp_path.stat().st_size
                     if resume_pos > 0 and total_size > 0 and resume_pos < total_size:
                         logger.info(f"检测到未完成的下载，从 {format_file_size(resume_pos)} 处继续")
                         headers['Range'] = f'bytes={resume_pos}-'
+                        added_range = True
                     else:
                         # 删除无效的临时文件
                         temp_path.unlink()
                         resume_pos = 0
 
                 # 发送GET请求下载文件
-                response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)
-                response.raise_for_status()
-
-                # 更新总大小（如果之前没有获取到）
-                if total_size == 0:
-                    total_size = int(response.headers.get('content-length', 0))
-
-                # 下载文件
-                downloaded_size = resume_pos
-                with open(temp_path, 'ab' if resume_pos > 0 else 'wb') as f:
-                    if total_size > 0:
-                        with tqdm(
-                            total=total_size,
-                            initial=downloaded_size,
-                            unit='B',
-                            unit_scale=True,
-                            desc=safe_filename,
-                            leave=False
-                        ) as pbar:
-                            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded_size += len(chunk)
-                                    pbar.update(len(chunk))
-                    else:
-                        # 如果无法获取文件大小，显示简单进度
-                        with tqdm(
-                            unit='B',
-                            unit_scale=True,
-                            desc=safe_filename,
-                            leave=False
-                        ) as pbar:
-                            for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
-                                if chunk:
-                                    f.write(chunk)
-                                    downloaded_size += len(chunk)
-                                    pbar.update(len(chunk))
+                try:
+                    with closing(requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)) as response:
+                        response.raise_for_status()
+                        # 更新总大小（如果之前没有获取到）
+                        if total_size == 0:
+                            total_size = int(response.headers.get('content-length', 0) or 0)
+                        # 下载文件
+                        downloaded_size = resume_pos
+                        with open(temp_path, 'ab' if resume_pos > 0 else 'wb') as f:
+                            if total_size > 0:
+                                with tqdm(
+                                    total=total_size,
+                                    initial=downloaded_size,
+                                    unit='B',
+                                    unit_scale=True,
+                                    desc=safe_filename,
+                                    leave=False
+                                ) as pbar:
+                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                        if chunk:
+                                            f.write(chunk)
+                                            downloaded_size += len(chunk)
+                                            pbar.update(len(chunk))
+                            else:
+                                # 如果无法获取文件大小，显示简单进度
+                                with tqdm(
+                                    unit='B',
+                                    unit_scale=True,
+                                    desc=safe_filename,
+                                    leave=False
+                                ) as pbar:
+                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                        if chunk:
+                                            f.write(chunk)
+                                            downloaded_size += len(chunk)
+                                            pbar.update(len(chunk))
+                finally:
+                    if added_range:
+                        headers.pop('Range', None)
 
             # 验证下载的文件
             if not verify_file_integrity(str(temp_path), total_size if total_size > 0 else None):
@@ -414,9 +410,7 @@ def download_mp4(url, filename, save_dir, max_attempts=MAX_DOWNLOAD_RETRIES):
 
             # 原子性重命名
             shutil.move(str(temp_path), str(output_path))
-
-            logger.info(
-                f"下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})")
+            logger.info(f"下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})")
             return True
 
         except requests.Timeout:
