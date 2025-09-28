@@ -17,23 +17,25 @@
 - 用户友好的错误提示
 """
 
-import traceback
-import sys
 import logging
-from argparse import ArgumentParser
+import sys
+import traceback
+from argparse import ArgumentParser, Namespace
+from typing import Optional, Tuple
+
 from api import check_update
 from downloader import download_course_videos
-from utils import setup_logging, handle_exception, user_input_with_check, enable_debug_file_logging
+from utils import enable_debug_file_logging, handle_exception, setup_logging, user_input_with_check
 from validator import validate_download_parameters, validate_live_id
 
 # 使用统一的日志配置（模块日志 + 总日志；控制台仅 error+）
-logger = setup_logging('main')
+logger = setup_logging("main")
 
 # 注意：是否启用 debug 日志，将在 __main__ 中根据命令行参数决定；
 # 版本检查也延后到参数解析之后，确保若开启 debug 能记录网络日志。
 
 
-def get_user_input_interactive():
+def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional[int], Optional[bool], Optional[str]]:
     """
     交互式获取用户输入。
 
@@ -41,18 +43,16 @@ def get_user_input_interactive():
         tuple: (live_id, skip_weeks, single, merge, video_type)
     """
     try:
-        def _clear_prev_lines(n):
+
+        def _clear_prev_lines(n: int) -> None:
             """清除前 n 行输出"""
             for _ in range(n):
-                sys.stdout.write('\033[F')  # 光标上移一行
-                sys.stdout.write('\033[K')  # 清除当前行
+                sys.stdout.write("\033[F")  # 光标上移一行
+                sys.stdout.write("\033[K")  # 清除当前行
 
         # 输入 LiveID
         live_id = user_input_with_check(
-            "请输入 LiveID: ",
-            validate_live_id,
-            error_message="LiveID 格式不正确，请输入一个正数字",
-            allow_empty=True
+            "请输入 LiveID: ", validate_live_id, error_message="LiveID 格式不正确，请输入一个正数字", allow_empty=True
         )
 
         if not live_id:
@@ -65,19 +65,19 @@ def get_user_input_interactive():
         print("2. 单节课模式（下载每节课的视频）")
         print("3. 半节课模式（下载每半节课的视频）")
 
-        def validate_mode_choice(choice):
-            return choice in ['', '1', '2', '3']
+        def validate_mode_choice(choice: str) -> bool:
+            return choice in ["", "1", "2", "3"]
 
         mode_choice = user_input_with_check(
             "请输入选择（1-3，直接回车选择默认）: ",
             validate_mode_choice,
             error_message="选择无效，请输入 1、2、3 或直接回车",
-            allow_empty=True
+            allow_empty=True,
         ).strip()
 
-        if mode_choice == '2':
+        if mode_choice == "2":
             single = 1
-        elif mode_choice == '3':
+        elif mode_choice == "3":
             single = 2
         else:
             single = 0
@@ -87,17 +87,17 @@ def get_user_input_interactive():
         print("1. 是（默认）")
         print("2. 否")
 
-        def validate_merge_choice(choice):
-            return choice in ['', '1', '2']
+        def validate_merge_choice(choice: str) -> bool:
+            return choice in ["", "1", "2"]
 
         merge_choice = user_input_with_check(
             "请输入选择（1-2，直接回车选择默认）: ",
             validate_merge_choice,
             error_message="选择无效，请输入 1、2 或直接回车",
-            allow_empty=True
+            allow_empty=True,
         ).strip()
 
-        merge = merge_choice != '2'
+        merge = merge_choice != "2"
 
         # 视频类型选择
         print("\n请选择要下载的视频类型：")
@@ -105,45 +105,42 @@ def get_user_input_interactive():
         print("2. 仅下载 pptVideo")
         print("3. 仅下载 teacherTrack")
 
-        def validate_video_type_choice(choice):
-            return choice in ['', '1', '2', '3']
+        def validate_video_type_choice(choice: str) -> bool:
+            return choice in ["", "1", "2", "3"]
 
         video_type_choice = user_input_with_check(
             "请输入选择（1-3，直接回车选择默认）: ",
             validate_video_type_choice,
             error_message="选择无效，请输入 1、2、3 或直接回车",
-            allow_empty=True
+            allow_empty=True,
         ).strip()
 
-        if video_type_choice == '2':
-            video_type = 'ppt'
-        elif video_type_choice == '3':
-            video_type = 'teacher'
+        if video_type_choice == "2":
+            video_type = "ppt"
+        elif video_type_choice == "3":
+            video_type = "teacher"
         else:
-            video_type = 'both'
+            video_type = "both"
 
         # 跳过周数设置
         print("\n是否需要跳过指定的周数？")
         print("输入要跳过的周数（用逗号分隔），或直接回车跳过此设置")
-        print("例如：1,3,5 表示跳过第1、3、5周")
+        print("例如：1,3,5 表示跳过第 1、3、5 周")
 
-        def validate_skip_weeks(weeks_str):
+        def validate_skip_weeks(weeks_str: str) -> bool:
             if not weeks_str:
                 return True
             try:
-                weeks = [int(w.strip()) for w in weeks_str.split(',')]
+                weeks = [int(w.strip()) for w in weeks_str.split(",")]
                 return all(w > 0 for w in weeks)
             except ValueError:
                 return False
 
         skip_weeks_input = user_input_with_check(
-            "跳过的周数: ",
-            validate_skip_weeks,
-            error_message="格式错误，请输入正整数，用逗号分隔",
-            allow_empty=True
+            "跳过的周数: ", validate_skip_weeks, error_message="格式错误，请输入正整数，用逗号分隔", allow_empty=True
         ).strip()
 
-        skip_weeks = skip_weeks_input if skip_weeks_input else ''
+        skip_weeks = skip_weeks_input if skip_weeks_input else ""
 
         # 清屏显示选择结果
         _clear_prev_lines(21)
@@ -152,7 +149,7 @@ def get_user_input_interactive():
         mode_desc = {0: "全部视频", 1: "单节课模式", 2: "半节课模式"}
         print(f"下载模式: {mode_desc[single]}")
         print(f"自动合并: {'是' if merge else '否'}")
-        video_type_desc = {'both': '两种都下载', 'ppt': '仅pptVideo', 'teacher': '仅teacherTrack'}
+        video_type_desc = {"both": "两种都下载", "ppt": "仅 pptVideo", "teacher": "仅 teacherTrack"}
         print(f"视频类型: {video_type_desc[video_type]}")
         if skip_weeks:
             print(f"跳过周数: {skip_weeks}")
@@ -169,7 +166,7 @@ def get_user_input_interactive():
         return None, None, None, None, None
 
 
-def parse_main_arguments():
+def parse_main_arguments() -> Namespace:
     """
     解析主程序的命令行参数。
 
@@ -177,30 +174,47 @@ def parse_main_arguments():
         argparse.Namespace: 包含所有命令行参数的对象
     """
     parser = ArgumentParser(description="西安电子科技大学录直播平台课程视频下载工具")
-    parser.add_argument('liveid', nargs='?', default=None,
-                        help="课程的 LiveID（可选）")
-    parser.add_argument('-s', '--single', action='store_const', const=1, default=0,
-                        help="单节课模式：为每节课单独下载视频（而不是合并相邻节次）")
-    parser.add_argument('-ss', '--single-session', action='store_const', const=2, dest='single',
-                        help="半节课模式：为每半节课单独下载视频")
-    parser.add_argument('--no-merge', action='store_false', dest='merge', default=True,
-                        help="禁用自动合并相邻节次的视频文件")
-    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default='both',
-                        help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
-    parser.add_argument('--debug', action='store_true', dest='debug', default=False,
-                        help="启用调试日志（写入 logs/debug.log）")
+    parser.add_argument("liveid", nargs="?", default=None, help="课程的 LiveID（可选）")
+    parser.add_argument(
+        "-s",
+        "--single",
+        action="store_const",
+        const=1,
+        default=0,
+        help="单节课模式：为每节课单独下载视频（而不是合并相邻节次）",
+    )
+    parser.add_argument(
+        "-ss",
+        "--single-session",
+        action="store_const",
+        const=2,
+        dest="single",
+        help="半节课模式：为每半节课单独下载视频",
+    )
+    parser.add_argument(
+        "--no-merge", action="store_false", dest="merge", default=True, help="禁用自动合并相邻节次的视频文件"
+    )
+    parser.add_argument(
+        "--video-type",
+        choices=["both", "ppt", "teacher"],
+        default="both",
+        help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载 pptVideo）、teacher（仅下载 teacherTrack）",
+    )
+    parser.add_argument(
+        "--debug", action="store_true", dest="debug", default=False, help="启用调试日志（写入 logs/debug.log）"
+    )
     return parser.parse_args()
 
 
-def main(liveid=None, single=0, merge=True, video_type='both'):
+def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, video_type: str = "both") -> bool:
     """
     主函数：下载指定课程的视频，包含完整的错误处理和用户体验优化。
 
     参数:
-        liveid (int): 课程直播ID，为None时进入交互模式
-        single (int): 下载模式 (0=全部, 1=单节课, 2=半节课)
-        merge (bool): 是否自动合并相邻节次视频
-        video_type (str): 视频类型 ('both', 'ppt', 'teacher')
+        liveid (Optional[str]): 课程直播 ID，为 None 时进入交互模式。
+        single (int): 下载模式（0=全部，1=单节课，2=半节课）。
+        merge (bool): 是否自动合并相邻节次视频。
+        video_type (str): 视频类型（"both"、"ppt"、"teacher"）。
 
     返回:
         bool: 处理是否成功
@@ -211,6 +225,7 @@ def main(liveid=None, single=0, merge=True, video_type='both'):
         # 初始化认证系统
         try:
             from config import get_auth_cookies
+
             auth_cookies = get_auth_cookies()
             logger.info("认证系统初始化成功")
         except Exception as e:
@@ -232,8 +247,7 @@ def main(liveid=None, single=0, merge=True, video_type='both'):
 
             # 无 command 参数
 
-        logger.info(
-            f"下载参数 - 课程ID: {liveid}, 模式: {single}, 合并: {merge}, 类型: {video_type}")
+        logger.info(f"下载参数 - 课程 ID: {liveid}, 模式: {single}, 合并: {merge}, 类型: {video_type}")
 
         # 调用核心下载函数
         return download_course_videos(liveid, single, merge, video_type, skip_until)
@@ -252,7 +266,7 @@ if __name__ == "__main__":
     args = parse_main_arguments()
 
     # 根据 --debug 参数启用调试日志文件
-    if getattr(args, 'debug', False):
+    if getattr(args, "debug", False):
         enable_debug_file_logging()
         logger.info("已启用调试日志输出（logs/debug.log）")
 
@@ -264,12 +278,7 @@ if __name__ == "__main__":
 
     try:
         # 调用主函数，传入解析后的参数
-        success = main(
-            liveid=args.liveid,
-            single=args.single,
-            merge=args.merge,
-            video_type=args.video_type
-        )
+        success = main(liveid=args.liveid, single=args.single, merge=args.merge, video_type=args.video_type)
 
         # 根据执行结果设置退出码
         sys.exit(0 if success else 1)

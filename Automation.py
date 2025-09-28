@@ -16,24 +16,24 @@
 - 用户友好的错误提示和进度反馈
 """
 
+import logging
 import sys
 import time
 import traceback
-import logging
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from argparse import ArgumentParser
 
 # 本地模块导入
 from api import check_update
-from utils import setup_logging, handle_exception, enable_debug_file_logging
-from config import safe_read_config, AUTOMATION_CONFIG_FILE, create_initial_config, update_existing_config
+from config import AUTOMATION_CONFIG_FILE, create_initial_config, safe_read_config, update_existing_config
 from downloader import process_all_courses
+from utils import enable_debug_file_logging, handle_exception, setup_logging
 
 # 设置日志（模块日志 + 总日志；控制台仅 error+）
-logger = setup_logging('automation')
+logger = setup_logging("automation")
 
 
-def parse_automation_arguments():
+def parse_automation_arguments() -> Namespace:
     """
     解析自动化程序的命令行参数。
 
@@ -41,20 +41,29 @@ def parse_automation_arguments():
         argparse.Namespace: 包含所有命令行参数的对象
     """
     parser = ArgumentParser(description="西安电子科技大学录直播平台课程视频自动化批量下载工具")
-    parser.add_argument('-u', '--uid', default=None,
-                        help="用户的 UID（用户ID）")
-    parser.add_argument('-y', '--year', type=int, default=None,
-                        help="学年，例如 2023 表示 2023-2024 学年")
-    parser.add_argument('-t', '--term', type=int, choices=[1, 2], default=None,
-                        help="学期：1表示第一学期（秋季），2表示第二学期（春季）")
-    parser.add_argument('--video-type', choices=['both', 'ppt', 'teacher'], default=None,
-                        help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载pptVideo）、teacher（仅下载teacherTrack）")
-    parser.add_argument('--debug', action='store_true', dest='debug', default=False,
-                        help="启用调试日志（写入 logs/debug.log）")
+    parser.add_argument("-u", "--uid", default=None, help="用户的 UID（用户 ID）")
+    parser.add_argument("-y", "--year", type=int, default=None, help="学年，例如 2023 表示 2023-2024 学年")
+    parser.add_argument(
+        "-t",
+        "--term",
+        type=int,
+        choices=[1, 2],
+        default=None,
+        help="学期：1 表示第一学期（秋季），2 表示第二学期（春季）",
+    )
+    parser.add_argument(
+        "--video-type",
+        choices=["both", "ppt", "teacher"],
+        default=None,
+        help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载 pptVideo）、teacher（仅下载 teacherTrack）",
+    )
+    parser.add_argument(
+        "--debug", action="store_true", dest="debug", default=False, help="启用调试日志（写入 logs/debug.log）"
+    )
     return parser.parse_args()
 
 
-def main():
+def main() -> bool:
     """
     自动化下载主函数：扫描用户的所有课程并批量下载视频。
 
@@ -74,7 +83,7 @@ def main():
         args = parse_automation_arguments()
 
         # 根据 --debug 参数启用调试日志文件（尽早，使后续网络请求有调试日志）
-        if getattr(args, 'debug', False):
+        if getattr(args, "debug", False):
             enable_debug_file_logging()
             logger.info("已启用调试日志输出（logs/debug.log）")
 
@@ -87,6 +96,7 @@ def main():
         # 初始化认证系统
         try:
             from config import get_auth_cookies
+
             auth_cookies = get_auth_cookies()
             logger.info("认证系统初始化成功")
         except Exception as e:
@@ -99,9 +109,9 @@ def main():
         term_year = current_time.tm_year
         month = current_time.tm_mon
 
-        # 根据月份确定学期：9月及以后为第一学期，3月及以后为第二学期
+        # 根据月份确定学期：9 月及以后为第一学期，3 月及以后为第二学期
         term_id = 1 if month >= 9 or month < 3 else 2
-        if month < 9:  # 1-8月属于上一学年
+        if month < 9:  # 1-8 月属于上一学年
             term_year -= 1
 
         # 处理配置文件
@@ -125,7 +135,7 @@ def main():
             print(f"\n{error_msg}")
             return False
 
-        video_type = args.video_type if args.video_type else config['DEFAULT'].get('video_type', 'both')
+        video_type = args.video_type if args.video_type else config["DEFAULT"].get("video_type", "both")
 
         # 批量处理所有启用下载的课程
         return process_all_courses(config, video_type)

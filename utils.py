@@ -11,15 +11,15 @@
 - 字符串处理和格式化
 """
 
-import os
-import sys
-import psutil
-import stat
-from pathlib import Path
 import logging
 import math
-from typing import Optional
+import os
+import stat
+import sys
+from pathlib import Path
+from typing import Callable, Optional, Union
 
+import psutil
 
 # ========== 统一日志系统 ==========
 # 控制是否将 DEBUG 级别输出到单独文件（默认关闭），通过主程序/自动化脚本的命令行参数 --debug 启用。
@@ -28,7 +28,9 @@ DEBUG_LOG_TO_FILE = False
 _GLOBAL_LOGGING_INITIALIZED = False
 
 
-def _ensure_global_handlers(console_level=logging.ERROR, info_file: Optional[Path] = None, debug_file: Optional[Path] = None):
+def _ensure_global_handlers(
+    console_level: int = logging.ERROR, info_file: Optional[Path] = None, debug_file: Optional[Path] = None
+) -> None:
     """初始化全局/root 日志处理器：
     - 控制台：error 及以上
     - 总日志：info 及以上
@@ -39,46 +41,50 @@ def _ensure_global_handlers(console_level=logging.ERROR, info_file: Optional[Pat
     if _GLOBAL_LOGGING_INITIALIZED:
         return
 
-    log_dir = Path('logs')
+    log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    root_logger = logging.getLogger('xdu')
+    root_logger = logging.getLogger("xdu")
     root_logger.setLevel(logging.DEBUG)  # 捕获所有级别，具体输出看 handler 设置
 
     # 控制台 handler（仅 error+）
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
-    console_handler.set_name('xdu_console')
-    console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+    console_handler.set_name("xdu_console")
+    console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     root_logger.addHandler(console_handler)
 
     # 总日志（info+）
-    info_path = info_file or (log_dir / 'all.log')
-    file_handler = logging.FileHandler(info_path, encoding='utf-8')
+    info_path = info_file or (log_dir / "all.log")
+    file_handler = logging.FileHandler(info_path, encoding="utf-8")
     file_handler.setLevel(logging.INFO)
-    file_handler.set_name('all_file')
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    ))
+    file_handler.set_name("all_file")
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
     root_logger.addHandler(file_handler)
 
     # 可选 debug 文件（debug+）
     if DEBUG_LOG_TO_FILE:
-        debug_path = debug_file or (log_dir / 'debug.log')
-        dbg_handler = logging.FileHandler(debug_path, encoding='utf-8')
+        debug_path = debug_file or (log_dir / "debug.log")
+        dbg_handler = logging.FileHandler(debug_path, encoding="utf-8")
         dbg_handler.setLevel(logging.DEBUG)
-        dbg_handler.set_name('debug_file')
-        dbg_handler.setFormatter(logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        ))
+        dbg_handler.set_name("debug_file")
+        dbg_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
         root_logger.addHandler(dbg_handler)
 
     _GLOBAL_LOGGING_INITIALIZED = True
 
 
-def enable_debug_file_logging(path: Optional[str] = None):
+def enable_debug_file_logging(path: Optional[str] = None) -> None:
     """启用调试日志文件输出。通常由命令行参数 --debug 触发。
     若已开启则忽略；可指定自定义路径。
     """
@@ -88,23 +94,25 @@ def enable_debug_file_logging(path: Optional[str] = None):
     DEBUG_LOG_TO_FILE = True
     # 重新挂载 debug handler（若 root 已初始化）
     if _GLOBAL_LOGGING_INITIALIZED:
-        root = logging.getLogger('xdu')
+        root = logging.getLogger("xdu")
         # 若已存在则不重复添加
-        if not any(getattr(h, 'name', '') == 'debug_file' for h in root.handlers):
-            log_dir = Path('logs')
+        if not any(getattr(h, "name", "") == "debug_file" for h in root.handlers):
+            log_dir = Path("logs")
             log_dir.mkdir(parents=True, exist_ok=True)
-            debug_path = Path(path) if path else (log_dir / 'debug.log')
-            dbg_handler = logging.FileHandler(debug_path, encoding='utf-8')
+            debug_path = Path(path) if path else (log_dir / "debug.log")
+            dbg_handler = logging.FileHandler(debug_path, encoding="utf-8")
             dbg_handler.setLevel(logging.DEBUG)
-            dbg_handler.set_name('debug_file')
-            dbg_handler.setFormatter(logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            ))
+            dbg_handler.set_name("debug_file")
+            dbg_handler.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S",
+                )
+            )
             root.addHandler(dbg_handler)
 
 
-def setup_logging(name='app', level=logging.INFO, console_level=logging.ERROR):
+def setup_logging(name: str = "app", level: int = logging.INFO, console_level: int = logging.ERROR) -> logging.Logger:
     """
     设置并返回模块日志记录器：
     - 仅首次调用时配置全局/root 处理器（控制台、总日志、可选 debug 文件）
@@ -120,23 +128,25 @@ def setup_logging(name='app', level=logging.INFO, console_level=logging.ERROR):
     """
     _ensure_global_handlers(console_level=console_level)
 
-    logger_name = f"xdu.{name}" if not str(name).startswith('xdu.') else str(name)
+    logger_name = f"xdu.{name}" if not str(name).startswith("xdu.") else str(name)
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.DEBUG)  # 模块 logger 接收所有级别，输出交由 handler 控制
 
     # 避免重复添加模块文件 handler（按自定义 name 区分）
     handler_marker = f"xdu_module_file::{logger_name}"
-    if not any(getattr(h, 'name', '') == handler_marker for h in logger.handlers):
-        log_dir = Path('logs')
+    if not any(getattr(h, "name", "") == handler_marker for h in logger.handlers):
+        log_dir = Path("logs")
         log_dir.mkdir(parents=True, exist_ok=True)
         module_file = log_dir / f"{name}.log"
-        fh = logging.FileHandler(module_file, encoding='utf-8')
+        fh = logging.FileHandler(module_file, encoding="utf-8")
         fh.setLevel(level)
         fh.set_name(handler_marker)
-        fh.setFormatter(logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        ))
+        fh.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
         logger.addHandler(fh)
 
     # 让模块日志向上冒泡到 root（写入总日志/控制台/调试文件）
@@ -145,10 +155,10 @@ def setup_logging(name='app', level=logging.INFO, console_level=logging.ERROR):
 
 
 # 初始化本模块日志器
-logger = setup_logging('utils')
+logger = setup_logging("utils")
 
 
-def remove_invalid_chars(course_name):
+def remove_invalid_chars(course_name: str) -> str:
     """
     移除文件名中的非法字符，确保可以在文件系统中创建文件。
 
@@ -158,7 +168,7 @@ def remove_invalid_chars(course_name):
         course_name (str): 原始课程名称
 
     返回:
-        str: 移除非法字符后的课程名称
+        str: 移除非法字符后的课程名称。
 
     异常:
         ValueError: 当输入为空或处理后名称为空时
@@ -168,22 +178,22 @@ def remove_invalid_chars(course_name):
 
     # 定义 Windows/Linux 文件系统中不允许的字符
     # 包括控制字符和保留字符
-    invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|', '\0']
+    invalid_chars = ["\\", "/", ":", "*", "?", '"', "<", ">", "|", "\0"]
 
     # 移除控制字符 (ASCII 0-31)
-    cleaned_name = ''.join(char for char in course_name if ord(char) >= 32)
+    cleaned_name = "".join(char for char in course_name if ord(char) >= 32)
 
     # 替换非法字符为下划线，保持可读性
     for char in invalid_chars:
-        cleaned_name = cleaned_name.replace(char, '_')
+        cleaned_name = cleaned_name.replace(char, "_")
 
     # 移除首尾空白字符和点号（Windows不允许）
-    cleaned_name = cleaned_name.strip(' .')
+    cleaned_name = cleaned_name.strip(" .")
 
     # 检查 Windows 保留文件名
-    reserved_names = ['CON', 'PRN', 'AUX', 'NUL'] + \
-        [f'COM{i}' for i in range(1, 10)] + \
-        [f'LPT{i}' for i in range(1, 10)]
+    reserved_names = (
+        ["CON", "PRN", "AUX", "NUL"] + [f"COM{i}" for i in range(1, 10)] + [f"LPT{i}" for i in range(1, 10)]
+    )
 
     if cleaned_name.upper() in reserved_names:
         cleaned_name = f"_{cleaned_name}"
@@ -198,18 +208,18 @@ def remove_invalid_chars(course_name):
     return cleaned_name
 
 
-def day_to_chinese(day):
+def day_to_chinese(day: Union[int, str]) -> str:
     """
     将星期数字转换为中文表示。
 
     参数:
-        day (int): 星期数字 (0-6, 0代表星期日，或1-7，1代表星期一)
+        day (Union[int, str]): 星期数字（0-6，0 代表星期日，或 1-7，1 代表星期一）。
 
     返回:
-        str: 对应的中文星期表示
+        str: 对应的中文星期表示。
 
     异常:
-        ValueError: 当输入不是有效的星期数字时
+        ValueError: 当输入不是有效的星期数字时。
     """
     if not isinstance(day, int):
         try:
@@ -219,26 +229,33 @@ def day_to_chinese(day):
 
     # 星期数字到中文的映射字典 - 支持两种格式
     if day == 0:
-        return "日"  # 0代表星期日
+        return "日"  # 0 代表星期日
     elif 1 <= day <= 7:
         days = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
         return days[day]
     else:
-        raise ValueError(f"星期数字必须在0-7范围内，收到：{day}")
+        raise ValueError(f"星期数字必须在 0-7 范围内，收到：{day}")
 
 
-def user_input_with_check(prompt, validator, max_attempts=3, error_message="输入格式错误，请重新输入", allow_empty=False):
+def user_input_with_check(
+    prompt: str,
+    validator: Union[Callable[[str], bool], str],
+    max_attempts: int = 3,
+    error_message: str = "输入格式错误，请重新输入",
+    allow_empty: bool = False,
+) -> str:
     """
     带验证功能的用户输入函数，提供更好的用户体验和安全性。
 
     参数:
-        prompt (str): 提示信息
-        validator: 验证函数或正则表达式
-        max_attempts (int): 最大尝试次数
-        error_message (str): 验证失败时的错误消息
+        prompt (str): 提示信息。
+        validator (Union[Callable[[str], bool], str]): 验证函数或正则表达式。
+        max_attempts (int): 最大尝试次数。
+        error_message (str): 验证失败时的错误消息。
+        allow_empty (bool): 是否允许空输入。
 
     返回:
-        str: 验证通过的用户输入
+    str: 验证通过的用户输入。
 
     异常:
         ValueError: 超过最大尝试次数时
@@ -251,7 +268,7 @@ def user_input_with_check(prompt, validator, max_attempts=3, error_message="输�
             user_input = input(prompt).strip()
 
             # 如果允许空输入且用户直接回车，则返回空字符串
-            if allow_empty and user_input == '':
+            if allow_empty and user_input == "":
                 return user_input
 
             if validate_input(user_input, validator):
@@ -269,16 +286,16 @@ def user_input_with_check(prompt, validator, max_attempts=3, error_message="输�
     raise ValueError(f"超过最大尝试次数 ({max_attempts})，输入验证失败")
 
 
-def create_directory(directory):
+def create_directory(directory: str) -> None:
     """
     安全地创建目录，包含权限设置和原子性保证。
 
     参数:
-        directory (str): 要创建的目录路径
+        directory (str): 要创建的目录路径。
 
     异常:
-        OSError: 创建目录失败时
-        ValueError: 路径参数无效时
+        OSError: 创建目录失败时。
+        ValueError: 路径参数无效时。
     """
     if not directory or not isinstance(directory, str):
         raise ValueError("目录路径不能为空且必须是字符串类型")
@@ -289,7 +306,7 @@ def create_directory(directory):
         path.mkdir(parents=True, exist_ok=True)
 
         # 设置适当的权限 (仅在Unix系统上有效)
-        if os.name == 'posix':
+        if os.name == "posix":
             try:
                 os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
             except OSError:
@@ -302,7 +319,7 @@ def create_directory(directory):
         raise OSError(f"无法创建目录 {directory}: {e}")
 
 
-def handle_exception(e, message, level=logging.ERROR):
+def handle_exception(e: Exception, message: str, level: int = logging.ERROR) -> str:
     """
     统一的异常处理函数，提供更安全的错误信息记录。
 
@@ -327,20 +344,19 @@ def handle_exception(e, message, level=logging.ERROR):
         user_message = f"{message}：操作失败"
 
     # 记录详细的技术错误信息到日志
-    logger.log(
-        level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
+    logger.log(level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
 
     # 向用户显示友好的错误消息
     print(user_message)
     return user_message
 
 
-def calculate_optimal_threads():
+def calculate_optimal_threads() -> int:
     """
     根据 CPU 负载和内存使用情况计算最佳线程数，增加了安全边界。
 
     返回:
-        int: 推荐的线程数量
+        int: 推荐的线程数量。
     """
     try:
         # 获取当前系统的CPU和内存使用率
@@ -372,7 +388,7 @@ def calculate_optimal_threads():
         return 4  # 保守的默认值
 
 
-def format_file_size(size_bytes):
+def format_file_size(size_bytes: int) -> str:
     """
     将字节数格式化为人类可读的文件大小。
 
@@ -380,7 +396,7 @@ def format_file_size(size_bytes):
         size_bytes (int): 文件大小（字节）
 
     返回:
-        str: 格式化的文件大小字符串
+        str: 格式化的文件大小字符串。
     """
     if size_bytes == 0:
         return "0 B"
@@ -392,16 +408,16 @@ def format_file_size(size_bytes):
     return f"{s} {size_names[i]}"
 
 
-def get_safe_filename(filename, max_length=255):
+def get_safe_filename(filename: str, max_length: int = 255) -> str:
     """
     获取安全的文件名，处理长度限制和特殊字符。
 
     参数:
-        filename (str): 原始文件名
-        max_length (int): 最大文件名长度
+        filename (str): 原始文件名。
+        max_length (int): 最大文件名长度。
 
     返回:
-        str: 安全的文件名
+        str: 安全的文件名。
     """
     if not filename:
         return "unnamed_file"

@@ -16,30 +16,34 @@ API模块
 - 敏感信息过滤和安全日志记录
 """
 
-import requests
-import urllib.parse
-import json
-import re
-import time
-import random
 import base64
 import hashlib
+import json
+import random
+import re
+import time
+import urllib.parse
 from functools import wraps
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+from threading import Lock
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
+
+import requests
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from config import format_auth_cookies, get_auth_cookies
 from utils import remove_invalid_chars, setup_logging
-from config import get_auth_cookies, format_auth_cookies
 from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
 # 配置日志（模块日志 + 总日志；控制台仅 error+）
-logger = setup_logging('api')
+logger = setup_logging("api")
 
 # 应用版本和配置
 VERSION = "3.2.0"  # 更新版本号以反映改进
-FID = '16820'
+FID = "16820"
 
 # 请求配置
 REQUEST_TIMEOUT = 30  # 请求超时时间（秒）
@@ -55,12 +59,16 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 _last_request_time = 0
 
 
+_Func = TypeVar("_Func", bound=Callable[..., Any])
+
+
 class VideoGeneratingError(Exception):
     """Raised when the replay video is still being generated (页面提示: 视频回看生成中)."""
+
     pass
 
 
-def _derive_aes_key_iv(key_str):
+def _derive_aes_key_iv(key_str: str) -> Tuple[bytes, bytes]:
     """将任意长度的字符串派生为 AES key/iv。
 
     - 如果原始字节长度为 16/24/32，直接使用；否则使用 SHA-256 摘要（32 字节）兼容任意输入。
@@ -75,7 +83,7 @@ def _derive_aes_key_iv(key_str):
     return key, iv
 
 
-def aes_cbc_pkcs7_encrypt_base64(message, key_str):
+def aes_cbc_pkcs7_encrypt_base64(message: str, key_str: str) -> str:
     """使用 AES/CBC/PKCS7 对 message 加密并返回 Base64 字符串。
 
     设计目标是与 CryptoJS 中使用的 raw key + iv 行为兼容（当前脚本通过 _derive_aes_key_iv 保证 key/iv 长度）。
@@ -86,7 +94,7 @@ def aes_cbc_pkcs7_encrypt_base64(message, key_str):
     return base64.b64encode(ct).decode("utf-8")
 
 
-def _extract_transfer_key_from_text(text):
+def _extract_transfer_key_from_text(text: str) -> Optional[str]:
     """从传入文本中查找 transferKey 的简单正则表达式匹配。
 
     返回匹配到的字符串或者 None。
@@ -95,7 +103,7 @@ def _extract_transfer_key_from_text(text):
     return m.group(1) if m else None
 
 
-def _find_transfer_key(session, login_url, html, timeout):
+def _find_transfer_key(session: requests.Session, login_url: str, html: str, timeout: int) -> str:
     """先在 HTML 中查找 transferKey，找不到时尝试寻找包含 'login' 的外部 script 并请求以提取 key。
 
     如果最终仍未找到，返回空字符串（调用方可使用默认 key）。
@@ -127,7 +135,12 @@ def _find_transfer_key(session, login_url, html, timeout):
         return ""
 
 
-def get_three_cookies_from_login(username, password, base_url="https://passport2.chaoxing.com", timeout=10):
+def get_three_cookies_from_login(
+    username: str,
+    password: str,
+    base_url: str = "https://passport2.chaoxing.com",
+    timeout: int = 10,
+) -> Dict[str, Optional[str]]:
     """通过账号密码登录获取三个Cookie值。
 
     参数:
@@ -202,12 +215,13 @@ def get_three_cookies_from_login(username, password, base_url="https://passport2
     return {"_d": cookie_jar.get("_d"), "UID": cookie_jar.get("UID"), "vc3": cookie_jar.get("vc3")}
 
 
-def rate_limit(func):
+def rate_limit(func: _Func) -> _Func:
     """
     装饰器：为API请求添加频率限制，防止对服务器造成过大压力。
     """
+
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         global _last_request_time
         current_time = time.time()
 
@@ -223,10 +237,10 @@ def rate_limit(func):
         _last_request_time = time.time()
         return func(*args, **kwargs)
 
-    return wrapper
+    return cast(_Func, wrapper)
 
 
-def create_session():
+def create_session() -> requests.Session:
     """
     创建配置了重试策略的HTTP会话。
 
@@ -240,7 +254,7 @@ def create_session():
         total=MAX_RETRIES,
         backoff_factor=RETRY_BACKOFF_FACTOR,
         status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
     )
 
     adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -250,7 +264,7 @@ def create_session():
     return session
 
 
-def get_authenticated_headers():
+def get_authenticated_headers() -> Dict[str, str]:
     """
     获取包含身份验证信息的HTTP请求头。
 
@@ -273,7 +287,7 @@ def get_authenticated_headers():
             "Cookie": cookie_string,
             "Upgrade-Insecure-Requests": "1",
             "Cache-Control": "no-cache",
-            "Pragma": "no-cache"
+            "Pragma": "no-cache",
         }
 
         return headers
@@ -284,7 +298,7 @@ def get_authenticated_headers():
 
 
 @rate_limit
-def get_initial_data(liveid):
+def get_initial_data(liveid: Union[int, str]) -> List[Dict[str, Any]]:
     """
     根据课程ID获取课程的初始数据信息，包含完整的错误处理和数据验证。
 
@@ -317,7 +331,7 @@ def get_initial_data(liveid):
             "http://newes.chaoxing.com/xidianpj/live/listSignleCourse",
             headers=headers,
             data=request_data,
-            timeout=REQUEST_TIMEOUT
+            timeout=REQUEST_TIMEOUT,
         )
 
         # 检查HTTP状态
@@ -333,7 +347,7 @@ def get_initial_data(liveid):
         # 验证响应数据结构
         if not isinstance(data, list):
             logger.warning(f"响应数据类型异常，期望列表但收到: {type(data)}")
-            if isinstance(data, dict) and 'error' in data:
+            if isinstance(data, dict) and "error" in data:
                 raise ValueError(f"服务器返回错误: {data.get('error', '未知错误')}")
             raise ValueError("服务器响应数据格式异常")
 
@@ -342,7 +356,7 @@ def get_initial_data(liveid):
             return []
 
         # 验证数据完整性
-        required_fields = ['id', 'courseCode', 'courseName', 'startTime', 'endTime']
+        required_fields = ["id", "courseCode", "courseName", "startTime", "endTime"]
         for i, item in enumerate(data):
             if not isinstance(item, dict):
                 logger.warning(f"第 {i} 项数据格式错误，跳过")
@@ -376,7 +390,7 @@ def get_initial_data(liveid):
 
 
 @rate_limit
-def get_video_info_from_html(live_id, retry_count=0):
+def get_video_info_from_html(live_id: Union[int, str], retry_count: int = 0) -> Dict[str, Any]:
     """
     从API获取视频信息，通过解析HTML页面中的infostr变量。
     增强了错误处理和重试机制。
@@ -401,7 +415,7 @@ def get_video_info_from_html(live_id, retry_count=0):
     if retry_count > 0:
         logger.info(f"正在进行第 {retry_count + 1}/{MAX_RETRIES + 1} 次尝试获取视频信息")
         # 指数退避
-        sleep_time = RETRY_BACKOFF_FACTOR * ((2 ** retry_count) + random.uniform(0, 1))
+        sleep_time = RETRY_BACKOFF_FACTOR * ((2**retry_count) + random.uniform(0, 1))
         time.sleep(sleep_time)
 
     try:
@@ -443,7 +457,7 @@ def get_video_info_from_html(live_id, retry_count=0):
             # 如果找不到infostr，尝试其他可能的模式
             alternative_patterns = [
                 r'infostr\s*=\s*"([^"]+)"',
-                r'var\s+infostr\s*=\s*\'([^\']+)\'',
+                r"var\s+infostr\s*=\s*\'([^\']+)\'",
             ]
 
             for alt_pattern in alternative_patterns:
@@ -519,7 +533,7 @@ def get_video_info_from_html(live_id, retry_count=0):
             raise ValueError(f"获取视频信息失败: {e}")
 
 
-def get_mp4_links(live_id):
+def get_mp4_links(live_id: Union[int, str]) -> Tuple[str, str]:
     """
     从直播ID获取PPT视频和教师视频的下载链接（增强版）。
 
@@ -537,37 +551,39 @@ def get_mp4_links(live_id):
         info_json = get_video_info_from_html(live_id)
 
         # 验证响应结构
-        if 'videoPath' not in info_json:
+        if "videoPath" not in info_json:
             logger.warning(f"响应中缺少videoPath字段，课程ID: {live_id}")
-            return '', ''
+            return "", ""
 
-        video_paths = info_json['videoPath']
+        video_paths = info_json["videoPath"]
 
         if video_paths is None:
             logger.warning(f"videoPath为空，课程ID: {live_id}")
-            return '', ''
+            return "", ""
 
         if not isinstance(video_paths, dict):
             logger.warning(f"videoPath格式错误，期望字典但收到: {type(video_paths)}")
-            return '', ''
+            return "", ""
 
         # 提取视频URL并验证
-        ppt_video = video_paths.get('pptVideo', '')
-        teacher_track = video_paths.get('teacherTrack', '')
+        ppt_video = video_paths.get("pptVideo", "")
+        teacher_track = video_paths.get("teacherTrack", "")
 
         # 验证URL格式（如果存在）
         if ppt_video and not is_valid_url(ppt_video):
             logger.warning(f"PPT视频URL格式无效: {ppt_video}")
-            ppt_video = ''
+            ppt_video = ""
 
         if teacher_track and not is_valid_url(teacher_track):
             logger.warning(f"教师视频URL格式无效: {teacher_track}")
-            teacher_track = ''
+            teacher_track = ""
 
         if not ppt_video and not teacher_track:
             logger.warning(f"没有找到有效的视频链接，课程ID: {live_id}")
         else:
-            logger.info(f"成功获取视频链接，课程ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}")
+            logger.info(
+                f"成功获取视频链接，课程ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}"
+            )
 
         return ppt_video, teacher_track
 
@@ -581,7 +597,7 @@ def get_mp4_links(live_id):
 
 
 @rate_limit
-def fetch_data(url):
+def fetch_data(url: str) -> Optional[Any]:
     """
     向指定URL发送安全的GET请求并返回JSON数据，增强错误处理。
 
@@ -633,7 +649,7 @@ def fetch_data(url):
         return None
 
 
-def scan_courses(user_id, term_year, term_id):
+def scan_courses(user_id: str, term_year: int, term_id: int) -> Dict[int, Dict[str, Any]]:
     """
     扫描指定用户在指定学期的所有课程信息，包含完整的错误处理和数据验证。
 
@@ -673,7 +689,7 @@ def scan_courses(user_id, term_year, term_id):
                         logger.warning(f"第 {week} 周课程数据格式错误，跳过")
                         continue
 
-                    course_id = item.get('courseId')
+                    course_id = item.get("courseId")
                     if not course_id:
                         logger.warning(f"第 {week} 周课程缺少courseId，跳过")
                         continue
@@ -682,14 +698,14 @@ def scan_courses(user_id, term_year, term_id):
                     if course_id not in first_classes:
                         try:
                             # 验证必要字段
-                            required_fields = ['courseCode', 'courseName', 'id']
+                            required_fields = ["courseCode", "courseName", "id"]
                             for field in required_fields:
                                 if field not in item:
                                     logger.warning(f"课程 {course_id} 缺少字段 {field}")
 
                             # 移除课程名称中的非法字符
-                            if 'courseName' in item:
-                                item['courseName'] = remove_invalid_chars(item['courseName'])
+                            if "courseName" in item:
+                                item["courseName"] = remove_invalid_chars(item["courseName"])
 
                             first_classes[course_id] = item
                             logger.debug(f"添加新课程: {course_id} - {item.get('courseName', '未知')}")
@@ -714,7 +730,7 @@ def scan_courses(user_id, term_year, term_id):
     return first_classes
 
 
-def compare_versions(v1, v2):
+def compare_versions(v1: str, v2: str) -> int:
     """
     比较两个版本号的大小，支持更灵活的版本号格式。
 
@@ -728,13 +744,14 @@ def compare_versions(v1, v2):
     异常:
         ValueError: 当版本号格式无效时
     """
+
     def parse_version(version):
         """解析版本号字符串为整数列表"""
         if not version or not isinstance(version, str):
             raise ValueError(f"版本号必须是非空字符串: {version}")
 
         try:
-            parts = [int(x) for x in version.split('.')]
+            parts = [int(x) for x in version.split(".")]
             # 确保至少有3个部分（主版本、次版本、修订版本）
             while len(parts) < 3:
                 parts.append(0)
@@ -766,7 +783,7 @@ def compare_versions(v1, v2):
         return 0  # 比较失败时认为相等
 
 
-def check_update():
+def check_update() -> None:
     """
     检查软件是否有新版本可用，包含更好的错误处理和用户体验。
     """
@@ -823,7 +840,7 @@ def check_update():
         logger.warning(f"版本检查失败: {e}")
 
 
-def fetch_video_links(entry, lock, desc):
+def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any) -> Optional[List[Any]]:
     """
     获取单个课程条目的视频链接（pptVideo / teacherTrack），用于多线程环境中安全地获取视频链接。
     包含完整的错误处理和数据验证。
@@ -843,7 +860,7 @@ def fetch_video_links(entry, lock, desc):
             desc.update(1)
         return None
 
-    required_fields = ['id', 'startTime', 'jie', 'days']
+    required_fields = ["id", "startTime", "jie", "days"]
     for field in required_fields:
         if field not in entry:
             logger.error(f"课程条目缺少必要字段: {field}")
@@ -879,7 +896,7 @@ def fetch_video_links(entry, lock, desc):
             entry.get("jie", ""),  # 节次
             entry.get("days", ""),  # 周数
             ppt_video,  # PPT视频URL
-            teacher_track  # 教师视频URL
+            teacher_track,  # 教师视频URL
         ]
 
         # 使用线程锁安全地更新进度条
