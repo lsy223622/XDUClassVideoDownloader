@@ -1,5 +1,5 @@
 ## XDUClassVideoDownloader – AI Agent 快速协作指令 (精简版)
-面向西电录直播平台：单课/按学期批量下载；已完全切换为“直下 MP4 + 可选 FFmpeg 无损合并”，禁止再引入 vsd / m3u8 流式逻辑。
+面向西电录直播平台：单课/按学期批量下载；已完全切换为“直下 MP4 + 可选 FFmpeg 无损合并”。
 
 ### 1. 体系/数据流（理解后再改）
 CLI (XDUClassVideoDownloader.py / Automation.py) → 参数与交互 → 验证 (validator) → 认证与配置 (config:get_auth_cookies / safe_write_config) → 接口调用 (api: rate_limit + Retry session) → 视频信息解析 → 下载 (downloader: 断点续传/多线程分片/校验/可选合并) → 输出目录 & CSV → 日志 (logs/*.log)。
@@ -25,9 +25,7 @@ validator.py：集中参数与输入合法性；复用避免散落的 if 检查�
 CLI 变更：新增参数需保证 --help <10s 返回；默认不阻塞在网络检查失败。
 
 ### 5. 测试与验证
-测试文件命名：tests/test_*.py；不提交一次性脚本。
-避免真实外网：mock requests / 传入假 HTML / 假 JSON；验证参数校验、重试分支、文件命名清洗。
-下载测试：创建极小本地 HTTP/或直接模拟响应对象；不要真正拉取大视频。
+测试文件命名：test_*.py；不提交一次性脚本。
 
 ### 6. 常见坑与处理
 403/404：多为认证过期 → 触发重新获取 cookies；切勿“自动重试无上限”。
