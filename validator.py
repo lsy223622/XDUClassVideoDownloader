@@ -323,15 +323,3 @@ def validate_video_info(video_info: Dict[str, Any]) -> bool:
 
     return bool(ppt_video or teacher_track)
 
-
-def validate_cookie_value(value: str) -> bool:
-    """
-    验证Cookie值的格式。
-
-    参数:
-        value (str): Cookie 值。
-
-    返回:
-        bool: 是否有效。
-    """
-    return bool(value and len(value.strip()) > 0 and not any(char in value for char in ["\n", "\r", "\t"]))

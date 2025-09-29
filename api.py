@@ -68,71 +68,17 @@ class VideoGeneratingError(Exception):
     pass
 
 
-def _derive_aes_key_iv(key_str: str) -> Tuple[bytes, bytes]:
-    """将任意长度的字符串派生为 AES key/iv。
-
-    - 如果原始字节长度为 16/24/32，直接使用；否则使用 SHA-256 摘要（32 字节）兼容任意输入。
-    - IV 固定为 key 的前 16 字节（与常见 CryptoJS 用法一致）。
-    """
-    raw = key_str.encode("utf-8")
-    if len(raw) in (16, 24, 32):
-        key = raw
-    else:
-        key = hashlib.sha256(raw).digest()
-    iv = key[:16]
-    return key, iv
-
-
 def aes_cbc_pkcs7_encrypt_base64(message: str, key_str: str) -> str:
     """使用 AES/CBC/PKCS7 对 message 加密并返回 Base64 字符串。
 
-    设计目标是与 CryptoJS 中使用的 raw key + iv 行为兼容（当前脚本通过 _derive_aes_key_iv 保证 key/iv 长度）。
+    设计目标是与 CryptoJS 中使用的 raw key + iv 行为兼容（内部按需派生固定长度 key/iv）。
     """
-    key, iv = _derive_aes_key_iv(key_str)
+    raw_key = key_str.encode("utf-8")
+    key = raw_key if len(raw_key) in (16, 24, 32) else hashlib.sha256(raw_key).digest()
+    iv = key[:16]
     cipher = AES.new(key, AES.MODE_CBC, iv=iv)
     ct = cipher.encrypt(pad(message.encode("utf-8"), AES.block_size))
     return base64.b64encode(ct).decode("utf-8")
-
-
-def _extract_transfer_key_from_text(text: str) -> Optional[str]:
-    """从传入文本中查找 transferKey 的简单正则表达式匹配。
-
-    返回匹配到的字符串或者 None。
-    """
-    m = re.search(r"transferKey\s*[:=]\s*['\"]([^'\"]+)['\"]", text)
-    return m.group(1) if m else None
-
-
-def _find_transfer_key(session: requests.Session, login_url: str, html: str, timeout: int) -> str:
-    """先在 HTML 中查找 transferKey，找不到时尝试寻找包含 'login' 的外部 script 并请求以提取 key。
-
-    如果最终仍未找到，返回空字符串（调用方可使用默认 key）。
-    """
-    key = _extract_transfer_key_from_text(html)
-    if key:
-        logger.debug("Found transferKey in page HTML")
-        return key
-
-    soup = BeautifulSoup(html, "html.parser")
-    # 优先寻找 name 或 src 中包含 login 的 script
-    script_src = None
-    for sc in soup.find_all("script", src=True):
-        src = sc["src"]
-        if "login" in src.lower():
-            script_src = src
-            break
-
-    if not script_src:
-        return ""
-
-    js_url = urllib.parse.urljoin(login_url, script_src)
-    try:
-        jr = session.get(js_url, timeout=timeout)
-        jr.raise_for_status()
-        return _extract_transfer_key_from_text(jr.text) or ""
-    except Exception as e:
-        logger.debug("Failed to fetch/parse JS %s: %s", js_url, e)
-        return ""
 
 
 def get_three_cookies_from_login(
@@ -171,7 +117,27 @@ def get_three_cookies_from_login(
 
     t_flag = _hid("t")
 
-    transfer_key = _find_transfer_key(session, login_url, html, timeout)
+    key_pattern = r"transferKey\s*[:=]\s*['\"]([^'\"]+)['\"]"
+    match = re.search(key_pattern, html)
+    if match:
+        transfer_key = match.group(1)
+        logger.debug("Found transferKey in page HTML")
+    else:
+        transfer_key = ""
+        script_src = next(
+            (sc["src"] for sc in soup.find_all("script", src=True) if "login" in sc["src"].lower()),
+            None,
+        )
+        if script_src:
+            js_url = urllib.parse.urljoin(login_url, script_src)
+            try:
+                jr = session.get(js_url, timeout=timeout)
+                jr.raise_for_status()
+                js_match = re.search(key_pattern, jr.text)
+                transfer_key = js_match.group(1) if js_match else ""
+            except Exception as e:
+                logger.debug("Failed to fetch/parse JS %s: %s", js_url, e)
+
     if not transfer_key:
         # 历史默认值，保留以兼容未提供 transferKey 的情况
         transfer_key = "u2oh6Vu^HWe4_AES"
