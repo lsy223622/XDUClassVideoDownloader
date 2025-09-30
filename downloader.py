@@ -852,6 +852,9 @@ def process_rows(
                     # 去掉结尾的 -{track_type}.ext
                     # 去掉 -pptVideo.mp4 之类的部分
                     core = name[: -(len(track_type) + len(ext) + 1)]
+                    if core == base_filename:
+                        # 当前节次的原始文件，只标记为单节存在，不视为合并结果
+                        continue
                     # 与 base_filename 同样结构：<prefix>第X(|-Y)节
                     m2 = range_pattern.match(core)
                     if not m2:
