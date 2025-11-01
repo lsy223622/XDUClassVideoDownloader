@@ -1153,7 +1153,7 @@ def download_course_videos(
     single: int = 0,
     merge: bool = True,
     video_type: str = "both",
-    skip_until: int = 0,
+    skip_weeks: set = None,
 ) -> bool:
     """
     下载指定课程的视频，这是核心的下载逻辑函数。
@@ -1163,11 +1163,13 @@ def download_course_videos(
         single: 下载模式 (0=全部, 1=单节课, 2=半节课)
         merge: 是否自动合并相邻节次视频
         video_type: 视频类型 ('both', 'ppt', 'teacher')
-        skip_until: 跳过指定周数之前的视频
+        skip_weeks: 要跳过的周数集合 (如 {1, 2, 3, 7, 9, 10, 11})
 
     返回:
         bool: 处理是否成功
     """
+    if skip_weeks is None:
+        skip_weeks = set()
     try:
         logger.info(f"开始下载课程 {live_id} 的视频")
 
@@ -1282,13 +1284,17 @@ def download_course_videos(
         # 按时间排序：月、日、星期、节次、周数
         rows.sort(key=lambda x: (x[0], x[1], x[2], int(x[3]), x[4]))
 
-        # 根据skip_until参数过滤掉指定周数之前的视频
-        if skip_until > 0:
+        # 根据skip_weeks参数过滤掉指定周数的视频
+        if skip_weeks:
             original_count = len(rows)
-            rows = [row for row in rows if int(row[4]) > skip_until]
+            rows = [row for row in rows if int(row[4]) not in skip_weeks]
             filtered_count = original_count - len(rows)
             if filtered_count > 0:
-                print(f"根据设置跳过了前 {skip_until} 周的 {filtered_count} 个视频")
+                skip_list = sorted(list(skip_weeks))
+                if len(skip_list) <= 10:
+                    print(f"根据设置跳过了第 {', '.join(map(str, skip_list))} 周的 {filtered_count} 个视频")
+                else:
+                    print(f"根据设置跳过了 {len(skip_list)} 个周的 {filtered_count} 个视频")
 
         # 保存视频信息到CSV文件（保存到 logs/ 目录以便集中管理日志/元数据）
         try:

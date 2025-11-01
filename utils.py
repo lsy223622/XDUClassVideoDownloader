@@ -17,7 +17,7 @@ import os
 import stat
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Set, Union
 
 import psutil
 
@@ -436,3 +436,63 @@ def get_safe_filename(filename: str, max_length: int = 255) -> str:
             safe_name = safe_name[:max_length]
 
     return safe_name or "unnamed_file"
+
+
+def parse_week_ranges(week_str: str) -> Set[int]:
+    """
+    解析周数范围字符串，支持单个数字、范围和组合。
+
+    格式支持：
+    - 单个周数：'5' -> {5}
+    - 范围：'1-5' -> {1, 2, 3, 4, 5}
+    - 逗号分隔：'1,3,5' -> {1, 3, 5}
+    - 组合：'1-3,7,9-11' -> {1, 2, 3, 7, 9, 10, 11}
+
+    参数:
+        week_str (str): 周数范围字符串
+
+    返回:
+        Set[int]: 包含所有要跳过的周数的集合
+
+    异常:
+        ValueError: 当格式无效时
+    """
+    if not week_str or not week_str.strip():
+        return set()
+
+    weeks = set()
+    parts = week_str.strip().split(',')
+
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # 检查是否是范围（如 "1-5"）
+        if '-' in part:
+            range_parts = part.split('-')
+            if len(range_parts) != 2:
+                raise ValueError(f"无效的范围格式: {part}")
+            try:
+                start = int(range_parts[0].strip())
+                end = int(range_parts[1].strip())
+                if start <= 0 or end <= 0:
+                    raise ValueError(f"周数必须是正整数: {part}")
+                if start > end:
+                    raise ValueError(f"范围起始值不能大于结束值: {part}")
+                weeks.update(range(start, end + 1))
+            except ValueError as e:
+                if "invalid literal" in str(e):
+                    raise ValueError(f"无效的数字: {part}")
+                raise
+        else:
+            # 单个数字
+            try:
+                week = int(part)
+                if week <= 0:
+                    raise ValueError(f"周数必须是正整数: {part}")
+                weeks.add(week)
+            except ValueError:
+                raise ValueError(f"无效的周数: {part}")
+
+    return weeks

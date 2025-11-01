@@ -25,7 +25,7 @@ from typing import Optional, Tuple
 
 from api import check_update
 from downloader import download_course_videos
-from utils import enable_debug_file_logging, handle_exception, setup_logging, user_input_with_check
+from utils import enable_debug_file_logging, handle_exception, parse_week_ranges, setup_logging, user_input_with_check
 from validator import validate_download_parameters, validate_live_id
 
 # 使用统一的日志配置（模块日志 + 总日志；控制台仅 error+）
@@ -40,7 +40,7 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
     交互式获取用户输入。
 
     返回:
-        tuple: (live_id, skip_weeks, single, merge, video_type)
+        tuple: (live_id, skip_weeks_str, single, merge, video_type)
     """
     try:
 
@@ -123,27 +123,33 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
             video_type = "both"
 
         # 跳过周数设置
-        print("\n是否需要跳过指定的周数？")
-        print("输入要跳过的周数（用逗号分隔），或直接回车跳过此设置")
-        print("例如：1,3,5 表示跳过第 1、3、5 周")
+        print("\n是否需要跳过特定周数的视频？")
+        print("支持以下格式（或直接回车跳过此设置）：")
+        print("  - 单个周数：5")
+        print("  - 范围：1-5 （跳过第1到5周）")
+        print("  - 逗号分隔：1,3,5 （跳过第1、3、5周）")
+        print("  - 组合：1-3,7,9-11 （跳过1-3周、第7周、9-11周）")
 
         def validate_skip_weeks(weeks_str: str) -> bool:
             if not weeks_str:
                 return True
             try:
-                weeks = [int(w.strip()) for w in weeks_str.split(",")]
-                return all(w > 0 for w in weeks)
+                parse_week_ranges(weeks_str)
+                return True
             except ValueError:
                 return False
 
         skip_weeks_input = user_input_with_check(
-            "跳过的周数: ", validate_skip_weeks, error_message="格式错误，请输入正整数，用逗号分隔", allow_empty=True
+            "跳过的周数: ",
+            validate_skip_weeks,
+            error_message="格式错误，请按照示例格式输入",
+            allow_empty=True
         ).strip()
 
-        skip_weeks = skip_weeks_input if skip_weeks_input else ""
+        skip_weeks_str = skip_weeks_input if skip_weeks_input else ""
 
         # 清屏显示选择结果
-        _clear_prev_lines(21)
+        _clear_prev_lines(25)
         print("您的选择：")
         print(f"LiveID: {live_id}")
         mode_desc = {0: "全部视频", 1: "单节课模式", 2: "半节课模式"}
@@ -151,11 +157,20 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
         print(f"自动合并: {'是' if merge else '否'}")
         video_type_desc = {"both": "两种都下载", "ppt": "仅 pptVideo", "teacher": "仅 teacherTrack"}
         print(f"视频类型: {video_type_desc[video_type]}")
-        if skip_weeks:
-            print(f"跳过周数: {skip_weeks}")
+        if skip_weeks_str:
+            try:
+                weeks_set = parse_week_ranges(skip_weeks_str)
+                if weeks_set:
+                    weeks_list = sorted(list(weeks_set))
+                    if len(weeks_list) <= 10:
+                        print(f"跳过周数: {', '.join(map(str, weeks_list))}")
+                    else:
+                        print(f"跳过周数: {', '.join(map(str, weeks_list[:10]))}... (共{len(weeks_list)}周)")
+            except ValueError:
+                pass
         print()
 
-        return live_id, skip_weeks, single, merge, video_type
+        return live_id, skip_weeks_str, single, merge, video_type
 
     except KeyboardInterrupt:
         print("\n用户取消操作")
@@ -201,12 +216,19 @@ def parse_main_arguments() -> Namespace:
         help="选择要下载的视频类型：both（两种都下载，默认）、ppt（仅下载 pptVideo）、teacher（仅下载 teacherTrack）",
     )
     parser.add_argument(
+        "--skip-weeks",
+        type=str,
+        default="",
+        metavar="WEEKS",
+        help="跳过特定周数的视频。格式示例：5 (第5周), 1-5 (第1-5周), 1,3,5 (第1、3、5周), 1-3,7,9-11 (组合)",
+    )
+    parser.add_argument(
         "--debug", action="store_true", dest="debug", default=False, help="启用调试日志（写入 logs/debug.log）"
     )
     return parser.parse_args()
 
 
-def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, video_type: str = "both") -> bool:
+def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, video_type: str = "both", skip_weeks: str = "") -> bool:
     """
     主函数：下载指定课程的视频，包含完整的错误处理和用户体验优化。
 
@@ -215,6 +237,7 @@ def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, vide
         single (int): 下载模式（0=全部，1=单节课，2=半节课）。
         merge (bool): 是否自动合并相邻节次视频。
         video_type (str): 视频类型（"both"、"ppt"、"teacher"）。
+        skip_weeks (str): 跳过的周数范围字符串（如 "1-5,7,9-11"）。
 
     返回:
         bool: 处理是否成功
@@ -238,19 +261,30 @@ def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, vide
             result = get_user_input_interactive()
             if result is None or result[0] is None:
                 return False
-            liveid, _, single, merge, video_type = result
-            skip_until = 0  # 简化处理
+            liveid, skip_weeks, single, merge, video_type = result
         else:
             # 验证命令行参数
             liveid, single, video_type = validate_download_parameters(liveid, single, video_type)
-            skip_until = 0  # 非交互模式下，默认不跳过任何周
+            # skip_weeks 从参数传入
 
             # 无 command 参数
+
+        # 验证并解析 skip_weeks
+        skip_weeks_set = set()
+        if skip_weeks:
+            try:
+                skip_weeks_set = parse_week_ranges(skip_weeks)
+                if skip_weeks_set:
+                    logger.info(f"将跳过以下周数: {sorted(list(skip_weeks_set))}")
+            except ValueError as e:
+                logger.error(f"跳过周数格式错误: {e}")
+                print(f"错误：跳过周数格式无效 - {e}")
+                return False
 
         logger.info(f"下载参数 - 课程 ID: {liveid}, 模式: {single}, 合并: {merge}, 类型: {video_type}")
 
         # 调用核心下载函数
-        return download_course_videos(liveid, single, merge, video_type, skip_until)
+        return download_course_videos(liveid, single, merge, video_type, skip_weeks_set)
 
     except KeyboardInterrupt:
         print("\n\n用户取消下载任务")
@@ -278,7 +312,7 @@ if __name__ == "__main__":
 
     try:
         # 调用主函数，传入解析后的参数
-        success = main(liveid=args.liveid, single=args.single, merge=args.merge, video_type=args.video_type)
+        success = main(liveid=args.liveid, single=args.single, merge=args.merge, video_type=args.video_type, skip_weeks=args.skip_weeks)
 
         # 根据执行结果设置退出码
         sys.exit(0 if success else 1)

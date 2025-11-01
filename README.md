@@ -108,7 +108,11 @@
      - `1` (或直接回车): 下载两种视频（pptVideo 和 teacherTrack，默认）。
      - `2`: 仅下载 pptVideo（课件视频）。
      - `3`: 仅下载 teacherTrack（教师视频）。
-  6. 可选：输入一个周数，脚本将跳过下载前几周的视频（例如，输入 `3` 将跳过前三周）。直接回车则从第一周开始下载。
+  6. 可选：输入要跳过的周数，支持以下格式（直接回车则不跳过）：
+     - 单个周数：`5` （跳过第5周）
+     - 范围：`1-5` （跳过第1到5周）
+     - 逗号分隔：`1,3,5` （跳过第1、3、5周）
+     - 组合：`1-3,7,9-11` （跳过1-3周、第7周、9-11周）
   7. 首次运行会进入认证向导：
      - 选择“账号密码（推荐）”自动登录并获取 Cookies，或
      - 选择“手动输入 Cookies”并依次输入 `_d`、`UID`、`vc3`。
@@ -139,7 +143,7 @@
 
 ```shell
 # 用法
-python XDUClassVideoDownloader.py [LIVEID] [-s | -ss] [--no-merge] [--video-type {both,ppt,teacher}] [--debug]
+python XDUClassVideoDownloader.py [LIVEID] [-s | -ss] [--no-merge] [--video-type {both,ppt,teacher}] [--skip-weeks WEEKS] [--debug]
 ```
 
 - `LIVEID` (可选): 课程的 `liveId`。如果省略，将进入交互模式。
@@ -151,6 +155,11 @@ python XDUClassVideoDownloader.py [LIVEID] [-s | -ss] [--no-merge] [--video-type
   - `both`: 下载两种视频（pptVideo 和 teacherTrack，默认）
   - `ppt`: 仅下载 pptVideo（课件视频）
   - `teacher`: 仅下载 teacherTrack（教师视频）
+- `--skip-weeks WEEKS` (可选): 跳过特定周数的视频，支持多种格式:
+  - 单个周数：`--skip-weeks 5` （跳过第5周）
+  - 范围：`--skip-weeks 1-5` （跳过第1到5周）
+  - 逗号分隔：`--skip-weeks "1,3,5"` （跳过第1、3、5周）
+  - 组合：`--skip-weeks "1-3,7,9-11"` （跳过1-3周、第7周、9-11周）
 - `--debug` (可选): 启用调试日志（写入 `logs/debug.log`）。
 
 **示例:**
@@ -161,6 +170,12 @@ XDUClassVideoDownloader.exe 1234567890 -s --no-merge --video-type ppt
 
 # 仅下载教师视频
 XDUClassVideoDownloader.exe 1234567890 --video-type teacher
+
+# 跳过前5周，下载所有视频
+XDUClassVideoDownloader.exe 1234567890 --skip-weeks 1-5
+
+# 跳过第1、3、5周和第7-9周
+XDUClassVideoDownloader.exe 1234567890 --skip-weeks "1,3,5,7-9"
 ```
 
 ### `Automation.py` 参数
