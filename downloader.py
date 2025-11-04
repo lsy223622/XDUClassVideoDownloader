@@ -614,8 +614,13 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
         ) as temp_file:
             temp_list_file = temp_file.name
 
-            # 写入文件列表，按文件名排序确保正确的合并顺序
-            valid_files.sort(key=lambda f: Path(f).name)
+            # 写入文件列表，按节次数字排序确保正确的合并顺序
+            def extract_jie_number(filepath):
+                """从文件路径中提取节次数字用于排序"""
+                filename = Path(filepath).name
+                match = re.search(r'第(\d+)(?:-\d+)?节', filename)
+                return int(match.group(1)) if match else 0
+            valid_files.sort(key=extract_jie_number)
             for file_path in valid_files:
                 # 使用绝对路径并转义，确保FFmpeg能正确处理
                 escaped_path = str(Path(file_path).resolve()).replace("'", r"\'").replace("\\", "/")
