@@ -51,7 +51,7 @@
   > `liveId` 是课程直播的唯一标识，可以在课程直播页面的 URL 中找到。例如：`http://newes.chaoxing.com/xidianpj/live/viewNewCourseLive1?isStudent=1&liveId=12345678` 中的 `12345678`。
 
 - **`Automation.py`**：强大的自动化脚本，通过您的超星 `UID` 来自动发现并下载当前学期的所有课程。
-  > 您的超星 `UID` 可以在浏览器开发者工具中查看 `chaoxing.com` 域下的 Cookie 找到。
+  > 您的超星 `UID` 可以通过访问 `https://i.mooc.chaoxing.com/settings/info` 在页面中的 `id` 字段找到。
 
 ## **核心功能**
 
