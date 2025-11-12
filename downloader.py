@@ -38,7 +38,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import requests
 from tqdm import tqdm
 
-from api import FID, fetch_video_links, get_initial_data
+from api import FID, REQUEST_TIMEOUT, fetch_video_links, get_initial_data
 from config import format_auth_cookies, get_auth_cookies
 from utils import (
     calculate_optimal_threads,
