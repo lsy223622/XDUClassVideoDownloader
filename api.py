@@ -806,7 +806,7 @@ def check_update() -> None:
         logger.warning(f"版本检查失败: {e}")
 
 
-def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any) -> Optional[List[Any]]:
+def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version: str = "new") -> Optional[List[Any]]:
     """
     获取单个课程条目的视频链接（pptVideo / teacherTrack），用于多线程环境中安全地获取视频链接。
     包含完整的错误处理和数据验证。
@@ -815,6 +815,7 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any) -> Optional[
         entry (dict): 包含课程信息的字典
         lock (threading.Lock): 线程锁，用于安全更新进度条
         desc (tqdm): 进度条对象
+        api_version (str): API版本，"new"表示新版（mp4），"legacy"表示旧版（m3u8）
 
     返回:
         list: 包含视频信息的列表，格式为[月, 日, 星期, 节次, 周数, ppt_video_url, teacher_track_url]
@@ -835,8 +836,13 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any) -> Optional[
             return None
 
     try:
-        # 获取PPT视频和教师视频的链接
-        ppt_video, teacher_track = get_mp4_links(entry["id"])
+        # 根据API版本获取视频链接
+        if api_version == "legacy":
+            # 旧版API：获取M3U8链接
+            ppt_video, teacher_track = get_m3u8_links_legacy(entry["id"])
+        else:
+            # 新版API：获取MP4链接
+            ppt_video, teacher_track = get_mp4_links(entry["id"])
 
         # 验证和解析开始时间
         start_time = entry["startTime"]
@@ -885,3 +891,236 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any) -> Optional[
         with lock:
             desc.update(1)
         return None
+
+
+def detect_api_version(data: List[Dict[str, Any]]) -> str:
+    """
+    检测课程数据使用的API版本。
+
+    通过检查课程数据中的termYear字段判断应使用新版API还是旧版API。
+    2024及以前的学年使用旧版API（m3u8格式），2025及之后使用新版API（mp4格式）。
+
+    参数:
+        data (List[Dict[str, Any]]): 课程数据列表
+
+    返回:
+        str: "legacy"表示旧版API（2024及以前），"new"表示新版API（2025及之后）
+    """
+    if not data or len(data) == 0:
+        logger.warning("课程数据为空，默认使用新版API")
+        return "new"
+
+    # 从第一条数据中获取termYear
+    term_year = data[0].get("termYear")
+
+    if term_year is None:
+        logger.warning("无法获取termYear，默认使用新版API")
+        return "new"
+
+    # 2024及以前使用旧版API，2025及之后使用新版API
+    if term_year <= 2024:
+        logger.info(f"检测到termYear={term_year}，使用旧版API（m3u8格式）")
+        return "legacy"
+    else:
+        logger.info(f"检测到termYear={term_year}，使用新版API（mp4格式）")
+        return "new"
+
+
+@rate_limit
+def get_m3u8_info_legacy(live_id: Union[int, str], retry_count: int = 0) -> Dict[str, Any]:
+    """
+    使用旧版API从服务器获取M3U8视频信息（2024及以前的课程）。
+
+    旧版API返回的是HTML页面，包含URL编码的JSON数据，指向M3U8播放列表。
+    与v2.9.0-beta不同的是，现在需要携带_d、UID、vc3这三个cookies。
+
+    参数:
+        live_id (Union[int, str]): 直播课程ID
+        retry_count (int): 当前重试次数
+
+    返回:
+        Dict[str, Any]: 包含videoPath的字典，其中pptVideo和teacherTrack是M3U8链接
+
+    异常:
+        ValueError: 当获取视频信息失败时
+    """
+    # 验证输入参数
+    validated_live_id = validate_live_id(live_id)
+
+    # 检查重试次数
+    if retry_count > MAX_RETRIES:
+        raise ValueError(f"获取旧版视频信息失败，已达到最大重试次数 ({MAX_RETRIES})")
+
+    if retry_count > 0:
+        logger.info(f"正在进行第 {retry_count + 1}/{MAX_RETRIES + 1} 次尝试获取旧版视频信息")
+        # 指数退避
+        sleep_time = RETRY_BACKOFF_FACTOR * ((2**retry_count) + random.uniform(0, 1))
+        time.sleep(sleep_time)
+
+    try:
+        # 构建旧版API URL（注意是/live/不是/xidianpj/live/）
+        url = f"http://newesxidian.chaoxing.com/live/getViewUrlHls?liveId={validated_live_id}"
+
+        if not is_valid_url(url):
+            raise ValueError(f"构建的URL无效: {url}")
+
+        # 获取认证头和创建会话（关键：旧版API现在也需要cookies）
+        headers = get_authenticated_headers()
+        session = create_session()
+
+        logger.debug(f"正在获取旧版视频信息: {validated_live_id}")
+
+        # 发送GET请求
+        logger.debug(f"GET {url}")
+        response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+
+        html_content = response.text
+
+        if not html_content:
+            raise ValueError("服务器返回空响应")
+
+        # 检测"视频回看生成中"提示页
+        if "视频回看生成中" in html_content or "需要1-3天处理完成" in html_content:
+            logger.info(f"liveId {validated_live_id} 回看仍在生成中，跳过此次解析")
+            raise VideoGeneratingError(f"回看生成中: {validated_live_id}")
+
+        # 旧版API返回的HTML中包含类似这样的内容：
+        # ...info=%7B%22videoPath%22%3A%7B%22pptVideo%22%3A%22http%3A...
+        # 提取info参数（URL编码的JSON数据）
+        if "info=" not in html_content:
+            if retry_count < MAX_RETRIES:
+                logger.warning(f"未找到info参数，重试中...")
+                return get_m3u8_info_legacy(live_id, retry_count + 1)
+            else:
+                logger.warning(f"无法在响应中找到视频信息，liveId: {validated_live_id}")
+                raise ValueError(f"无法获取旧版视频信息，课程ID: {validated_live_id}")
+
+        # 从响应中提取info参数
+        encoded_info = html_content.split("info=")[-1]
+        # 可能后面还有其他参数，取第一个&之前的内容
+        if "&" in encoded_info:
+            encoded_info = encoded_info.split("&")[0]
+        # 也可能是在HTML标签中，取第一个<或"之前的内容
+        for delimiter in ["<", '"', "'"]:
+            if delimiter in encoded_info:
+                encoded_info = encoded_info.split(delimiter)[0]
+
+        if not encoded_info:
+            raise ValueError("提取的视频信息为空")
+
+        # URL解码
+        try:
+            decoded_info = urllib.parse.unquote(encoded_info)
+        except Exception as e:
+            raise ValueError(f"URL解码失败: {e}")
+
+        # 解析JSON数据
+        try:
+            info_json = json.loads(decoded_info)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON解析失败: {e}, 原始数据长度: {len(decoded_info)}")
+            raise ValueError(f"旧版视频信息JSON解析失败: {e}")
+
+        # 验证JSON结构
+        if not isinstance(info_json, dict):
+            raise ValueError("旧版视频信息格式错误，期望字典类型")
+
+        logger.info(f"成功获取旧版视频信息: {validated_live_id}")
+        return info_json
+
+    except requests.Timeout:
+        if retry_count < MAX_RETRIES:
+            logger.warning(f"请求超时，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
+            return get_m3u8_info_legacy(live_id, retry_count + 1)
+        else:
+            raise ValueError(f"请求超时，课程ID: {validated_live_id}")
+
+    except requests.ConnectionError:
+        if retry_count < MAX_RETRIES:
+            logger.warning(f"网络连接错误，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
+            return get_m3u8_info_legacy(live_id, retry_count + 1)
+        else:
+            raise ValueError(f"网络连接失败，课程ID: {validated_live_id}")
+
+    except requests.HTTPError as e:
+        error_msg = f"HTTP错误 {e.response.status_code}, 课程ID: {validated_live_id}"
+        logger.error(error_msg)
+
+        if e.response.status_code in [429, 503] and retry_count < MAX_RETRIES:
+            logger.warning(f"服务器繁忙，正在重试... ({retry_count + 1}/{MAX_RETRIES + 1})")
+            return get_m3u8_info_legacy(live_id, retry_count + 1)
+        else:
+            raise ValueError(error_msg)
+    except VideoGeneratingError:
+        # 直接向上抛出，不做重试也不包装
+        raise
+    except Exception as e:
+        logger.warning(f"获取旧版视频信息时发生未知错误: {e}")
+        if retry_count < MAX_RETRIES:
+            return get_m3u8_info_legacy(live_id, retry_count + 1)
+        else:
+            raise ValueError(f"获取旧版视频信息失败: {e}")
+
+
+def get_m3u8_links_legacy(live_id: Union[int, str]) -> Tuple[str, str]:
+    """
+    从直播ID获取PPT视频和教师视频的M3U8链接（旧版API，2024及以前）。
+
+    参数:
+        live_id (Union[int, str]): 直播课程ID
+
+    返回:
+        Tuple[str, str]: (ppt_video_m3u8_url, teacher_track_m3u8_url) 两个M3U8链接
+
+    异常:
+        ValueError: 当获取视频链接失败时
+    """
+    try:
+        # 获取视频信息
+        info_json = get_m3u8_info_legacy(live_id)
+
+        # 验证响应结构
+        if "videoPath" not in info_json:
+            logger.warning(f"响应中缺少videoPath字段，课程ID: {live_id}")
+            return "", ""
+
+        video_paths = info_json["videoPath"]
+
+        if video_paths is None:
+            logger.warning(f"videoPath为空，课程ID: {live_id}")
+            return "", ""
+
+        if not isinstance(video_paths, dict):
+            logger.warning(f"videoPath格式错误，期望字典但收到: {type(video_paths)}")
+            return "", ""
+
+        # 提取M3U8 URL并验证
+        ppt_video = video_paths.get("pptVideo", "")
+        teacher_track = video_paths.get("teacherTrack", "")
+
+        # 验证URL格式（如果存在）
+        if ppt_video and not is_valid_url(ppt_video):
+            logger.warning(f"PPT视频M3U8链接格式无效: {ppt_video}")
+            ppt_video = ""
+
+        if teacher_track and not is_valid_url(teacher_track):
+            logger.warning(f"教师视频M3U8链接格式无效: {teacher_track}")
+            teacher_track = ""
+
+        if not ppt_video and not teacher_track:
+            logger.warning(f"没有找到有效的M3U8链接，课程ID: {live_id}")
+        else:
+            logger.info(
+                f"成功获取M3U8链接，课程ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}"
+            )
+
+        return ppt_video, teacher_track
+
+    except VideoGeneratingError as e:
+        # 特殊情况：视频尚未生成
+        logger.warning(str(e))
+        raise
+    except Exception as e:
+        logger.error(f"获取M3U8链接失败，课程ID: {live_id}, 错误: {e}")
+        raise ValueError(f"获取M3U8链接失败: {str(e)}")

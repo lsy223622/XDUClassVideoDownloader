@@ -713,6 +713,7 @@ def process_rows(
     save_dir: str,
     merge: bool = True,
     video_type: str = "both",
+    api_version: str = "new",
 ) -> Dict[str, int]:
     """
     处理视频行数据，下载视频并可选择性地合并相邻节次的视频。
@@ -726,6 +727,7 @@ def process_rows(
         save_dir (str): 保存目录
         merge (bool): 是否自动合并相邻节次的视频
         video_type (str): 视频类型('both', 'ppt', 'teacher')
+        api_version (str): API版本，"new"表示新版（mp4），"legacy"表示旧版（m3u8）
 
     返回:
         dict: 处理结果统计信息
@@ -924,9 +926,12 @@ def process_rows(
 
         month, date, day, jie, days, day_chinese = components
 
+        # 根据API版本确定文件扩展名
+        file_ext = ".ts" if api_version == "legacy" else ".mp4"
+
         # 构建基础文件名和完整文件名
         base_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
-        filename = f"{base_filename}-{track_type}.mp4"
+        filename = f"{base_filename}-{track_type}{file_ext}"
         filepath = Path(save_dir) / filename
 
         # 检查文件是否已存在
@@ -941,10 +946,16 @@ def process_rows(
             logger.info(f"文件已存在，跳过下载: {filename}")
             result["skipped"] = True
         else:
-            # 下载文件
+            # 根据API版本选择下载函数
             logger.info(f"开始下载: {filename}")
             try:
-                download_success = download_mp4(video_url, filename, save_dir)
+                if api_version == "legacy":
+                    # 旧版API：下载M3U8格式
+                    download_success = download_m3u8(video_url, filename, save_dir)
+                else:
+                    # 新版API：下载MP4格式
+                    download_success = download_mp4(video_url, filename, save_dir)
+
                 if download_success:
                     result["downloaded"] = True
                     logger.info(f"下载成功: {filename}")
@@ -1202,6 +1213,15 @@ def download_course_videos(
         clear_overwrite_line()
         print(f"成功获取到 {len(data)} 条课程记录")
 
+        # 检测API版本
+        from api import detect_api_version
+
+        api_version = detect_api_version(data)
+        if api_version == "legacy":
+            print(f"检测到旧版课程（2024及以前），将使用m3u8格式下载")
+        else:
+            print(f"检测到新版课程（2025及之后），将使用mp4格式下载")
+
         # 处理不同的下载模式
         if single:
             original_data = data[:]
@@ -1271,7 +1291,7 @@ def download_course_videos(
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
                 # 提交所有任务
-                futures = [executor.submit(fetch_video_links, entry, lock, desc) for entry in valid_entries]
+                futures = [executor.submit(fetch_video_links, entry, lock, desc, api_version) for entry in valid_entries]
 
                 # 收集所有线程的结果
                 for future in concurrent.futures.as_completed(futures):
@@ -1335,7 +1355,7 @@ def download_course_videos(
         else:
             # 批量下载处理
             try:
-                stats = process_rows(download_rows, course_code, course_name, year, save_dir, merge, video_type)
+                stats = process_rows(download_rows, course_code, course_name, year, save_dir, merge, video_type, api_version)
 
                 print(f"\n下载任务完成！")
                 print(
@@ -1414,3 +1434,265 @@ def process_all_courses(config: configparser.ConfigParser, video_type: str = "bo
 
     print(f"\n批量下载完成: 成功 {success_count}/{total_count} 门课程")
     return success_count > 0
+
+
+def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
+    """
+    解析M3U8播放列表，提取TS分片的URL列表。
+
+    参数:
+        m3u8_content (str): M3U8文件的内容
+        base_url (str): M3U8文件的基础URL，用于构建完整的分片URL
+
+    返回:
+        List[str]: TS分片的完整URL列表
+    """
+    segment_urls = []
+    lines = m3u8_content.strip().split("\n")
+
+    for line in lines:
+        line = line.strip()
+        # 跳过注释行和空行
+        if not line or line.startswith("#"):
+            continue
+
+        # 构建完整的URL
+        if line.startswith("http://") or line.startswith("https://"):
+            # 已经是完整URL
+            segment_urls.append(line)
+        else:
+            # 相对URL，需要拼接
+            from urllib.parse import urljoin
+
+            segment_urls.append(urljoin(base_url, line))
+
+    logger.debug(f"从M3U8播放列表中解析出 {len(segment_urls)} 个TS分片")
+    return segment_urls
+
+
+def download_m3u8_segment(url: str, segment_index: int, auth_cookies: Dict[str, str]) -> Optional[bytes]:
+    """
+    下载单个M3U8 TS分片。
+
+    参数:
+        url (str): TS分片的URL
+        segment_index (int): 分片索引（用于日志）
+        auth_cookies (Dict[str, str]): 认证cookies
+
+    返回:
+        Optional[bytes]: 分片的二进制数据，失败时返回None
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "Cookie": format_auth_cookies(auth_cookies),
+        "Referer": "http://newesxidian.chaoxing.com/",
+    }
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            logger.debug(f"下载TS分片 {segment_index}: {url}")
+            response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"下载TS分片 {segment_index} 失败（尝试 {attempt + 1}/{max_retries}）: {e}")
+                time.sleep(1)
+            else:
+                logger.error(f"下载TS分片 {segment_index} 最终失败: {e}")
+                return None
+    return None
+
+
+def download_m3u8(
+    m3u8_url: str,
+    filename: str,
+    save_dir: str,
+    max_attempts: int = MAX_DOWNLOAD_RETRIES,
+) -> bool:
+    """
+    下载M3U8视频文件，自动解析播放列表并下载所有TS分片，最后合并为完整视频。
+
+    参数:
+        m3u8_url (str): M3U8播放列表的URL
+        filename (str): 保存的文件名（.ts格式）
+        save_dir (str): 保存目录
+        max_attempts (int): 最大重试次数
+
+    返回:
+        bool: 下载是否成功
+    """
+    # 参数验证
+    if not m3u8_url or not isinstance(m3u8_url, str):
+        raise ValueError("M3U8 URL不能为空且必须是字符串类型")
+
+    if not is_valid_url(m3u8_url):
+        logger.warning(f"M3U8 URL格式可能无效: {m3u8_url}")
+
+    if not filename or not isinstance(filename, str):
+        raise ValueError("文件名不能为空且必须是字符串类型")
+
+    if not save_dir or not isinstance(save_dir, str):
+        raise ValueError("保存目录不能为空且必须是字符串类型")
+
+    # 确保文件名安全
+    safe_filename = get_safe_filename(filename)
+    output_path = Path(save_dir) / safe_filename
+
+    # 检查文件是否已存在且完整
+    if output_path.exists():
+        if verify_file_integrity(str(output_path)):
+            logger.info(f"文件已存在且完整，跳过下载: {safe_filename}")
+            return True
+        logger.warning(f"文件已存在但不完整，将重新下载: {safe_filename}")
+        try:
+            output_path.unlink()
+        except OSError as e:
+            logger.warning(f"删除不完整文件失败: {e}")
+
+    # 创建保存目录
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise OSError(f"无法创建保存目录: {e}")
+
+    # 获取认证信息
+    try:
+        auth_cookies = get_auth_cookies(FID)
+    except Exception as e:
+        logger.error(f"获取认证信息失败: {e}")
+        raise ValueError(f"无法获取认证信息: {e}")
+
+    # 重试下载机制
+    for attempt in range(max_attempts):
+        temp_path = None
+        try:
+            logger.info(f"开始下载M3U8视频 ({attempt + 1}/{max_attempts}): {safe_filename}")
+
+            # 1. 下载M3U8播放列表
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "*/*",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Cookie": format_auth_cookies(auth_cookies),
+            }
+
+            logger.debug(f"GET {m3u8_url}")
+            m3u8_response = requests.get(m3u8_url, headers=headers, timeout=REQUEST_TIMEOUT)
+            m3u8_response.raise_for_status()
+            m3u8_content = m3u8_response.text
+
+            # 2. 解析M3U8播放列表
+            segment_urls = parse_m3u8_playlist(m3u8_content, m3u8_url)
+
+            if not segment_urls:
+                raise ValueError("M3U8播放列表中没有找到TS分片")
+
+            logger.info(f"M3U8播放列表包含 {len(segment_urls)} 个TS分片")
+
+            # 3. 创建临时文件
+            temp_path = output_path.with_suffix(".tmp")
+
+            # 4. 下载所有TS分片并写入临时文件
+            downloaded_segments = 0
+            failed_segments = []
+
+            with open(temp_path, "wb") as f:
+                with tqdm(total=len(segment_urls), desc=safe_filename, unit="片段", leave=False) as pbar:
+                    # 使用多线程下载分片
+                    max_workers = min(8, len(segment_urls))
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        # 提交所有下载任务
+                        future_to_index = {
+                            executor.submit(download_m3u8_segment, url, idx, auth_cookies): idx
+                            for idx, url in enumerate(segment_urls)
+                        }
+
+                        # 按顺序收集结果
+                        segments_data = [None] * len(segment_urls)
+                        for future in concurrent.futures.as_completed(future_to_index):
+                            idx = future_to_index[future]
+                            try:
+                                segment_data = future.result()
+                                if segment_data:
+                                    segments_data[idx] = segment_data
+                                    downloaded_segments += 1
+                                else:
+                                    failed_segments.append(idx)
+                            except Exception as e:
+                                logger.error(f"下载TS分片 {idx} 时出错: {e}")
+                                failed_segments.append(idx)
+                            pbar.update(1)
+
+                    # 按顺序写入分片
+                    for idx, segment_data in enumerate(segments_data):
+                        if segment_data:
+                            f.write(segment_data)
+                        else:
+                            logger.warning(f"TS分片 {idx} 缺失，可能导致视频不完整")
+
+            # 5. 检查下载完整性
+            if failed_segments:
+                logger.warning(
+                    f"有 {len(failed_segments)} 个TS分片下载失败（共 {len(segment_urls)} 个），视频可能不完整"
+                )
+                # 如果失败分片超过10%，认为下载失败
+                if len(failed_segments) / len(segment_urls) > 0.1:
+                    raise ValueError(f"失败分片过多 ({len(failed_segments)}/{len(segment_urls)})")
+
+            # 6. 验证下载的文件
+            if not verify_file_integrity(str(temp_path)):
+                raise ValueError("下载的M3U8视频文件验证失败")
+
+            # 7. 原子性重命名
+            shutil.move(str(temp_path), str(output_path))
+            logger.info(
+                f"M3U8视频下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})，成功下载 {downloaded_segments}/{len(segment_urls)} 个分片"
+            )
+            return True
+
+        except requests.Timeout:
+            error_msg = f"下载M3U8超时 ({attempt + 1}/{max_attempts}): {safe_filename}"
+            logger.warning(error_msg)
+            if attempt == max_attempts - 1:
+                handle_exception(Exception("下载超时"), f"下载M3U8 {safe_filename} 失败")
+
+        except requests.ConnectionError:
+            error_msg = f"网络连接错误 ({attempt + 1}/{max_attempts}): {safe_filename}"
+            logger.warning(error_msg)
+            if attempt == max_attempts - 1:
+                handle_exception(Exception("网络连接失败"), f"下载M3U8 {safe_filename} 失败")
+
+        except requests.HTTPError as e:
+            error_msg = f"HTTP错误 {e.response.status_code} ({attempt + 1}/{max_attempts}): {safe_filename}"
+            logger.warning(error_msg)
+            if e.response.status_code in [404, 403, 410]:
+                # 对于客户端错误，不需要重试
+                handle_exception(e, f"下载M3U8 {safe_filename} 失败：资源不可用")
+                break
+            if attempt == max_attempts - 1:
+                handle_exception(e, f"下载M3U8 {safe_filename} 失败")
+
+        except Exception as e:
+            error_msg = f"下载M3U8失败 ({attempt + 1}/{max_attempts}): {safe_filename}, 错误: {e}"
+            logger.warning(error_msg)
+            if attempt == max_attempts - 1:
+                handle_exception(e, f"下载M3U8 {safe_filename} 最终失败")
+
+        finally:
+            # 清理临时文件（下载失败时）
+            if temp_path and temp_path.exists() and not output_path.exists():
+                try:
+                    # 保留临时文件用于断点续传，但如果是最后一次尝试则删除
+                    if attempt == max_attempts - 1:
+                        temp_path.unlink()
+                        logger.debug(f"已清理临时文件: {temp_path}")
+                except OSError as e:
+                    logger.warning(f"清理临时文件失败: {e}")
+
+    return False
