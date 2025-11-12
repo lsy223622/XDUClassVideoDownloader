@@ -1450,6 +1450,13 @@ def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
     segment_urls = []
     lines = m3u8_content.strip().split("\n")
 
+    # 提取base_url的目录部分（去掉文件名）
+    # 对于特殊的URL格式（如包含cloud://），不使用urljoin，而是直接字符串拼接
+    if "/" in base_url:
+        base_dir = base_url.rsplit("/", 1)[0] + "/"
+    else:
+        base_dir = base_url
+
     for line in lines:
         line = line.strip()
         # 跳过注释行和空行
@@ -1462,9 +1469,9 @@ def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
             segment_urls.append(line)
         else:
             # 相对URL，需要拼接
-            from urllib.parse import urljoin
-
-            segment_urls.append(urljoin(base_url, line))
+            # 不使用urljoin，因为它对特殊URL格式（如cloud://）处理不当
+            # 直接进行字符串拼接
+            segment_urls.append(base_dir + line)
 
     logger.debug(f"从M3U8播放列表中解析出 {len(segment_urls)} 个TS分片")
     return segment_urls
