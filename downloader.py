@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 下载模块
-负责MP4视频文件的安全下载和智能合并处理
+负责MP4和M3U8视频文件的安全下载和智能合并处理
 
 主要功能：
 - 支持断点续传的MP4视频下载
+- 支持M3U8流媒体下载（内置轻量级实现）
 - 智能的视频文件合并和处理
 - 跨平台的下载支持和错误恢复
 - 进度跟踪和用户友好的反馈
@@ -1436,6 +1437,121 @@ def process_all_courses(config: configparser.ConfigParser, video_type: str = "bo
     return success_count > 0
 
 
+def remux_ts_to_mp4(
+    ts_path: Union[str, Path],
+    mp4_path: Optional[Union[str, Path]] = None,
+    remove_ts: bool = False,
+) -> bool:
+    """
+    使用FFmpeg将TS文件转封装为MP4格式（不重新编码，仅改变容器格式）。
+
+    参数:
+        ts_path (Union[str, Path]): 输入的TS文件路径
+        mp4_path (Optional[Union[str, Path]]): 输出的MP4文件路径，如果为None则自动生成
+        remove_ts (bool): 转换成功后是否删除原始TS文件
+
+    返回:
+        bool: 转换是否成功
+    """
+    ts_path = Path(ts_path)
+
+    # 验证输入文件
+    if not ts_path.exists():
+        logger.error(f"TS文件不存在: {ts_path}")
+        return False
+
+    if not ts_path.is_file():
+        logger.error(f"路径不是文件: {ts_path}")
+        return False
+
+    # 确定输出路径
+    if mp4_path is None:
+        mp4_path = ts_path.with_suffix(".mp4")
+    else:
+        mp4_path = Path(mp4_path)
+
+    # 检查输出文件是否已存在
+    if mp4_path.exists():
+        if verify_file_integrity(str(mp4_path)):
+            logger.info(f"MP4文件已存在且完整: {mp4_path.name}")
+            if remove_ts and ts_path.exists():
+                try:
+                    ts_path.unlink()
+                    logger.info(f"已删除原始TS文件: {ts_path.name}")
+                except OSError as e:
+                    logger.warning(f"删除TS文件失败: {e}")
+            return True
+        else:
+            logger.warning(f"MP4文件已存在但不完整，将重新转换: {mp4_path.name}")
+            try:
+                mp4_path.unlink()
+            except OSError as e:
+                logger.warning(f"删除不完整MP4文件失败: {e}")
+
+    # 获取FFmpeg路径
+    try:
+        ffmpeg_path = get_ffmpeg_path()
+    except Exception as e:
+        logger.error(f"获取FFmpeg路径失败: {e}")
+        return False
+
+    # 构建FFmpeg命令（使用 -c copy 进行流复制，不重新编码）
+    cmd = [
+        ffmpeg_path,
+        "-i", str(ts_path),      # 输入文件
+        "-c", "copy",             # 流复制（不重新编码）
+        "-movflags", "+faststart", # 优化MP4文件结构，支持网络流媒体
+        "-y",                     # 覆盖输出文件
+        str(mp4_path)            # 输出文件
+    ]
+
+    try:
+        logger.info(f"开始转封装TS到MP4: {ts_path.name} -> {mp4_path.name}")
+
+        # 执行FFmpeg命令
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5分钟超时
+        )
+
+        if result.returncode != 0:
+            logger.error(f"FFmpeg转换失败: {result.stderr}")
+            return False
+
+        # 验证输出文件
+        if not mp4_path.exists():
+            logger.error(f"转换后的MP4文件不存在: {mp4_path}")
+            return False
+
+        if not verify_file_integrity(str(mp4_path)):
+            logger.error(f"转换后的MP4文件验证失败: {mp4_path}")
+            return False
+
+        logger.info(
+            f"转封装完成: {mp4_path.name} ({format_file_size(mp4_path.stat().st_size)})"
+        )
+
+        # 删除原始TS文件（如果需要）
+        if remove_ts and ts_path.exists():
+            try:
+                ts_path.unlink()
+                logger.info(f"已删除原始TS文件: {ts_path.name}")
+            except OSError as e:
+                logger.warning(f"删除TS文件失败: {e}")
+
+        return True
+
+    except subprocess.TimeoutExpired:
+        logger.error(f"FFmpeg转换超时: {ts_path.name}")
+        return False
+    except Exception as e:
+        logger.error(f"FFmpeg转换异常: {e}")
+        handle_exception(e, f"转封装 {ts_path.name} 失败")
+        return False
+
+
 def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
     """
     解析M3U8播放列表，提取TS分片的URL列表。
@@ -1524,6 +1640,8 @@ def download_m3u8(
 ) -> bool:
     """
     下载M3U8视频文件，自动解析播放列表并下载所有TS分片，最后合并为完整视频。
+
+    使用内置的轻量级实现，支持非加密的M3U8流媒体下载。
 
     参数:
         m3u8_url (str): M3U8播放列表的URL
