@@ -1615,7 +1615,7 @@ def download_m3u8_segment(url: str, segment_index: int, auth_cookies: Dict[str, 
         "Referer": "http://newesxidian.chaoxing.com/",
     }
 
-    max_retries = 3
+    max_retries = 10
     for attempt in range(max_retries):
         try:
             logger.debug(f"下载TS分片 {segment_index}: {url}")
@@ -1766,8 +1766,8 @@ def download_m3u8(
                 logger.warning(
                     f"有 {len(failed_segments)} 个TS分片下载失败（共 {len(segment_urls)} 个），视频可能不完整"
                 )
-                # 如果失败分片超过10%，认为下载失败
-                if len(failed_segments) / len(segment_urls) > 0.1:
+                # 如果失败分片超过20%，认为下载失败
+                if len(failed_segments) / len(segment_urls) > 0.2:
                     raise ValueError(f"失败分片过多 ({len(failed_segments)}/{len(segment_urls)})")
 
             # 6. 验证下载的文件
