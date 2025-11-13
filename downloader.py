@@ -1627,7 +1627,7 @@ def download_m3u8_segment(url: str, segment_index: int, auth_cookies: Dict[str, 
                 logger.warning(f"下载TS分片 {segment_index} 失败（尝试 {attempt + 1}/{max_retries}）: {e}")
                 time.sleep(1)
             else:
-                logger.error(f"下载TS分片 {segment_index} 最终失败: {e}")
+                logger.warning(f"下载TS分片 {segment_index} 最终失败: {e}")
                 return None
     return None
 
