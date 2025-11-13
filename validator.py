@@ -220,17 +220,56 @@ def validate_file_integrity(filepath: str, expected_size: Optional[int] = None) 
             logger.warning(f"文件大小不匹配，期望: {expected_size}, 实际: {file_size}")
             return False
 
-        # 简单的文件头验证（MP4文件应该以特定字节开头）
+        # 根据文件扩展名和内容进行文件头验证
+        file_ext = os.path.splitext(filepath)[1].lower()
+
         try:
             with open(filepath, "rb") as f:
                 header = f.read(8)
-                # MP4文件头通常包含 'ftyp' 标识
-                if len(header) >= 8 and b"ftyp" in header:
-                    logger.debug(f"文件头验证通过: {filepath}")
-                    return True
+
+                if file_ext == ".mp4":
+                    # MP4文件头通常包含 'ftyp' 标识
+                    if len(header) >= 8 and b"ftyp" in header:
+                        logger.debug(f"MP4文件头验证通过: {filepath}")
+                        return True
+                    else:
+                        logger.warning(f"MP4文件头验证失败: {filepath}")
+                        return False
+
+                elif file_ext == ".ts":
+                    # MPEG-TS文件的同步字节是 0x47，通常每188或204字节出现一次
+                    if len(header) >= 1 and header[0] == 0x47:
+                        logger.debug(f"TS文件头验证通过: {filepath}")
+                        return True
+                    else:
+                        logger.warning(f"TS文件头验证失败，未找到MPEG-TS同步字节: {filepath}")
+                        return False
+
+                elif file_ext == ".tmp":
+                    # 临时文件，尝试根据内容判断类型
+                    if len(header) >= 8 and b"ftyp" in header:
+                        logger.debug(f"临时文件（MP4格式）验证通过: {filepath}")
+                        return True
+                    elif len(header) >= 1 and header[0] == 0x47:
+                        logger.debug(f"临时文件（TS格式）验证通过: {filepath}")
+                        return True
+                    elif len(header) > 0:
+                        # 无法识别格式，但有内容，允许通过
+                        logger.debug(f"临时文件验证通过（未知格式）: {filepath}")
+                        return True
+                    else:
+                        logger.warning(f"临时文件为空: {filepath}")
+                        return False
+
                 else:
-                    logger.warning(f"文件头验证失败，可能不是有效的MP4文件: {filepath}")
-                    return False
+                    # 其他文件类型，只要有内容就认为有效
+                    if len(header) > 0:
+                        logger.debug(f"文件验证通过（未知格式，仅检查大小）: {filepath}")
+                        return True
+                    else:
+                        logger.warning(f"文件为空: {filepath}")
+                        return False
+
         except Exception as e:
             logger.warning(f"文件头验证时出错: {e}")
             return False
