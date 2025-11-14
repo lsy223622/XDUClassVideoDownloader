@@ -634,16 +634,30 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
         # 构建 FFmpeg 命令
         ffmpeg_cmd = [
             get_ffmpeg_path(),
+            "-err_detect",
+            "ignore_err",  # 忽略解码错误，继续处理
+            "-fflags",
+            "+genpts+igndts",  # 生成PTS时间戳，忽略DTS错误
             "-f",
             "concat",
             "-safe",
             "0",
+            "-analyzeduration",
+            "10000000",  # 增加分析时长以更好地检测流参数
+            "-probesize",
+            "10000000",  # 增加探测大小
             "-i",
             temp_list_file,
             "-c",
             "copy",  # 直接复制，不重新编码
             "-avoid_negative_ts",
             "make_zero",  # 处理时间戳问题
+            "-max_muxing_queue_size",
+            "4096",  # 增加混流队列大小以处理有问题的流
+            "-map",
+            "0:v:0",  # 只映射第一个视频流
+            "-map",
+            "0:a:0?",  # 只映射第一个音频流（如果存在）
             "-y",  # 覆盖输出文件
             temp_output_file,
         ]
