@@ -7,7 +7,7 @@
 - 参数验证
 - 输入格式检查
 - 数据完整性验证
-- URL和文件名验证
+- URL 和文件名验证
 """
 
 import os
@@ -23,7 +23,7 @@ logger = setup_logging("validator")
 
 def validate_live_id(live_id: Union[int, str]) -> int:
     """
-    验证直播ID的格式和有效性。
+    验证直播 ID 的格式和有效性。
 
     参数:
         live_id (Union[int, str]): 待验证的直播 ID。
@@ -50,7 +50,7 @@ def validate_live_id(live_id: Union[int, str]) -> int:
 
 def validate_user_id(user_id: str) -> bool:
     """
-    验证用户ID的有效性。
+    验证用户 ID 的有效性。
 
     参数:
         user_id (str): 用户 ID。
@@ -61,7 +61,7 @@ def validate_user_id(user_id: str) -> bool:
     if not user_id or not isinstance(user_id, str):
         return False
 
-    # 用户ID应该是数字字符串，长度在6-20之间
+    # 用户 ID 应该是数字字符串，长度在 6-20 之间
     user_id = user_id.strip()
     if not user_id.isdigit():
         return False
@@ -92,7 +92,7 @@ def validate_term_params(year: Union[int, str], term_id: Union[int, str]) -> boo
         if year < 2000 or year > current_year + 1:
             return False
 
-        # 学期ID应该是1或2
+        # 学期 ID 应该是 1 或 2
         if term_id not in [1, 2]:
             return False
 
@@ -118,17 +118,17 @@ def validate_download_parameters(
     异常:
         ValueError: 当参数无效时。
     """
-    # 验证liveid
+    # 验证 liveid
     if liveid is not None:
         validated_liveid = validate_live_id(liveid)
     else:
         validated_liveid = None
 
-    # 验证single模式
+    # 验证 single 模式
     if not isinstance(single, int) or single < 0 or single > 2:
         raise ValueError("下载模式必须是 0（全部）、1（单节课）或 2（半节课）")
 
-    # 验证video_type
+    # 验证 video_type
     if video_type not in ["both", "ppt", "teacher"]:
         raise ValueError('视频类型必须是 "both"、"ppt" 或 "teacher"')
 
@@ -167,7 +167,7 @@ def validate_input(
 
 def is_valid_url(url: str) -> bool:
     """
-    验证URL格式是否有效。
+    验证 URL 格式是否有效。
 
     参数:
         url (str): 待验证的 URL。
@@ -178,7 +178,7 @@ def is_valid_url(url: str) -> bool:
     if not url or not isinstance(url, str):
         return False
 
-    # 基本的URL格式验证
+    # 基本的 URL 格式验证
     url_pattern = re.compile(
         r"^https?://"  # http:// 或 https://
         r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # 域名
@@ -228,30 +228,30 @@ def validate_file_integrity(filepath: str, expected_size: Optional[int] = None) 
                 header = f.read(8)
 
                 if file_ext == ".mp4":
-                    # MP4文件头通常包含 'ftyp' 标识
+                    # MP4 文件头通常包含 'ftyp' 标识
                     if len(header) >= 8 and b"ftyp" in header:
-                        logger.debug(f"MP4文件头验证通过: {filepath}")
+                        logger.debug(f"MP4 文件头验证通过: {filepath}")
                         return True
                     else:
-                        logger.warning(f"MP4文件头验证失败: {filepath}")
+                        logger.warning(f"MP4 文件头验证失败: {filepath}")
                         return False
 
                 elif file_ext == ".ts":
-                    # MPEG-TS文件的同步字节是 0x47，通常每188或204字节出现一次
+                    # MPEG-TS 文件的同步字节是 0x47，通常每 188 或 204 字节出现一次
                     if len(header) >= 1 and header[0] == 0x47:
-                        logger.debug(f"TS文件头验证通过: {filepath}")
+                        logger.debug(f"TS 文件头验证通过: {filepath}")
                         return True
                     else:
-                        logger.warning(f"TS文件头验证失败，未找到MPEG-TS同步字节: {filepath}")
+                        logger.warning(f"TS 文件头验证失败，未找到 MPEG-TS 同步字节: {filepath}")
                         return False
 
                 elif file_ext == ".tmp":
                     # 临时文件，尝试根据内容判断类型
                     if len(header) >= 8 and b"ftyp" in header:
-                        logger.debug(f"临时文件（MP4格式）验证通过: {filepath}")
+                        logger.debug(f"临时文件（MP4 格式）验证通过: {filepath}")
                         return True
                     elif len(header) >= 1 and header[0] == 0x47:
-                        logger.debug(f"临时文件（TS格式）验证通过: {filepath}")
+                        logger.debug(f"临时文件（TS 格式）验证通过: {filepath}")
                         return True
                     elif len(header) > 0:
                         # 无法识别格式，但有内容，允许通过

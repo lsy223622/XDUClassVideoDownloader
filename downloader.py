@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 下载模块
-负责MP4视频文件的安全下载和智能合并处理
+负责 MP4 视频文件的安全下载和智能合并处理
 
 主要功能：
-- 支持断点续传的MP4视频下载
+- 支持断点续传的 MP4 视频下载
 - 智能的视频文件合并和处理
 - 跨平台的下载支持和错误恢复
 - 进度跟踪和用户友好的反馈
@@ -147,10 +147,10 @@ def download_mp4(
     max_attempts: int = MAX_DOWNLOAD_RETRIES,
 ) -> bool:
     """
-    下载MP4视频文件，支持断点续传和完整性验证。
+    下载 MP4 视频文件，支持断点续传和完整性验证。
 
     参数:
-        url (str): MP4视频文件的URL
+        url (str): MP4 视频文件的 URL
         filename (str): 保存的文件名
         save_dir (str): 保存目录
         max_attempts (int): 最大重试次数
@@ -164,10 +164,10 @@ def download_mp4(
     """
     # 参数验证
     if not url or not isinstance(url, str):
-        raise ValueError("URL不能为空且必须是字符串类型")
+        raise ValueError("URL 不能为空且必须是字符串类型")
 
     if not is_valid_url(url):
-        logger.warning(f"URL格式可能无效: {url}")
+        logger.warning(f"URL 格式可能无效: {url}")
 
     if not filename or not isinstance(filename, str):
         raise ValueError("文件名不能为空且必须是字符串类型")
@@ -383,7 +383,7 @@ def download_mp4(
                         temp_path.unlink()
                         resume_pos = 0
 
-                # 发送GET请求下载文件
+                # 发送 GET 请求下载文件
                 try:
                     with closing(requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT)) as response:
                         response.raise_for_status()
@@ -537,7 +537,7 @@ def check_ffmpeg_availability() -> bool:
 
 def merge_videos(files: Sequence[str], output_file: str) -> bool:
     """
-    使用FFmpeg合并多个MP4视频文件，包含完整的错误处理和验证。
+    使用 FFmpeg 合并多个 MP4 视频文件，包含完整的错误处理和验证。
 
     参数:
         files (list): 要合并的视频文件路径列表
@@ -555,15 +555,15 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
         raise ValueError("文件列表不能为空且必须是列表类型")
 
     if len(files) < 2:
-        logger.warning("文件数量少于2个，无需合并")
+        logger.warning("文件数量少于 2 个，无需合并")
         return False
 
     if not output_file or not isinstance(output_file, str):
         raise ValueError("输出文件路径不能为空且必须是字符串类型")
 
-    # 检查FFmpeg可用性
+    # 检查 FFmpeg 可用性
     if not check_ffmpeg_availability():
-        handle_exception(Exception("FFmpeg不可用"), "无法合并视频文件：未找到FFmpeg。请安装FFmpeg以启用视频合并功能")
+        handle_exception(Exception("FFmpeg 不可用"), "无法合并视频文件：未找到 FFmpeg。请安装 FFmpeg 以启用视频合并功能")
         return False
 
     # 验证输入文件
@@ -622,7 +622,7 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
                 return int(match.group(1)) if match else 0
             valid_files.sort(key=extract_jie_number)
             for file_path in valid_files:
-                # 使用绝对路径并转义，确保FFmpeg能正确处理
+                # 使用绝对路径并转义，确保 FFmpeg 能正确处理
                 escaped_path = str(Path(file_path).resolve()).replace("'", r"\'").replace("\\", "/")
                 temp_file.write(f"file '{escaped_path}'\n")
 
@@ -631,7 +631,7 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
         # 创建临时输出文件
         temp_output_file = str(output_path.with_suffix(".tmp" + output_path.suffix))
 
-        # 构建FFmpeg命令
+        # 构建 FFmpeg 命令
         ffmpeg_cmd = [
             get_ffmpeg_path(),
             "-f",
@@ -648,9 +648,9 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
             temp_output_file,
         ]
 
-        logger.debug(f"执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
+        logger.debug(f"执行 FFmpeg 命令: {' '.join(ffmpeg_cmd)}")
 
-        # 执行FFmpeg合并
+        # 执行 FFmpeg 合并
         try:
             result = subprocess.run(
                 ffmpeg_cmd,
@@ -658,16 +658,16 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
                 capture_output=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=600,  # 10分钟超时
+                timeout=600,  # 10 分钟超时
             )
 
-            logger.debug(f"FFmpeg输出: {result.stderr}")
+            logger.debug(f"FFmpeg 输出: {result.stderr}")
 
         except subprocess.TimeoutExpired:
             raise Exception("视频合并超时")
         except subprocess.CalledProcessError as e:
             error_output = e.stderr if e.stderr else str(e)
-            raise Exception(f"FFmpeg执行失败: {error_output}")
+            raise Exception(f"FFmpeg 执行失败: {error_output}")
 
         # 验证合并后的文件
         if not verify_file_integrity(temp_output_file):
@@ -727,7 +727,7 @@ def process_rows(
         save_dir (str): 保存目录
         merge (bool): 是否自动合并相邻节次的视频
         video_type (str): 视频类型('both', 'ppt', 'teacher')
-        api_version (str): API版本，"new"表示新版（mp4），"legacy"表示旧版（m3u8）
+        api_version (str): API 版本，"new"表示新版（mp4），"legacy"表示旧版（m3u8）
 
     返回:
         dict: 处理结果统计信息
@@ -899,7 +899,7 @@ def process_rows(
         处理单个视频的下载和合并逻辑。
 
         参数:
-            video_url (str): 视频下载URL
+            video_url (str): 视频下载 URL
             track_type (str): 视频类型标识('pptVideo'或'teacherTrack')
             row (list): 包含视频时间信息的行数据
 
@@ -908,14 +908,14 @@ def process_rows(
         """
         result = {"downloaded": False, "merged": False, "skipped": False, "failed": False}
 
-        # 验证URL
+        # 验证 URL
         if not video_url or not isinstance(video_url, str):
-            logger.debug(f"跳过空URL: {track_type}")
+            logger.debug(f"跳过空 URL: {track_type}")
             result["skipped"] = True
             return result
 
         if not is_valid_url(video_url):
-            logger.warning(f"URL格式可能无效: {video_url}")
+            logger.warning(f"URL 格式可能无效: {video_url}")
 
         # 获取文件名组件
         components = get_safe_filename_components(row)
@@ -926,7 +926,7 @@ def process_rows(
 
         month, date, day, jie, days, day_chinese = components
 
-        # 根据API版本确定文件扩展名
+        # 根据 API 版本确定文件扩展名
         file_ext = ".ts" if api_version == "legacy" else ".mp4"
 
         # 构建基础文件名和完整文件名
@@ -946,14 +946,14 @@ def process_rows(
             logger.info(f"文件已存在，跳过下载: {filename}")
             result["skipped"] = True
         else:
-            # 根据API版本选择下载函数
+            # 根据 API 版本选择下载函数
             logger.info(f"开始下载: {filename}")
             try:
                 if api_version == "legacy":
-                    # 旧版API：下载M3U8格式
+                    # 旧版 API：下载 M3U8 格式
                     download_success = download_m3u8(video_url, filename, save_dir)
                 else:
-                    # 新版API：下载MP4格式
+                    # 新版 API：下载 MP4 格式
                     download_success = download_mp4(video_url, filename, save_dir)
 
                 if download_success:
@@ -1128,15 +1128,15 @@ def download_single_video(
             filepath = Path(save_dir) / filename
 
             if filepath.exists():
-                print(f"PPT视频已存在，跳过下载：{filename}")
+                print(f"PPT 视频已存在，跳过下载：{filename}")
                 success_count += 1
             else:
-                print(f"开始下载PPT视频：{filename}")
+                print(f"开始下载 PPT 视频：{filename}")
                 if download_mp4(ppt_video, filename, save_dir):
                     success_count += 1
-                    print(f"PPT视频下载成功：{filename}")
+                    print(f"PPT 视频下载成功：{filename}")
                 else:
-                    print(f"PPT视频下载失败：{filename}")
+                    print(f"PPT 视频下载失败：{filename}")
 
         # 下载教师视频
         if video_type in ["both", "teacher"] and teacher_track:
@@ -1175,7 +1175,7 @@ def download_course_videos(
     下载指定课程的视频，这是核心的下载逻辑函数。
 
     参数:
-        live_id: 课程直播ID
+        live_id: 课程直播 ID
         single: 下载模式 (0=全部, 1=单节课, 2=半节课)
         merge: 是否自动合并相邻节次视频
         video_type: 视频类型 ('both', 'ppt', 'teacher')
@@ -1199,7 +1199,7 @@ def download_course_videos(
             clear_overwrite_line()
             print(f"\n{error_msg}")
             print("请检查：")
-            print("1. 课程ID是否正确")
+            print("1. 课程 ID 是否正确")
             print("2. 网络连接是否正常")
             print("3. 是否已正确配置认证信息")
             return False
@@ -1207,7 +1207,7 @@ def download_course_videos(
         # 检查是否获取到有效数据
         if not data:
             clear_overwrite_line()
-            print(f"\n没有找到课程 {live_id} 的数据，请检查课程ID是否正确")
+            print(f"\n没有找到课程 {live_id} 的数据，请检查课程 ID 是否正确")
             return False
 
         clear_overwrite_line()
@@ -1218,9 +1218,9 @@ def download_course_videos(
 
         api_version = detect_api_version(data)
         if api_version == "legacy":
-            logger.info(f"检测到旧版课程（2024及以前），将使用m3u8格式下载")
+            logger.info(f"检测到旧版课程（2024 及以前），将使用 m3u8 格式下载")
         else:
-            logger.info(f"检测到新版课程（2025及之后），将使用mp4格式下载")
+            logger.info(f"检测到新版课程（2025 及之后），将使用 mp4 格式下载")
 
         # 处理不同的下载模式
         if single:
@@ -1309,7 +1309,7 @@ def download_course_videos(
         # 按时间排序：月、日、星期、节次、周数
         rows.sort(key=lambda x: (x[0], x[1], x[2], int(x[3]), x[4]))
 
-        # 根据skip_weeks参数过滤掉指定周数的视频
+        # 根据 skip_weeks 参数过滤掉指定周数的视频
         if skip_weeks:
             original_count = len(rows)
             rows = [row for row in rows if int(row[4]) not in skip_weeks]
@@ -1321,7 +1321,7 @@ def download_course_videos(
                 else:
                     print(f"根据设置跳过了 {len(skip_list)} 个周的 {filtered_count} 个视频")
 
-        # 保存视频信息到CSV文件（保存到 logs/ 目录以便集中管理日志/元数据）
+        # 保存视频信息到 CSV 文件（保存到 logs/ 目录以便集中管理日志/元数据）
         try:
             logs_dir = Path("logs")
             logs_dir.mkdir(parents=True, exist_ok=True)
@@ -1337,7 +1337,7 @@ def download_course_videos(
 
         # 根据下载模式执行不同的下载逻辑
         if single == 1:
-            # 单节课模式：最多下载2个条目（上下半节课）
+            # 单节课模式：最多下载 2 个条目（上下半节课）
             download_rows = rows[:2]
             print(f"\n单节课模式：准备下载 {len(download_rows)} 个视频片段")
         elif single == 2:
@@ -1438,20 +1438,20 @@ def process_all_courses(config: configparser.ConfigParser, video_type: str = "bo
 
 def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
     """
-    解析M3U8播放列表，提取TS分片的URL列表。
+    解析 M3U8 播放列表，提取 TS 分片的 URL 列表。
 
     参数:
-        m3u8_content (str): M3U8文件的内容
-        base_url (str): M3U8文件的基础URL，用于构建完整的分片URL
+        m3u8_content (str): M3U8 文件的内容
+        base_url (str): M3U8 文件的基础 URL，用于构建完整的分片 URL
 
     返回:
-        List[str]: TS分片的完整URL列表
+        List[str]: TS 分片的完整 URL 列表
     """
     segment_urls = []
     lines = m3u8_content.strip().split("\n")
 
-    # 提取base_url的目录部分（去掉文件名）
-    # 对于特殊的URL格式（如包含cloud://），不使用urljoin，而是直接字符串拼接
+    # 提取 base_url 的目录部分（去掉文件名）
+    # 对于特殊的 URL 格式（如包含 cloud://），不使用 urljoin，而是直接字符串拼接
     if "/" in base_url:
         base_dir = base_url.rsplit("/", 1)[0] + "/"
     else:
@@ -1463,31 +1463,31 @@ def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
         if not line or line.startswith("#"):
             continue
 
-        # 构建完整的URL
+        # 构建完整的 URL
         if line.startswith("http://") or line.startswith("https://"):
-            # 已经是完整URL
+            # 已经是完整 URL
             segment_urls.append(line)
         else:
-            # 相对URL，需要拼接
-            # 不使用urljoin，因为它对特殊URL格式（如cloud://）处理不当
+            # 相对 URL，需要拼接
+            # 不使用 urljoin，因为它对特殊 URL 格式（如 cloud://）处理不当
             # 直接进行字符串拼接
             segment_urls.append(base_dir + line)
 
-    logger.debug(f"从M3U8播放列表中解析出 {len(segment_urls)} 个TS分片")
+    logger.debug(f"从 M3U8 播放列表中解析出 {len(segment_urls)} 个 TS 分片")
     return segment_urls
 
 
 def download_m3u8_segment(url: str, segment_index: int, auth_cookies: Dict[str, str]) -> Optional[bytes]:
     """
-    下载单个M3U8 TS分片。
+    下载单个 M3U8 TS 分片。
 
     参数:
-        url (str): TS分片的URL
+        url (str): TS 分片的 URL
         segment_index (int): 分片索引（用于日志）
-        auth_cookies (Dict[str, str]): 认证cookies
+        auth_cookies (Dict[str, str]): 认证 cookies
 
     返回:
-        Optional[bytes]: 分片的二进制数据，失败时返回None
+        Optional[bytes]: 分片的二进制数据，失败时返回 None
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -1502,16 +1502,16 @@ def download_m3u8_segment(url: str, segment_index: int, auth_cookies: Dict[str, 
     max_retries = 10
     for attempt in range(max_retries):
         try:
-            logger.debug(f"下载TS分片 {segment_index}: {url}")
+            logger.debug(f"下载 TS 分片 {segment_index}: {url}")
             response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
             response.raise_for_status()
             return response.content
         except Exception as e:
             if attempt < max_retries - 1:
-                logger.warning(f"下载TS分片 {segment_index} 失败（尝试 {attempt + 1}/{max_retries}）: {e}")
+                logger.warning(f"下载 TS 分片 {segment_index} 失败（尝试 {attempt + 1}/{max_retries}）: {e}")
                 time.sleep(1)
             else:
-                logger.warning(f"下载TS分片 {segment_index} 最终失败: {e}")
+                logger.warning(f"下载 TS 分片 {segment_index} 最终失败: {e}")
                 return None
     return None
 
@@ -1523,10 +1523,10 @@ def download_m3u8(
     max_attempts: int = MAX_DOWNLOAD_RETRIES,
 ) -> bool:
     """
-    下载M3U8视频文件，自动解析播放列表并下载所有TS分片，最后合并为完整视频。
+    下载M3U8视频文件，自动解析播放列表并下载所有 TS 分片，最后合并为完整视频。
 
     参数:
-        m3u8_url (str): M3U8播放列表的URL
+        m3u8_url (str): M3U8 播放列表的 URL
         filename (str): 保存的文件名（.ts格式）
         save_dir (str): 保存目录
         max_attempts (int): 最大重试次数
@@ -1536,10 +1536,10 @@ def download_m3u8(
     """
     # 参数验证
     if not m3u8_url or not isinstance(m3u8_url, str):
-        raise ValueError("M3U8 URL不能为空且必须是字符串类型")
+        raise ValueError("M3U8 URL 不能为空且必须是字符串类型")
 
     if not is_valid_url(m3u8_url):
-        logger.warning(f"M3U8 URL格式可能无效: {m3u8_url}")
+        logger.warning(f"M3U8 URL 格式可能无效: {m3u8_url}")
 
     if not filename or not isinstance(filename, str):
         raise ValueError("文件名不能为空且必须是字符串类型")
@@ -1579,9 +1579,9 @@ def download_m3u8(
     for attempt in range(max_attempts):
         temp_path = None
         try:
-            logger.info(f"开始下载M3U8视频 ({attempt + 1}/{max_attempts}): {safe_filename}")
+            logger.info(f"开始下载 M3U8 视频 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
-            # 1. 下载M3U8播放列表
+            # 1. 下载 M3U8 播放列表
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "*/*",
@@ -1594,18 +1594,18 @@ def download_m3u8(
             m3u8_response.raise_for_status()
             m3u8_content = m3u8_response.text
 
-            # 2. 解析M3U8播放列表
+            # 2. 解析 M3U8 播放列表
             segment_urls = parse_m3u8_playlist(m3u8_content, m3u8_url)
 
             if not segment_urls:
-                raise ValueError("M3U8播放列表中没有找到TS分片")
+                raise ValueError("M3U8 播放列表中没有找到 TS 分片")
 
-            logger.info(f"M3U8播放列表包含 {len(segment_urls)} 个TS分片")
+            logger.info(f"M3U8 播放列表包含 {len(segment_urls)} 个 TS 分片")
 
             # 3. 创建临时文件
             temp_path = output_path.with_suffix(".tmp")
 
-            # 4. 下载所有TS分片并写入临时文件
+            # 4. 下载所有 TS 分片并写入临时文件
             downloaded_segments = 0
             failed_segments = []
 
@@ -1632,7 +1632,7 @@ def download_m3u8(
                                 else:
                                     failed_segments.append(idx)
                             except Exception as e:
-                                logger.error(f"下载TS分片 {idx} 时出错: {e}")
+                                logger.error(f"下载 TS 分片 {idx} 时出错: {e}")
                                 failed_segments.append(idx)
                             pbar.update(1)
 
@@ -1641,55 +1641,55 @@ def download_m3u8(
                         if segment_data:
                             f.write(segment_data)
                         else:
-                            logger.warning(f"TS分片 {idx} 缺失，可能导致视频不完整")
+                            logger.warning(f"TS 分片 {idx} 缺失，可能导致视频不完整")
 
             # 5. 检查下载完整性
             if failed_segments:
                 logger.warning(
-                    f"有 {len(failed_segments)} 个TS分片下载失败（共 {len(segment_urls)} 个），视频可能不完整"
+                    f"有 {len(failed_segments)} 个 TS 分片下载失败（共 {len(segment_urls)} 个），视频可能不完整"
                 )
-                # 如果失败分片超过20%，认为下载失败
+                # 如果失败分片超过 20%，认为下载失败
                 if len(failed_segments) / len(segment_urls) > 0.2:
                     raise ValueError(f"失败分片过多 ({len(failed_segments)}/{len(segment_urls)})")
 
             # 6. 验证下载的文件
             if not verify_file_integrity(str(temp_path)):
-                raise ValueError("下载的M3U8视频文件验证失败")
+                raise ValueError("下载的 M3U8 视频文件验证失败")
 
             # 7. 原子性重命名
             shutil.move(str(temp_path), str(output_path))
             logger.info(
-                f"M3U8视频下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})，成功下载 {downloaded_segments}/{len(segment_urls)} 个分片"
+                f"M3U8 视频下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})，成功下载 {downloaded_segments}/{len(segment_urls)} 个分片"
             )
             return True
 
         except requests.Timeout:
-            error_msg = f"下载M3U8超时 ({attempt + 1}/{max_attempts}): {safe_filename}"
+            error_msg = f"下载 M3U8 超时 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(Exception("下载超时"), f"下载M3U8 {safe_filename} 失败")
+                handle_exception(Exception("下载超时"), f"下载 M3U8 {safe_filename} 失败")
 
         except requests.ConnectionError:
             error_msg = f"网络连接错误 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(Exception("网络连接失败"), f"下载M3U8 {safe_filename} 失败")
+                handle_exception(Exception("网络连接失败"), f"下载 M3U8 {safe_filename} 失败")
 
         except requests.HTTPError as e:
-            error_msg = f"HTTP错误 {e.response.status_code} ({attempt + 1}/{max_attempts}): {safe_filename}"
+            error_msg = f"HTTP 错误 {e.response.status_code} ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if e.response.status_code in [404, 403, 410]:
                 # 对于客户端错误，不需要重试
-                handle_exception(e, f"下载M3U8 {safe_filename} 失败：资源不可用")
+                handle_exception(e, f"下载 M3U8 {safe_filename} 失败：资源不可用")
                 break
             if attempt == max_attempts - 1:
-                handle_exception(e, f"下载M3U8 {safe_filename} 失败")
+                handle_exception(e, f"下载 M3U8 {safe_filename} 失败")
 
         except Exception as e:
-            error_msg = f"下载M3U8失败 ({attempt + 1}/{max_attempts}): {safe_filename}, 错误: {e}"
+            error_msg = f"下载 M3U8 失败 ({attempt + 1}/{max_attempts}): {safe_filename}, 错误: {e}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(e, f"下载M3U8 {safe_filename} 最终失败")
+                handle_exception(e, f"下载 M3U8 {safe_filename} 最终失败")
 
         finally:
             # 清理临时文件（下载失败时）
