@@ -1218,9 +1218,9 @@ def download_course_videos(
 
         api_version = detect_api_version(data)
         if api_version == "legacy":
-            print(f"检测到旧版课程（2024及以前），将使用m3u8格式下载")
+            logger.info(f"检测到旧版课程（2024及以前），将使用m3u8格式下载")
         else:
-            print(f"检测到新版课程（2025及之后），将使用mp4格式下载")
+            logger.info(f"检测到新版课程（2025及之后），将使用mp4格式下载")
 
         # 处理不同的下载模式
         if single:
