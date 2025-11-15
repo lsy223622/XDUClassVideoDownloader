@@ -268,6 +268,9 @@ def get_initial_data(liveid: Union[int, str]) -> List[Dict[str, Any]]:
     """
     根据课程 ID 获取课程的初始数据信息，包含完整的错误处理和数据验证。
 
+    首先使用新版 API 获取数据，如果检测到是老学期（termYear ≤ 2024），
+    则自动切换到旧版 API 重新获取，以确保数据的准确性。
+
     参数:
         liveid (int): 课程的直播 ID
 
@@ -291,7 +294,7 @@ def get_initial_data(liveid: Union[int, str]) -> List[Dict[str, Any]]:
 
         logger.info(f"正在获取课程 {validated_liveid} 的初始数据")
 
-        # 发送 POST 请求
+        # 首先尝试新版 API
         logger.debug(f"POST http://newes.chaoxing.com/xidianpj/live/listSignleCourse with data={request_data}")
         response = session.post(
             "http://newes.chaoxing.com/xidianpj/live/listSignleCourse",
@@ -320,6 +323,39 @@ def get_initial_data(liveid: Union[int, str]) -> List[Dict[str, Any]]:
         if len(data) == 0:
             logger.warning(f"课程 {validated_liveid} 没有找到数据")
             return []
+
+        # 检测是否为老学期，如果是则使用旧版 API 重新获取
+        term_year = data[0].get("termYear") if len(data) > 0 else None
+        if term_year is not None and term_year <= 2024:
+            logger.info(f"检测到老学期（termYear={term_year}），切换到旧版 API 重新获取课程列表")
+
+            # 使用旧版 API 重新获取
+            logger.debug(f"POST http://newesxidian.chaoxing.com/live/listSignleCourse with data={request_data}")
+            response = session.post(
+                "http://newesxidian.chaoxing.com/live/listSignleCourse",
+                headers=headers,
+                data=request_data,
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            # 检查 HTTP 状态
+            response.raise_for_status()
+
+            # 解析 JSON 响应
+            try:
+                data = response.json()
+            except json.JSONDecodeError as e:
+                logger.error(f"旧版 API 响应 JSON 解析失败: {e}")
+                raise ValueError("服务器响应格式错误，请稍后重试")
+
+            # 验证响应数据结构
+            if not isinstance(data, list):
+                logger.warning(f"旧版 API 响应数据类型异常，期望列表但收到: {type(data)}")
+                if isinstance(data, dict) and "error" in data:
+                    raise ValueError(f"服务器返回错误: {data.get('error', '未知错误')}")
+                raise ValueError("服务器响应数据格式异常")
+
+            logger.info(f"使用旧版 API 成功获取课程数据，共 {len(data)} 项")
 
         # 验证数据完整性
         required_fields = ["id", "courseCode", "courseName", "startTime", "endTime"]
