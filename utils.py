@@ -30,7 +30,7 @@ _GLOBAL_LOGGING_INITIALIZED = False
 
 class NoExceptionInfoFilter(logging.Filter):
     """
-    自定义日志过滤器，用于阻止异常traceback信息输出到控制台。
+    自定义日志过滤器，用于阻止异常 traceback 信息输出到控制台。
 
     此过滤器会移除日志记录中的 exc_info、exc_text 和 stack_info，
     使控制台只显示简洁的错误消息，而文件日志仍保留完整的调试信息。
@@ -38,7 +38,7 @@ class NoExceptionInfoFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         """过滤日志记录，移除异常信息。"""
-        # 移除异常traceback信息
+        # 移除异常 traceback 信息
         record.exc_info = None
         record.exc_text = None
         # Python 3.8+ 也需要清理 stack_info
@@ -71,7 +71,7 @@ def _ensure_global_handlers(
     console_handler.setLevel(console_level)
     console_handler.set_name("xdu_console")
     console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-    # 添加过滤器，防止traceback输出到控制台
+    # 添加过滤器，防止 traceback 输出到控制台
     console_handler.addFilter(NoExceptionInfoFilter())
     root_logger.addHandler(console_handler)
 
@@ -368,7 +368,7 @@ def handle_exception(e: Exception, message: str, level: int = logging.ERROR) -> 
         elif status_code == 500:
             user_message = f"{message}：服务器内部错误"
         else:
-            user_message = f"{message}：HTTP错误 {status_code}"
+            user_message = f"{message}：HTTP 错误 {status_code}"
     elif isinstance(e, (ConnectionError, OSError)):
         user_message = f"{message}：网络连接或文件操作失败"
     elif isinstance(e, ValueError):
@@ -390,10 +390,10 @@ def handle_exception(e: Exception, message: str, level: int = logging.ERROR) -> 
         else:
             user_message = f"{message}：操作失败"
 
-    # 记录详细的技术错误信息到日志文件（带完整traceback）
+    # 记录详细的技术错误信息到日志文件（带完整 traceback）
     logger.log(level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
 
-    # 向控制台显示友好的错误消息（不含traceback）
+    # 向控制台显示友好的错误消息（不含 traceback）
     print(user_message)
     return user_message
 

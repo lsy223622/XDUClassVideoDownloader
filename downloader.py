@@ -1291,7 +1291,7 @@ def download_course_videos(
             logger.info(f"使用 {max_threads} 个线程获取视频链接")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
-                # 提交所有任务，同时保存entry和future的对应关系
+                # 提交所有任务，同时保存 entry 和 future 的对应关系
                 future_to_entry = {
                     executor.submit(fetch_video_links, entry, lock, desc, api_version): entry
                     for entry in valid_entries
