@@ -28,6 +28,25 @@ DEBUG_LOG_TO_FILE = False
 _GLOBAL_LOGGING_INITIALIZED = False
 
 
+class NoExceptionInfoFilter(logging.Filter):
+    """
+    自定义日志过滤器，用于阻止异常 traceback 信息输出到控制台。
+
+    此过滤器会移除日志记录中的 exc_info、exc_text 和 stack_info，
+    使控制台只显示简洁的错误消息，而文件日志仍保留完整的调试信息。
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """过滤日志记录，移除异常信息。"""
+        # 移除异常 traceback 信息
+        record.exc_info = None
+        record.exc_text = None
+        # Python 3.8+ 也需要清理 stack_info
+        if hasattr(record, "stack_info"):
+            record.stack_info = None
+        return True
+
+
 def _ensure_global_handlers(
     console_level: int = logging.ERROR, info_file: Optional[Path] = None, debug_file: Optional[Path] = None
 ) -> None:
@@ -52,6 +71,8 @@ def _ensure_global_handlers(
     console_handler.setLevel(console_level)
     console_handler.set_name("xdu_console")
     console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    # 添加过滤器，防止 traceback 输出到控制台
+    console_handler.addFilter(NoExceptionInfoFilter())
     root_logger.addHandler(console_handler)
 
     # 总日志（info+）
@@ -331,22 +352,48 @@ def handle_exception(e: Exception, message: str, level: int = logging.ERROR) -> 
     返回:
         str: 用户友好的错误消息
     """
+    import requests
+
     # 生成用户友好的错误消息
-    if isinstance(e, (ConnectionError, OSError)):
+    if isinstance(e, requests.Timeout):
+        user_message = f"{message}：连接超时，请检查网络连接或稍后重试"
+    elif isinstance(e, requests.ConnectionError):
+        user_message = f"{message}：无法连接到服务器，请检查网络连接"
+    elif isinstance(e, requests.HTTPError):
+        status_code = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
+        if status_code == 404:
+            user_message = f"{message}：资源不存在"
+        elif status_code == 403:
+            user_message = f"{message}：访问被拒绝，可能需要重新登录"
+        elif status_code == 500:
+            user_message = f"{message}：服务器内部错误"
+        else:
+            user_message = f"{message}：HTTP 错误 {status_code}"
+    elif isinstance(e, (ConnectionError, OSError)):
         user_message = f"{message}：网络连接或文件操作失败"
     elif isinstance(e, ValueError):
-        user_message = f"{message}：输入数据格式错误"
+        # 检查是否是特定的业务逻辑错误
+        error_str = str(e)
+        if "空响应" in error_str or "空" in error_str:
+            user_message = f"{message}：服务器未返回有效数据，该课程可能不可用"
+        else:
+            user_message = f"{message}：数据格式错误"
     elif isinstance(e, KeyError):
-        user_message = f"{message}：缺少必要的数据字段"
+        user_message = f"{message}：响应数据不完整"
     elif isinstance(e, FileNotFoundError):
         user_message = f"{message}：找不到所需文件"
     else:
-        user_message = f"{message}：操作失败"
+        # 对于其他异常，提取简短的错误描述
+        error_str = str(e)
+        if error_str and len(error_str) < 100:
+            user_message = f"{message}：{error_str}"
+        else:
+            user_message = f"{message}：操作失败"
 
-    # 记录详细的技术错误信息到日志
+    # 记录详细的技术错误信息到日志文件（带完整 traceback）
     logger.log(level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
 
-    # 向用户显示友好的错误消息
+    # 向控制台显示友好的错误消息（不含 traceback）
     print(user_message)
     return user_message
 

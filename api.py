@@ -884,9 +884,10 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         logger.warning(f"课程 {entry.get('id')} 回看仍在生成中，跳过")
         return None
     except Exception as e:
-        # 记录获取视频链接失败的错误信息
-        error_msg = f"获取视频链接时发生错误：{e}，liveId: {entry.get('id', '未知')}"
-        logger.error(error_msg)
+        # 记录获取视频链接失败的错误信息，使用 warning 级别避免打断进度条显示
+        # exc_info=True 会记录完整 traceback 到日志文件
+        live_id = entry.get("id", "未知")
+        logger.warning(f"获取视频链接失败 (课程 ID: {live_id}): {type(e).__name__}: {e}", exc_info=True)
 
         with lock:
             desc.update(1)
@@ -1122,5 +1123,6 @@ def get_m3u8_links_legacy(live_id: Union[int, str]) -> Tuple[str, str]:
         logger.warning(str(e))
         raise
     except Exception as e:
-        logger.error(f"获取 M3U8 链接失败，课程 ID: {live_id}, 错误: {e}")
+        # 使用 warning 级别，避免在获取链接时打断进度条显示
+        logger.warning(f"获取 M3U8 链接失败，课程 ID: {live_id}, 错误: {e}")
         raise ValueError(f"获取 M3U8 链接失败: {str(e)}")
