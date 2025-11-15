@@ -1230,8 +1230,8 @@ def download_course_videos(
             data = [entry for entry in original_data if str(entry.get("id", "")) == live_id_str]
 
             if not data:
-                logger.error(f"没有找到课程ID {live_id} 对应的课程记录")
-                print(f"错误：没有找到课程ID {live_id} 对应的课程记录")
+                logger.error(f"没有找到课程 ID {live_id} 对应的课程记录")
+                print(f"错误：没有找到课程 ID {live_id} 对应的课程记录")
                 return False
 
             if single == 1:
@@ -1340,9 +1340,9 @@ def download_course_videos(
                 writer.writerow(["month", "date", "day", "jie", "days", "pptVideo", "teacherTrack"])
                 writer.writerows(rows)
             print(f"视频信息已保存到：{csv_filename}")
-            logger.info(f"视频信息CSV已保存: {csv_filename}")
+            logger.info(f"视频信息 CSV 已保存: {csv_filename}")
         except Exception as e:
-            logger.warning(f"保存CSV文件失败: {e}")
+            logger.warning(f"保存 CSV 文件失败: {e}")
 
         # 如果有获取失败的课程，集中显示失败信息
         if failed_entries:
@@ -1363,11 +1363,11 @@ def download_course_videos(
                         day_chinese = f"星期{day}"
 
                     # 输出失败信息
-                    print(f"  - 第{days}周 {day_chinese} 第{jie}节 (课程ID: {live_id})")
+                    print(f"  - 第{days}周 {day_chinese} 第{jie}节 (课程 ID: {live_id})")
                 except Exception as e:
                     logger.warning(f"格式化失败课程信息时出错: {e}")
-                    print(f"  - 课程ID: {entry.get('id', '未知')}")
-            print("建议：检查网络连接或稍后重试这些课程")
+                    print(f"  - 课程 ID: {entry.get('id', '未知')}")
+            print("建议：检查录直播平台网页能否播放，如果可以，请向开发者反馈此问题。")
             logger.warning(f"共有 {len(failed_entries)} 节课程获取视频链接失败")
 
         # 根据下载模式执行不同的下载逻辑
