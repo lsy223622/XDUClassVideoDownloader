@@ -884,9 +884,9 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         logger.warning(f"课程 {entry.get('id')} 回看仍在生成中，跳过")
         return None
     except Exception as e:
-        # 使用统一的异常处理函数，提供用户友好的错误消息
+        # 记录获取视频链接失败的错误信息，exc_info=True 会记录完整traceback到日志文件
         live_id = entry.get("id", "未知")
-        handle_exception(e, f"获取视频链接失败 (课程ID: {live_id})", level=logging.WARNING)
+        logger.error(f"获取视频链接失败 (课程ID: {live_id}): {type(e).__name__}: {e}", exc_info=True)
 
         with lock:
             desc.update(1)
