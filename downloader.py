@@ -1272,6 +1272,7 @@ def download_course_videos(
         # 多线程获取所有视频链接
         overwrite_print(f"正在获取视频链接...")
         rows = []
+        failed_entries = []  # 收集获取失败的课程条目
         lock = Lock()
 
         # 只处理已结束的课程
@@ -1290,17 +1291,25 @@ def download_course_videos(
             logger.info(f"使用 {max_threads} 个线程获取视频链接")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
-                # 提交所有任务
-                futures = [executor.submit(fetch_video_links, entry, lock, desc, api_version) for entry in valid_entries]
+                # 提交所有任务，同时保存entry和future的对应关系
+                future_to_entry = {
+                    executor.submit(fetch_video_links, entry, lock, desc, api_version): entry
+                    for entry in valid_entries
+                }
 
                 # 收集所有线程的结果
-                for future in concurrent.futures.as_completed(futures):
+                for future in concurrent.futures.as_completed(future_to_entry):
+                    entry = future_to_entry[future]
                     try:
                         row = future.result()
                         if row:
                             rows.append(row)
+                        else:
+                            # 获取失败，记录失败的课程条目
+                            failed_entries.append(entry)
                     except Exception as e:
                         logger.error(f"获取视频链接时出错: {e}")
+                        failed_entries.append(entry)
 
         if not rows:
             print("没有成功获取到任何视频链接")
@@ -1334,6 +1343,32 @@ def download_course_videos(
             logger.info(f"视频信息CSV已保存: {csv_filename}")
         except Exception as e:
             logger.warning(f"保存CSV文件失败: {e}")
+
+        # 如果有获取失败的课程，集中显示失败信息
+        if failed_entries:
+            print(f"\n警告：有 {len(failed_entries)} 节课程的视频链接获取失败：")
+            for entry in failed_entries:
+                try:
+                    # 提取课程信息
+                    live_id = entry.get("id", "未知")
+                    days = entry.get("days", "未知")
+                    jie = entry.get("jie", "未知")
+                    start_time = entry.get("startTime", {})
+                    day = start_time.get("day", 0) if isinstance(start_time, dict) else 0
+
+                    # 转换星期为中文
+                    try:
+                        day_chinese = day_to_chinese(day)
+                    except (ValueError, TypeError):
+                        day_chinese = f"星期{day}"
+
+                    # 输出失败信息
+                    print(f"  - 第{days}周 {day_chinese} 第{jie}节 (课程ID: {live_id})")
+                except Exception as e:
+                    logger.warning(f"格式化失败课程信息时出错: {e}")
+                    print(f"  - 课程ID: {entry.get('id', '未知')}")
+            print("建议：检查网络连接或稍后重试这些课程")
+            logger.warning(f"共有 {len(failed_entries)} 节课程获取视频链接失败")
 
         # 根据下载模式执行不同的下载逻辑
         if single == 1:
