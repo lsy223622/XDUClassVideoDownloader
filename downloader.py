@@ -1363,7 +1363,7 @@ def download_course_videos(
                         day_chinese = f"星期{day}"
 
                     # 输出失败信息
-                    print(f"  - 第{days}周 {day_chinese} 第{jie}节 (课程 ID: {live_id})")
+                    print(f"  - 第 {days} 周 {day_chinese} 第 {jie} 节 (课程 ID: {live_id})")
                 except Exception as e:
                     logger.warning(f"格式化失败课程信息时出错: {e}")
                     print(f"  - 课程 ID: {entry.get('id', '未知')}")
