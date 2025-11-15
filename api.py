@@ -325,37 +325,41 @@ def get_initial_data(liveid: Union[int, str]) -> List[Dict[str, Any]]:
             return []
 
         # 检测是否为老学期，如果是则使用旧版 API 重新获取
-        term_year = data[0].get("termYear") if len(data) > 0 else None
-        if term_year is not None and term_year <= 2024:
-            logger.info(f"检测到老学期（termYear={term_year}），切换到旧版 API 重新获取课程列表")
-
-            # 使用旧版 API 重新获取
-            logger.debug(f"POST http://newesxidian.chaoxing.com/live/listSignleCourse with data={request_data}")
-            response = session.post(
-                "http://newesxidian.chaoxing.com/live/listSignleCourse",
-                headers=headers,
-                data=request_data,
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            # 检查 HTTP 状态
-            response.raise_for_status()
-
-            # 解析 JSON 响应
+        term_year = data[0].get("termYear")
+        if term_year is not None:
             try:
-                data = response.json()
-            except json.JSONDecodeError as e:
-                logger.error(f"旧版 API 响应 JSON 解析失败: {e}")
-                raise ValueError("服务器响应格式错误，请稍后重试")
-
-            # 验证响应数据结构
-            if not isinstance(data, list):
-                logger.warning(f"旧版 API 响应数据类型异常，期望列表但收到: {type(data)}")
-                if isinstance(data, dict) and "error" in data:
-                    raise ValueError(f"服务器返回错误: {data.get('error', '未知错误')}")
-                raise ValueError("服务器响应数据格式异常")
-
-            logger.info(f"使用旧版 API 成功获取课程数据，共 {len(data)} 项")
+                term_year_int = int(term_year)
+                if term_year_int <= 2024:
+                    logger.info(f"检测到老学期（termYear={term_year_int}），切换到旧版 API 重新获取课程列表")
+                    # 使用旧版 API 重新获取
+                try:
+                    logger.debug(f"POST http://newesxidian.chaoxing.com/live/listSignleCourse with data={request_data}")
+                    response = session.post(
+                        "http://newesxidian.chaoxing.com/live/listSignleCourse",
+                        headers=headers,
+                        data=request_data,
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                    # 检查 HTTP 状态
+                    response.raise_for_status()
+                    # 解析 JSON 响应
+                    try:
+                        old_data = response.json()
+                    except json.JSONDecodeError as e:
+                        logger.error(f"旧版 API 响应 JSON 解析失败: {e}")
+                        raise ValueError("服务器响应格式错误，请稍后重试")
+                    # 验证响应数据结构
+                    if not isinstance(old_data, list):
+                        logger.warning(f"旧版 API 响应数据类型异常，期望列表但收到: {type(old_data)}")
+                        if isinstance(old_data, dict) and "error" in old_data:
+                            raise ValueError(f"服务器返回错误: {old_data.get('error', '未知错误')}")
+                        raise ValueError("服务器响应数据格式异常")
+                    logger.info(f"使用旧版 API 成功获取课程数据，共 {len(old_data)} 项")
+                    data = old_data
+                except Exception as e:
+                    logger.warning(f"旧版 API 调用失败: {e}，使用新版 API 的数据")
+            except (ValueError, TypeError):
+                logger.warning(f"termYear 值无效: {term_year}，跳过旧版 API 切换")
 
         # 验证数据完整性
         required_fields = ["id", "courseCode", "courseName", "startTime", "endTime"]
