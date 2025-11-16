@@ -432,29 +432,29 @@ def download_mp4(
             error_msg = f"下载超时 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(Exception("下载超时"), f"下载 {safe_filename} 失败")
+                handle_exception(Exception("下载超时"), f"下载 {safe_filename} 失败", level=logging.WARNING)
 
         except requests.ConnectionError:
             error_msg = f"网络连接错误 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(Exception("网络连接失败"), f"下载 {safe_filename} 失败")
+                handle_exception(Exception("网络连接失败"), f"下载 {safe_filename} 失败", level=logging.WARNING)
 
         except requests.HTTPError as e:
             error_msg = f"HTTP错误 {e.response.status_code} ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if e.response.status_code in [404, 403, 410]:
                 # 对于客户端错误，不需要重试
-                handle_exception(e, f"下载 {safe_filename} 失败：资源不可用")
+                handle_exception(e, f"下载 {safe_filename} 失败：资源不可用", level=logging.WARNING)
                 break
             if attempt == max_attempts - 1:
-                handle_exception(e, f"下载 {safe_filename} 失败")
+                handle_exception(e, f"下载 {safe_filename} 失败", level=logging.WARNING)
 
         except Exception as e:
             error_msg = f"下载失败 ({attempt + 1}/{max_attempts}): {safe_filename}, 错误: {e}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(e, f"下载 {safe_filename} 最终失败")
+                handle_exception(e, f"下载 {safe_filename} 最终失败", level=logging.WARNING)
 
         finally:
             # 清理临时文件（下载失败时）
@@ -960,11 +960,13 @@ def process_rows(
                     result["downloaded"] = True
                     logger.info(f"下载成功: {filename}")
                 else:
-                    logger.error(f"下载失败: {filename}")
+                    # 使用warning级别避免打断进度条显示
+                    logger.warning(f"下载失败: {filename}")
                     result["failed"] = True
                     return result
             except Exception as e:
-                logger.error(f"下载异常: {filename}, 错误: {e}")
+                # 使用warning级别避免打断进度条显示
+                logger.warning(f"下载异常: {filename}, 错误: {e}")
                 result["failed"] = True
                 return result
 
@@ -1702,29 +1704,29 @@ def download_m3u8(
             error_msg = f"下载 M3U8 超时 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(Exception("下载超时"), f"下载 M3U8 {safe_filename} 失败")
+                handle_exception(Exception("下载超时"), f"下载 M3U8 {safe_filename} 失败", level=logging.WARNING)
 
         except requests.ConnectionError:
             error_msg = f"网络连接错误 ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(Exception("网络连接失败"), f"下载 M3U8 {safe_filename} 失败")
+                handle_exception(Exception("网络连接失败"), f"下载 M3U8 {safe_filename} 失败", level=logging.WARNING)
 
         except requests.HTTPError as e:
             error_msg = f"HTTP 错误 {e.response.status_code} ({attempt + 1}/{max_attempts}): {safe_filename}"
             logger.warning(error_msg)
             if e.response.status_code in [404, 403, 410]:
                 # 对于客户端错误，不需要重试
-                handle_exception(e, f"下载 M3U8 {safe_filename} 失败：资源不可用")
+                handle_exception(e, f"下载 M3U8 {safe_filename} 失败：资源不可用", level=logging.WARNING)
                 break
             if attempt == max_attempts - 1:
-                handle_exception(e, f"下载 M3U8 {safe_filename} 失败")
+                handle_exception(e, f"下载 M3U8 {safe_filename} 失败", level=logging.WARNING)
 
         except Exception as e:
             error_msg = f"下载 M3U8 失败 ({attempt + 1}/{max_attempts}): {safe_filename}, 错误: {e}"
             logger.warning(error_msg)
             if attempt == max_attempts - 1:
-                handle_exception(e, f"下载 M3U8 {safe_filename} 最终失败")
+                handle_exception(e, f"下载 M3U8 {safe_filename} 最终失败", level=logging.WARNING)
 
         finally:
             # 清理临时文件（下载失败时）

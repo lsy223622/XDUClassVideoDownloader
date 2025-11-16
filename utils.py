@@ -393,8 +393,10 @@ def handle_exception(e: Exception, message: str, level: int = logging.ERROR) -> 
     # 记录详细的技术错误信息到日志文件（带完整 traceback）
     logger.log(level, f"{message}: {type(e).__name__}: {str(e)}", exc_info=True)
 
-    # 向控制台显示友好的错误消息（不含 traceback）
-    print(user_message)
+    # 只在ERROR级别及以上才打印到控制台，WARNING级别只记录日志
+    # 这样可以避免在下载过程中打断进度条显示
+    if level >= logging.ERROR:
+        print(user_message)
     return user_message
 
 
