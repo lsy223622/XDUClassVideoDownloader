@@ -632,8 +632,11 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
         temp_output_file = str(output_path.with_suffix(".tmp" + output_path.suffix))
 
         # 构建 FFmpeg 命令
+        # 针对视频片段合并优化：保持音画同步同时容错损坏包
         ffmpeg_cmd = [
             get_ffmpeg_path(),
+            "-fflags",
+            "+genpts+discardcorrupt",  # 生成 PTS 时间戳，丢弃损坏的包（保留 DTS 维持音画同步）
             "-f",
             "concat",
             "-safe",
@@ -643,7 +646,9 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
             "-c",
             "copy",  # 直接复制，不重新编码
             "-avoid_negative_ts",
-            "make_zero",  # 处理时间戳问题
+            "make_zero",  # 处理负时间戳，保持音画同步
+            "-max_muxing_queue_size",
+            "1024",  # 适度增加混流队列（默认 128，太大会增加延迟）
             "-y",  # 覆盖输出文件
             temp_output_file,
         ]
