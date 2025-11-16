@@ -960,12 +960,12 @@ def process_rows(
                     result["downloaded"] = True
                     logger.info(f"下载成功: {filename}")
                 else:
-                    # 使用warning级别避免打断进度条显示
+                    # 使用 WARNING 级别避免打断进度条显示
                     logger.warning(f"下载失败: {filename}")
                     result["failed"] = True
                     return result
             except Exception as e:
-                # 使用warning级别避免打断进度条显示
+                # 使用 WARNING 级别避免打断进度条显示
                 logger.warning(f"下载异常: {filename}, 错误: {e}")
                 result["failed"] = True
                 return result
