@@ -14,12 +14,12 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lsy223622/XDUClassVideoDownloader)
 
-## 🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适 🎉🎉
+## 🎉🎉 4.0 版本重大更新：新学期和过往学期的课程都能下载了 🎉🎉
 
-本项目经过重大更新，在适配新版录直播平台接口同时，全面重构代码，大幅优化了下载速度和用户体验。
+本项目经过重大更新，同时适配新版和旧版录直播平台接口，并且全面重构代码，大幅优化了下载速度和用户体验。
 
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
-  - [🎉🎉 3.0 版本重大更新：代码全面重构，更快更舒适 🎉🎉](#-30-版本重大更新代码全面重构更快更舒适-)
+  - [🎉🎉 4.0 版本重大更新：新学期和过往学期的课程都能下载了 🎉🎉](#-40-版本重大更新新学期和过往学期的课程都能下载了-)
   - [**使用须知**](#使用须知)
   - [**项目简介**](#项目简介)
   - [**核心功能**](#核心功能)
@@ -75,7 +75,7 @@
    pip install requests tqdm psutil beautifulsoup4 pycryptodome
    ```
 
-3. **FFmpeg (可选)**: 如果您需要使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
+3. **FFmpeg (可选)**: 如果您需要下载 2024 学年及以前的课程，或者使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
 
 ## **使用方法**
 
@@ -212,4 +212,4 @@ Automation.exe --video-type teacher
 
 ## **依赖的二进制文件**
 
-- 合并步骤使用本地 `ffmpeg`（可在项目根目录放置 `ffmpeg` 可执行程序，或将系统 FFmpeg 加入 PATH）。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
+- 合并 ts 片段（2024 学年及以前的课程需要）或者上下半节视频使用本地 `ffmpeg`（可在项目根目录放置 `ffmpeg` 可执行程序，或将系统 FFmpeg 加入 PATH）。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
