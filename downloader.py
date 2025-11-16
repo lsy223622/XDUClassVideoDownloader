@@ -649,10 +649,6 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
             "make_zero",  # 处理负时间戳，保持音画同步
             "-max_muxing_queue_size",
             "1024",  # 适度增加混流队列（默认 128，太大会增加延迟）
-            "-map",
-            "0:v:0",  # 只映射第一个视频流
-            "-map",
-            "0:a:0?",  # 只映射第一个音频流（如果存在）
             "-y",  # 覆盖输出文件
             temp_output_file,
         ]
