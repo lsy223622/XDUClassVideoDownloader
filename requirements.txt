@@ -7,3 +7,7 @@ beautifulsoup4>=4.13.5
 pycryptodome>=3.23.0
 tqdm>=4.67.1
 psutil>=7.0.0
+
+# 统一身份认证登录（IDS）所需依赖
+numpy>=1.24.0
+pillow>=10.0.0

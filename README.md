@@ -56,7 +56,7 @@
 ## **核心功能**
 
 - **全自动批量下载**：运行 `Automation.py`，只有第一次需要输入一次 `UID` 和超星平台的鉴权 cookies，即可自动下载该学期所有已订阅的课程。
-- **支持账号登录**：支持“账号密码一键登录获取 Cookies（推荐）”或“手动输入 Cookies”。详见 `AUTHENTICATION.md`。
+- **支持多种登录方式**：支持“统一身份认证登录（推荐，自动解决滑块验证码）”、“超星账号密码登录”或“手动输入 Cookies”。详见 `AUTHENTICATION.md`。
 - **智能化配置文件**：首次运行 `Automation.py` 会生成 `automation_config.ini` 文件，列出您的所有课程。您可以自由编辑此文件，决定哪些课程需要下载。
 - **新课程自动发现**：自动化脚本能自动检测到您课表中的新课程，并将其添加到配置文件中，提醒您进行确认。
 - **自动增量下载**：自动跳过已存在的视频文件，您可以随时运行脚本来下载新增的录播视频，无需担心重复下载。
@@ -72,7 +72,7 @@
 2. **依赖库**: 使用 `pip` 安装所需的库：
 
    ```shell
-   pip install requests tqdm psutil beautifulsoup4 pycryptodome
+   pip install requests tqdm psutil beautifulsoup4 pycryptodome numpy pillow
    ```
 
 3. **FFmpeg (可选)**: 如果您需要下载 2024 学年及以前的课程，或者使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
@@ -114,7 +114,8 @@
      - 逗号分隔：`1,3,5` （跳过第1、3、5周）
      - 组合：`1-3,7,9-11` （跳过1-3周、第7周、9-11周）
   7. 首次运行会进入认证向导：
-     - 选择“账号密码（推荐）”自动登录并获取 Cookies，或
+     - 选择“统一身份认证登录（推荐）”输入学号和密码自动获取 Cookies，或
+     - 选择“超星账号密码登录”输入超星账号密码获取 Cookies，或
      - 选择“手动输入 Cookies”并依次输入 `_d`、`UID`、`vc3`。
 
 #### **`Automation.py`** (全自动下载)
@@ -124,7 +125,7 @@
 - **使用流程**:
   1. 在 Windows 上双击 `automation.bat`，或在其他系统上运行 `python Automation.py`。
   1. **首次运行**:
-     - 程序会先进行认证（可选账号密码登录或手动 Cookies）。
+     - 程序会先进行认证（可选统一身份认证登录、超星账号密码登录或手动 Cookies）。
      - 随后提示输入超星 `UID`，并扫描当前学期课程，生成一个 `automation_config.ini` 文件。
      - 您可以打开 `automation_config.ini`，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
      - 配置文件中的 `video_type` 字段控制全局视频类型（`both`/`ppt`/`teacher`），默认为 `both`。

@@ -9,6 +9,7 @@ API 模块
 - 视频链接获取，支持多种视频格式
 - 版本检查和更新通知
 - 统一的错误处理和日志记录
+- 统一身份认证（IDS）登录获取 Cookies（支持自动求解滑块验证码）
 
 安全特性：
 - 输入验证和 URL 安全检查
@@ -18,6 +19,7 @@ API 模块
 
 import base64
 import hashlib
+import io
 import json
 import random
 import re
@@ -27,10 +29,12 @@ from functools import wraps
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
+import numpy as np
 import requests
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -58,6 +62,15 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 # 上次请求时间，用于频率控制
 _last_request_time = 0
 
+# IDS（统一身份认证）相关常量
+IDS_BASE_URL = "https://ids.xidian.edu.cn/authserver"
+LEARNING_TARGET = "https://learning.xidian.edu.cn/cassso/xidian"
+IDS_AES_BLOCK_SIZE = 16
+IDS_AES_PREFIX = "xidianscriptsxdu" * 4
+IDS_AES_IV = b"xidianscriptsxdu"
+LUMINANCE_WEIGHTS = (0.299, 0.587, 0.114)  # R, G, B 灰度转换权重
+EPSILON = 1e-6  # 避免除零的小常数
+
 
 _Func = TypeVar("_Func", bound=Callable[..., Any])
 
@@ -66,6 +79,296 @@ class VideoGeneratingError(Exception):
     """Raised when the replay video is still being generated (页面提示: 视频回看生成中)."""
 
     pass
+
+
+# ==============================================================================
+# IDS（统一身份认证）相关异常和类
+# ==============================================================================
+
+
+class IDSLoginError(Exception):
+    """IDS 登录基础异常"""
+
+    pass
+
+
+class PasswordWrongError(IDSLoginError):
+    """用户名或密码错误"""
+
+    pass
+
+
+class CaptchaError(IDSLoginError):
+    """验证码处理失败"""
+
+    pass
+
+
+class SliderCaptchaSolver:
+    """基于 NCC 模板匹配的滑块验证码求解器"""
+
+    PUZZLE_WIDTH = 280
+
+    def __init__(self, session: requests.Session):
+        self.session = session
+        self._puzzle_data: Optional[bytes] = None
+        self._piece_data: Optional[bytes] = None
+
+    def _fetch_puzzle(self) -> None:
+        """获取验证码图片"""
+        resp = self.session.get(
+            f"{IDS_BASE_URL}/common/openSliderCaptcha.htl",
+            params={"_": int(time.time() * 1000)},
+        )
+        data = resp.json()
+        self._puzzle_data = base64.b64decode(data["bigImage"])
+        self._piece_data = base64.b64decode(data["smallImage"])
+
+    def _verify(self, position: float) -> bool:
+        """验证滑块位置"""
+        resp = self.session.post(
+            f"{IDS_BASE_URL}/common/verifySliderCaptcha.htl",
+            data=f"canvasLength={self.PUZZLE_WIDTH}&moveLength={int(position * self.PUZZLE_WIDTH)}",
+            headers={"Content-Type": "application/x-www-form-urlencoded;charset=utf-8"},
+        )
+        return resp.json().get("errorCode") == 1
+
+    @staticmethod
+    def _to_luminance(region: np.ndarray) -> np.ndarray:
+        """RGB 转灰度"""
+        r, g, b = LUMINANCE_WEIGHTS
+        return r * region[:, :, 0] + g * region[:, :, 1] + b * region[:, :, 2]
+
+    @staticmethod
+    def _find_opaque_bbox(image: Image.Image) -> Tuple[int, int, int, int]:
+        """查找非透明区域边界框"""
+        arr = np.array(image)
+        if arr.shape[2] < 4:
+            return 0, 0, image.width - 1, image.height - 1
+
+        alpha = arr[:, :, 3]
+        rows, cols = np.any(alpha == 255, axis=1), np.any(alpha == 255, axis=0)
+
+        if not rows.any() or not cols.any():
+            return 0, 0, image.width - 1, image.height - 1
+
+        return (
+            int(np.argmax(cols)),
+            int(np.argmax(rows)),
+            len(cols) - int(np.argmax(cols[::-1])) - 1,
+            len(rows) - int(np.argmax(rows[::-1])) - 1,
+        )
+
+    def _match_template(self, border: int = 24) -> Optional[float]:
+        """使用 NCC 模板匹配计算滑块位置"""
+        puzzle = Image.open(io.BytesIO(self._puzzle_data))
+        piece = Image.open(io.BytesIO(self._piece_data))
+
+        puzzle_arr = np.array(puzzle)
+        piece_arr = np.array(piece)
+
+        x1, y1, x2, y2 = self._find_opaque_bbox(piece)
+        x1, y1, x2, y2 = x1 + border, y1 + border, x2 - border, y2 - border
+
+        w, h = x2 - x1, y2 - y1
+        if w <= 0 or h <= 0:
+            return None
+
+        # 计算模板
+        template_region = piece_arr[y1 : y1 + h, x1 : x1 + w]
+        template_lum = self._to_luminance(template_region)
+        template_norm = template_lum - template_lum.mean()
+
+        # 滑动窗口匹配
+        search_width = puzzle.width - piece.width + w - 1
+        best_score, best_x = 0.0, 0
+
+        for x in range(x1 + 1, search_width - w + 1, 2):
+            window = puzzle_arr[y1 : y1 + h, x : x + w]
+            window_lum = self._to_luminance(window)
+            window_norm = window_lum - window_lum.mean()
+
+            score = np.sum(window_norm * template_norm) / (np.sum(window_norm**2) + EPSILON)
+            if score > best_score:
+                best_score, best_x = score, x
+
+        return (best_x - x1 - 1) / puzzle.width
+
+    def solve(self, max_retries: int = 20) -> None:
+        """自动求解验证码"""
+        for _ in range(max_retries):
+            self._fetch_puzzle()
+            position = self._match_template()
+            if position is not None and self._verify(position):
+                return
+
+        raise CaptchaError(f"验证码求解失败（已重试 {max_retries} 次）")
+
+
+class IDSSession:
+    """西安电子科技大学统一身份认证会话"""
+
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers["User-Agent"] = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        )
+
+    def _encrypt_password(self, password: str, salt: str) -> str:
+        """AES-CBC 加密密码"""
+        data = (IDS_AES_PREFIX + password).encode()
+        cipher = AES.new(salt.encode(), AES.MODE_CBC, IDS_AES_IV)
+        return base64.b64encode(cipher.encrypt(pad(data, IDS_AES_BLOCK_SIZE))).decode()
+
+    def _parse_login_form(self, html: str) -> Tuple[Dict[str, str], str]:
+        """解析登录表单"""
+        soup = BeautifulSoup(html, "html.parser")
+        form_data = {}
+        salt = ""
+
+        for inp in soup.find_all("input", {"type": "hidden"}):
+            name = inp.get("name")
+            if name:
+                form_data[name] = inp.get("value", "")
+            if inp.get("id") == "pwdEncryptSalt":
+                salt = inp.get("value", "")
+
+        return form_data, salt
+
+    def _parse_error(self, html: str) -> str:
+        """解析错误信息"""
+        soup = BeautifulSoup(html, "html.parser")
+        tip = soup.find(id="showErrorTip")
+        if tip:
+            msg = tip.get_text(strip=True)
+            return "用户名或密码有误" if re.search(r"(用户名|密码).*误", msg) else msg
+        return "登录失败"
+
+    def login(
+        self,
+        username: str,
+        password: str,
+        target: str,
+        solve_captcha: bool = True,
+    ) -> str:
+        """
+        登录 IDS 并返回重定向 URL
+
+        Args:
+            username: 学号
+            password: 密码
+            target: 目标服务 URL
+            solve_captcha: 是否自动求解验证码
+
+        Returns:
+            登录成功后的重定向 URL（含 Ticket）
+
+        Raises:
+            PasswordWrongError: 用户名或密码错误
+            CaptchaError: 验证码处理失败
+            IDSLoginError: 其他登录错误
+        """
+        # 获取登录页面
+        resp = self.session.get(f"{IDS_BASE_URL}/login", params={"service": target})
+        form_data, salt = self._parse_login_form(resp.text)
+
+        if not salt:
+            raise IDSLoginError("无法获取加密密钥")
+
+        # 构建表单数据
+        form_data.update(
+            {
+                "username": username,
+                "password": self._encrypt_password(password, salt),
+                "rememberMe": "true",
+                "cllt": "userNameLogin",
+                "dllt": "generalLogin",
+                "_eventId": "submit",
+            }
+        )
+
+        # 触发并求解验证码
+        self.session.get(
+            f"{IDS_BASE_URL}/common/openSliderCaptcha.htl",
+            params={"_": int(time.time() * 1000)},
+        )
+
+        if solve_captcha:
+            SliderCaptchaSolver(self.session).solve()
+
+        # 提交登录
+        resp = self.session.post(f"{IDS_BASE_URL}/login", data=form_data, allow_redirects=False)
+
+        if resp.status_code == 401:
+            raise PasswordWrongError(self._parse_error(resp.text))
+
+        if resp.status_code in (301, 302):
+            return resp.headers.get("Location", "")
+
+        raise IDSLoginError(f"登录失败（状态码: {resp.status_code}）")
+
+
+def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
+    """
+    通过 IDS（统一身份认证）登录超星学习通，返回 Cookies
+
+    Args:
+        username: 学号
+        password: 密码
+
+    Returns:
+        超星平台的认证 Cookies，包含 _d, UID, vc3
+
+    Raises:
+        IDSLoginError: 登录过程中的任何错误
+    """
+    ids = IDSSession()
+
+    # Step 1: IDS 登录获取 Ticket
+    logger.info("正在通过统一身份认证登录...")
+    ticket_url = ids.login(username, password, LEARNING_TARGET)
+
+    # Step 2-4: 跟随重定向链获取最终 Cookies
+    def follow_redirect(url: str) -> Tuple[str, requests.Response]:
+        resp = ids.session.get(url, allow_redirects=False)
+        if resp.status_code not in (301, 302):
+            raise IDSLoginError(f"重定向失败（状态码: {resp.status_code}）")
+        location = resp.headers.get("Location", "")
+        return urllib.parse.urljoin(url, location), resp
+
+    # Ticket 验证 -> SSO 握手 -> 超星认证
+    sso_url, _ = follow_redirect(ticket_url)
+    chaoxing_url, _ = follow_redirect(sso_url)
+    _, final_resp = follow_redirect(chaoxing_url)
+
+    # 从响应 cookies 中提取所需的三个值
+    cookie_dict = final_resp.cookies.get_dict()
+    result = {
+        "_d": cookie_dict.get("_d"),
+        "UID": cookie_dict.get("UID"),
+        "vc3": cookie_dict.get("vc3"),
+    }
+
+    # 验证获取的 cookies 是否完整
+    if not all(result.get(k) for k in ["_d", "UID", "vc3"]):
+        # 尝试从整个 session 中获取
+        session_cookies = requests.utils.dict_from_cookiejar(ids.session.cookies)
+        result = {
+            "_d": session_cookies.get("_d") or result.get("_d"),
+            "UID": session_cookies.get("UID") or result.get("UID"),
+            "vc3": session_cookies.get("vc3") or result.get("vc3"),
+        }
+
+    if not all(result.get(k) for k in ["_d", "UID", "vc3"]):
+        raise IDSLoginError("登录成功但未能获取完整的 Cookies，请尝试使用超星账号登录")
+
+    logger.info("通过统一身份认证登录成功")
+    return result
+
+
+# ==============================================================================
+# 超星平台登录相关函数
+# ==============================================================================
 
 
 def aes_cbc_pkcs7_encrypt_base64(message: str, key_str: str) -> str:

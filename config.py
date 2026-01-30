@@ -118,10 +118,11 @@ def safe_read_config(filename: str) -> configparser.ConfigParser:
 def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) -> Dict[str, str]:
     """
     获取身份验证所需的cookie信息。
-    支持两种认证方式：账号密码登录和直接使用cookies。
+    支持三种认证方式：统一身份认证（IDS）、超星账号密码登录和直接使用 cookies。
 
     参数:
         fid (Optional[str]): 可选的 FID 值。
+        force_refresh (bool): 是否强制刷新认证信息。
 
     返回:
         dict: 包含身份验证 cookie 的字典。
@@ -149,7 +150,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     config.optionxform = str
 
     # 读取认证配置
-    auth_method = "cookies"  # 默认使用cookies方式
+    auth_method = "ids"  # 默认使用统一身份认证方式
     save_auth_info = True  # 默认保存认证信息
     auth_data = {}
 
@@ -157,7 +158,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
         try:
             config.read(AUTH_CONFIG_FILE, encoding="utf-8")
             if "SETTINGS" in config:
-                auth_method = config["SETTINGS"].get("auth_method", "cookies")
+                auth_method = config["SETTINGS"].get("auth_method", "ids")
                 save_auth_info = config["SETTINGS"].getboolean("save_auth_info", True)
                 logger.info(f"从配置文件读取认证设置: 方式={auth_method}, 保存={save_auth_info}")
         except Exception as e:
@@ -174,11 +175,11 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
                     # 写入运行期缓存（函数顶部已声明 global）
                     _runtime_auth_cache = dict(auth_data)
                     return auth_data
-            elif auth_method == "password" and "CREDENTIALS" in config:
-                if all(key in config["CREDENTIALS"] for key in ["username", "password"]):
-                    username = config["CREDENTIALS"]["username"]
-                    password = config["CREDENTIALS"]["password"]
-                    logger.info("从配置文件读取账号密码，开始登录获取cookies")
+            elif auth_method == "chaoxing" and "CHAOXING_CREDENTIALS" in config:
+                if all(key in config["CHAOXING_CREDENTIALS"] for key in ["username", "password"]):
+                    username = config["CHAOXING_CREDENTIALS"]["username"]
+                    password = config["CHAOXING_CREDENTIALS"]["password"]
+                    logger.info("从配置文件读取超星账号密码，开始登录获取cookies")
 
                     # 导入登录函数
                     from api import get_three_cookies_from_login
@@ -187,16 +188,39 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
                         cookies = get_three_cookies_from_login(username, password)
                         if all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
                             cookies["fid"] = fid or ""
-                            logger.info("通过账号密码登录获取cookies成功")
+                            logger.info("通过超星账号密码登录获取cookies成功")
                             # 写入运行期缓存，确保本次运行仅登录一次
                             _runtime_auth_cache = dict(cookies)
                             return _runtime_auth_cache
                         else:
                             logger.error("登录成功但获取的cookies不完整")
                     except Exception as e:
-                        logger.error(f"通过账号密码登录失败: {e}")
+                        logger.error(f"通过超星账号密码登录失败: {e}")
                         # 登录失败，清除保存的认证信息并要求重新输入
-                        print(f"使用保存的账号密码登录失败: {e}")
+                        print(f"使用保存的超星账号密码登录失败: {e}")
+                        print("将要求重新输入认证信息")
+            elif auth_method == "ids" and "IDS_CREDENTIALS" in config:
+                if all(key in config["IDS_CREDENTIALS"] for key in ["username", "password"]):
+                    username = config["IDS_CREDENTIALS"]["username"]
+                    password = config["IDS_CREDENTIALS"]["password"]
+                    logger.info("从配置文件读取统一身份认证账号密码，开始登录获取cookies")
+
+                    # 导入统一身份认证登录函数
+                    from api import login_to_chaoxing_via_ids
+
+                    try:
+                        cookies = login_to_chaoxing_via_ids(username, password)
+                        if all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
+                            cookies["fid"] = fid or ""
+                            logger.info("通过统一身份认证登录获取cookies成功")
+                            # 写入运行期缓存
+                            _runtime_auth_cache = dict(cookies)
+                            return _runtime_auth_cache
+                        else:
+                            logger.error("登录成功但获取的cookies不完整")
+                    except Exception as e:
+                        logger.error(f"通过统一身份认证登录失败: {e}")
+                        print(f"使用保存的统一身份认证账号密码登录失败: {e}")
                         print("将要求重新输入认证信息")
         except Exception as e:
             logger.warning(f"读取保存的认证信息失败: {e}")
@@ -230,20 +254,26 @@ def _get_auth_info_interactively(config, fid):
 
     # 选择认证方式
     print("\n请选择认证方式：")
-    print("1. 使用账号密码（推荐，自动获取最新cookies）")
-    print("2. 手动输入cookies")
+    print("1. 使用统一身份认证登录（推荐，自动解决滑块验证码）")
+    print("2. 使用超星账号密码登录")
+    print("3. 手动输入 cookies")
 
     def validate_auth_method_choice(choice):
-        return choice in ["1", "2"]
+        return choice in ["1", "2", "3"]
 
     try:
         from utils import user_input_with_check
 
         auth_method_choice = user_input_with_check(
-            "请输入选择（1或2）: ", validate_auth_method_choice, error_message="选择无效，请输入1或2"
+            "请输入选择（1、2或3）: ", validate_auth_method_choice, error_message="选择无效，请输入1、2或3"
         ).strip()
 
-        auth_method = "password" if auth_method_choice == "1" else "cookies"
+        if auth_method_choice == "1":
+            auth_method = "ids"
+        elif auth_method_choice == "2":
+            auth_method = "chaoxing"
+        else:
+            auth_method = "cookies"
 
         # 选择是否保存认证信息
         print("\n是否保存认证信息以便下次使用？")
@@ -260,14 +290,16 @@ def _get_auth_info_interactively(config, fid):
         save_auth_info = save_choice == "1"
 
         # 根据选择的方式获取认证信息
-        if auth_method == "password":
-            auth_cookies = _get_cookies_from_password(fid)
+        if auth_method == "ids":
+            auth_cookies = _get_cookies_from_ids(fid)
+        elif auth_method == "chaoxing":
+            auth_cookies = _get_cookies_from_chaoxing(fid)
         else:
             auth_cookies = _get_cookies_manually(fid)
 
         # 保存设置和认证信息
         if save_auth_info:
-            _save_auth_config(config, auth_method, save_auth_info, auth_cookies, auth_method == "password")
+            _save_auth_config(config, auth_method, save_auth_info, auth_cookies, auth_method in ["chaoxing", "ids"])
         else:
             # 只保存设置，不保存认证信息
             _save_auth_settings(config, auth_method, save_auth_info)
@@ -282,7 +314,55 @@ def _get_auth_info_interactively(config, fid):
         raise ValueError(f"获取认证信息失败: {e}")
 
 
-def _get_cookies_from_password(fid):
+def _get_cookies_from_ids(fid):
+    """
+    通过统一身份认证（IDS）获取 cookies。
+
+    参数:
+        fid: FID 值
+
+    返回:
+        dict: 认证 cookie 字典
+    """
+
+    def validate_non_empty(value):
+        return bool(value and len(value.strip()) > 0)
+
+    try:
+        from api import login_to_chaoxing_via_ids
+        from utils import user_input_with_check
+
+        print("\n请输入您的西电统一身份认证账号信息：")
+        username = user_input_with_check(
+            "学号: ", validate_non_empty, error_message="学号不能为空，请重新输入"
+        ).strip()
+
+        password = user_input_with_check("密码: ", validate_non_empty, error_message="密码不能为空，请重新输入").strip()
+
+        print("正在通过统一身份认证登录并获取认证信息...")
+        cookies = login_to_chaoxing_via_ids(username, password)
+
+        if not all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
+            raise ValueError("登录成功但获取的 cookies 不完整")
+
+        cookies["fid"] = fid or ""
+        cookies["username"] = username  # 保存用户名用于配置文件
+        cookies["password"] = password  # 保存密码用于配置文件
+        cookies["auth_type"] = "ids"  # 标记认证类型
+
+        print("登录成功，认证信息获取完成")
+        logger.info("通过统一身份认证登录获取 cookies 成功")
+        # 写入运行期缓存
+        global _runtime_auth_cache
+        _runtime_auth_cache = dict(cookies)
+        return cookies
+
+    except Exception as e:
+        logger.error(f"统一身份认证登录失败: {e}")
+        raise ValueError(f"统一身份认证登录失败: {e}")
+
+
+def _get_cookies_from_chaoxing(fid):
     """
     通过账号密码获取cookies。
 
@@ -383,9 +463,9 @@ def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include
 
     参数:
         config: 配置对象
-        auth_method: 认证方式
+        auth_method: 认证方式（ids、chaoxing、cookies）
         save_auth_info: 是否保存认证信息
-        auth_cookies: 认证cookie字典
+        auth_cookies: 认证 cookie 字典
         include_credentials: 是否包含账号密码
     """
     try:
@@ -395,8 +475,13 @@ def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include
         # 保存认证信息
         if auth_method == "cookies":
             config["AUTH"] = {k: v for k, v in auth_cookies.items() if k in ["_d", "UID", "vc3"]}
-        elif auth_method == "password" and include_credentials:
-            config["CREDENTIALS"] = {
+        elif auth_method == "chaoxing" and include_credentials:
+            config["CHAOXING_CREDENTIALS"] = {
+                "username": auth_cookies.get("username", ""),
+                "password": auth_cookies.get("password", ""),
+            }
+        elif auth_method == "ids" and include_credentials:
+            config["IDS_CREDENTIALS"] = {
                 "username": auth_cookies.get("username", ""),
                 "password": auth_cookies.get("password", ""),
             }
