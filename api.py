@@ -41,7 +41,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 # 本地模块导入
-from config import format_auth_cookies, get_auth_cookies
+from config import format_auth_cookies, get_auth_cookies, has_valid_auth_cookies
 from utils import remove_invalid_chars, setup_logging
 from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
@@ -367,7 +367,7 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
     }
 
     # 验证获取的 cookies 是否完整
-    if not all(result.get(k) for k in ["_d", "UID", "vc3"]):
+    if not has_valid_auth_cookies(result):
         # 尝试从整个 session 中获取
         session_cookies = requests.utils.dict_from_cookiejar(ids.session.cookies)
         result = {
@@ -376,7 +376,7 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
             "vc3": session_cookies.get("vc3") or result.get("vc3"),
         }
 
-    if not all(result.get(k) for k in ["_d", "UID", "vc3"]):
+    if not has_valid_auth_cookies(result):
         raise IDSLoginError("登录成功但未能获取完整的 Cookies，请尝试使用超星账号登录")
 
     logger.info("通过统一身份认证登录成功")
@@ -569,19 +569,15 @@ def get_authenticated_headers() -> Dict[str, str]:
         auth_cookies = get_auth_cookies(FID)
         cookie_string = format_auth_cookies(auth_cookies)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        return {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "*/*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
             "Cookie": cookie_string,
-            "Upgrade-Insecure-Requests": "1",
             "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
         }
-
-        return headers
 
     except Exception as e:
         logger.error(f"获取认证头失败: {e}")

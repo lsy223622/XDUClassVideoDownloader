@@ -35,12 +35,35 @@ logger = setup_logging("config")
 AUTOMATION_CONFIG_FILE = "automation_config.ini"
 AUTH_CONFIG_FILE = "auth.ini"
 
+# 认证 cookie 所需的键名（与 auth.ini 键名一致）
+REQUIRED_AUTH_COOKIES = ("_d", "UID", "vc3")
+
 # ============================================================================
 # 运行期缓存
 # ============================================================================
 
 # 运行期认证信息缓存：确保一次运行内仅登录一次
 _runtime_auth_cache: Optional[Dict[str, str]] = None
+
+
+# ============================================================================
+# 辅助验证函数
+# ============================================================================
+
+
+def has_valid_auth_cookies(cookies: Optional[Dict[str, str]]) -> bool:
+    """
+    检查认证 cookies 是否包含所有必需的键且值非空。
+
+    参数:
+        cookies: 待验证的 cookie 字典
+
+    返回:
+        bool: 是否包含完整有效的认证信息
+    """
+    if not isinstance(cookies, dict):
+        return False
+    return all(cookies.get(k) for k in REQUIRED_AUTH_COOKIES)
 
 
 # ============================================================================
@@ -154,17 +177,12 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     global _runtime_auth_cache
 
     # 运行期缓存优先（除非强制刷新）
-    if not force_refresh and isinstance(_runtime_auth_cache, dict):
-        try:
-            if all(_runtime_auth_cache.get(k) for k in ["_d", "UID", "vc3"]):
-                # 按需覆盖/补充 fid（不改变其它键）
-                if fid is not None:
-                    _runtime_auth_cache["fid"] = fid or ""
-                logger.debug("使用运行期缓存的认证信息（本次运行内复用）")
-                return _runtime_auth_cache
-        except Exception:
-            # 缓存结构异常则丢弃，走后续正常流程
-            _runtime_auth_cache = None
+    if not force_refresh and has_valid_auth_cookies(_runtime_auth_cache):
+        # 按需覆盖/补充 fid（不改变其它键）
+        if fid is not None:
+            _runtime_auth_cache["fid"] = fid or ""
+        logger.debug("使用运行期缓存的认证信息（本次运行内复用）")
+        return _runtime_auth_cache
 
     config = configparser.ConfigParser(interpolation=None)
     # 保持键的大小写
@@ -189,8 +207,8 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     if save_auth_info and os.path.exists(AUTH_CONFIG_FILE):
         try:
             if auth_method == "cookies" and "AUTH" in config:
-                if all(key in config["AUTH"] for key in ["_d", "UID", "vc3"]):
-                    auth_data = dict(config["AUTH"])
+                auth_data = dict(config["AUTH"])
+                if has_valid_auth_cookies(auth_data):
                     auth_data["fid"] = fid or ""
                     logger.info("从配置文件读取cookies认证信息成功")
                     # 写入运行期缓存（函数顶部已声明 global）
@@ -207,7 +225,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
 
                     try:
                         cookies = get_three_cookies_from_login(username, password)
-                        if all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
+                        if has_valid_auth_cookies(cookies):
                             cookies["fid"] = fid or ""
                             logger.info("通过超星账号密码登录获取cookies成功")
                             # 写入运行期缓存，确保本次运行仅登录一次
@@ -231,7 +249,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
 
                     try:
                         cookies = login_to_chaoxing_via_ids(username, password)
-                        if all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
+                        if has_valid_auth_cookies(cookies):
                             cookies["fid"] = fid or ""
                             logger.info("通过统一身份认证登录获取cookies成功")
                             # 写入运行期缓存
@@ -249,12 +267,9 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     # 需要重新获取认证信息
     # 交互式获取：获取成功后也写入运行期缓存
     cookies = _get_auth_info_interactively(config, fid)
-    try:
-        if isinstance(cookies, dict) and all(cookies.get(k) for k in ["_d", "UID", "vc3"]):
-            _runtime_auth_cache = dict(cookies)
-            logger.debug("已缓存认证信息用于本次运行")
-    except Exception:
-        pass
+    if has_valid_auth_cookies(cookies):
+        _runtime_auth_cache = dict(cookies)
+        logger.debug("已缓存认证信息用于本次运行")
     return cookies
 
 
@@ -381,7 +396,7 @@ def _get_cookies_via_login(fid, auth_type: str):
         print(login_msg)
         cookies = login_func(username, password)
 
-        if not all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
+        if not has_valid_auth_cookies(cookies):
             raise ValueError("登录成功但获取的 cookies 不完整")
 
         cookies["fid"] = fid or ""
@@ -478,7 +493,7 @@ def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include
 
         # 保存认证信息
         if auth_method == "cookies":
-            config["AUTH"] = {k: v for k, v in auth_cookies.items() if k in ["_d", "UID", "vc3"]}
+            config["AUTH"] = {k: v for k, v in auth_cookies.items() if k in REQUIRED_AUTH_COOKIES}
         elif auth_method == "chaoxing" and include_credentials:
             config["CHAOXING_CREDENTIALS"] = {
                 "username": auth_cookies.get("username", ""),
@@ -546,8 +561,7 @@ def format_auth_cookies(auth_cookies: Dict[str, str]) -> str:
     if not isinstance(auth_cookies, dict):
         raise ValueError("认证信息必须是字典类型")
 
-    required_keys = ["_d", "UID", "vc3"]
-    for key in required_keys:
+    for key in REQUIRED_AUTH_COOKIES:
         if key not in auth_cookies:
             raise ValueError(f"缺少必要的认证信息: {key}")
         if not auth_cookies[key]:

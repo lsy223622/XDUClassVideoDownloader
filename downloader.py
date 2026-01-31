@@ -43,7 +43,7 @@ import requests
 from tqdm import tqdm
 
 # 本地模块导入
-from api import FID, REQUEST_TIMEOUT, fetch_video_links, get_initial_data
+from api import FID, REQUEST_TIMEOUT, fetch_video_links, get_authenticated_headers, get_initial_data
 from config import format_auth_cookies, get_auth_cookies
 from utils import (
     calculate_optimal_threads,
@@ -216,17 +216,7 @@ def download_mp4(
 
     # 获取认证头
     try:
-        auth_cookies = get_auth_cookies(FID)
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "video/mp4,video/*,*/*;q=0.9",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate",
-            "Connection": "keep-alive",
-            "Cookie": format_auth_cookies(auth_cookies),
-            "Referer": "http://newes.chaoxing.com/",
-            "Cache-Control": "no-cache",
-        }
+        headers = get_authenticated_headers()
     except Exception as e:
         logger.error(f"获取认证信息失败: {e}")
         raise ValueError(f"无法获取认证信息: {e}")
@@ -1559,15 +1549,7 @@ def download_m3u8_segment(url: str, segment_index: int, auth_cookies: Dict[str, 
     返回:
         Optional[bytes]: 分片的二进制数据，失败时返回 None
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "*/*",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-        "Cookie": format_auth_cookies(auth_cookies),
-        "Referer": "http://newesxidian.chaoxing.com/",
-    }
+    headers = get_authenticated_headers()
 
     max_retries = 10
     for attempt in range(max_retries):
@@ -1652,12 +1634,7 @@ def download_m3u8(
             logger.info(f"开始下载 M3U8 视频 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
             # 1. 下载 M3U8 播放列表
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "*/*",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "Cookie": format_auth_cookies(auth_cookies),
-            }
+            headers = get_authenticated_headers()
 
             logger.debug(f"GET {m3u8_url}")
             m3u8_response = requests.get(m3u8_url, headers=headers, timeout=REQUEST_TIMEOUT)
