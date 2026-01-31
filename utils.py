@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
 工具模块
-提供各种辅助函数，包括文件处理、系统资源监控等功能
+
+提供各种辅助函数，包括文件处理、日志记录、系统资源监控等功能。
 
 主要功能：
-- 文件系统操作和路径处理
-- 用户输入验证和交互
-- 系统资源监控
-- 统一的异常处理和日志记录
-- 字符串处理和格式化
+    - 日志系统：统一的日志配置和处理器
+    - 文件系统操作：路径处理、文件名清洗、目录创建
+    - 用户输入验证：带重试的输入校验
+    - 系统资源监控：CPU/内存负载判断、线程数优化
+    - 异常处理：统一的错误消息格式化
+    - 字符串处理：格式转换、范围解析
 """
 
+# 标准库导入
 import logging
 import math
 import os
@@ -19,12 +22,18 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional, Set, Union
 
+# 第三方库导入
+# 第三方库导入
 import psutil
 
-# ========== 统一日志系统 ==========
-# 控制是否将 DEBUG 级别输出到单独文件（默认关闭），通过主程序/自动化脚本的命令行参数 --debug 启用。
+# ============================================================================
+# 日志系统配置
+# ============================================================================
+
+# 是否启用 DEBUG 级别日志文件（默认关闭，通过 --debug 参数启用）
 DEBUG_LOG_TO_FILE = False
 
+# 全局日志初始化标记
 _GLOBAL_LOGGING_INITIALIZED = False
 
 
@@ -175,8 +184,13 @@ def setup_logging(name: str = "app", level: int = logging.INFO, console_level: i
     return logger
 
 
-# 初始化本模块日志器
+# 本模块日志器
 logger = setup_logging("utils")
+
+
+# ============================================================================
+# 文件处理函数
+# ============================================================================
 
 
 def remove_invalid_chars(course_name: str) -> str:
@@ -256,6 +270,11 @@ def day_to_chinese(day: Union[int, str]) -> str:
         return days[day]
     else:
         raise ValueError(f"星期数字必须在 0-7 范围内，收到：{day}")
+
+
+# ============================================================================
+# 用户输入处理函数
+# ============================================================================
 
 
 def user_input_with_check(
@@ -338,6 +357,11 @@ def create_directory(directory: str) -> None:
     except OSError as e:
         logger.error(f"创建目录失败: {directory}, 错误: {e}")
         raise OSError(f"无法创建目录 {directory}: {e}")
+
+
+# ============================================================================
+# 异常处理和系统监控函数
+# ============================================================================
 
 
 def handle_exception(e: Exception, message: str, level: int = logging.ERROR) -> str:

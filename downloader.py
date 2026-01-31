@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 """
 下载模块
-负责 MP4 视频文件的安全下载和智能合并处理
+
+负责 MP4 视频文件的安全下载和智能合并处理。
 
 主要功能：
-- 支持断点续传的 MP4 视频下载
-- 智能的视频文件合并和处理
-- 跨平台的下载支持和错误恢复
-- 进度跟踪和用户友好的反馈
-- 完整的异常处理和资源管理
+    - 支持断点续传的 MP4 视频下载
+    - 多线程分片下载（大文件加速）
+    - 智能的视频文件合并和处理
+    - 跨平台的下载支持和错误恢复
+    - 进度跟踪和用户友好的反馈
 
 安全特性：
-- 文件完整性验证
-- 原子性文件操作
-- 临时文件自动清理
-- 下载重试机制
+    - 文件完整性验证
+    - 原子性文件操作
+    - 临时文件自动清理
+    - 下载重试机制
 """
 
+# 标准库导入
 import concurrent.futures
 import configparser
 import csv
@@ -34,11 +36,13 @@ import time
 from contextlib import closing
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Union
 
+# 第三方库导入
 import requests
 from tqdm import tqdm
 
+# 本地模块导入
 from api import FID, REQUEST_TIMEOUT, fetch_video_links, get_initial_data
 from config import format_auth_cookies, get_auth_cookies
 from utils import (
@@ -54,16 +58,24 @@ from utils import (
 from validator import is_valid_url
 from validator import validate_file_integrity as verify_file_integrity
 
-# 配置日志（统一到模块日志 + 总日志；控制台仅 error+）
+# 模块日志器
 logger = setup_logging("downloader")
 
-# 下载配置
-CHUNK_SIZE = 8192  # 下载块大小
+# ============================================================================
+# 下载配置常量
+# ============================================================================
+
+CHUNK_SIZE = 8192  # 下载块大小（字节）
 DOWNLOAD_TIMEOUT = 60  # 下载超时时间（秒）
 MAX_DOWNLOAD_RETRIES = 3  # 最大下载重试次数
 MIN_FILE_SIZE = 1024  # 最小有效文件大小（字节）
 MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
 MIN_SIZE_FOR_MULTITHREAD = 10 * 1024 * 1024  # 启用多线程下载的最小文件大小（10MB）
+
+
+# ============================================================================
+# FFmpeg 工具函数
+# ============================================================================
 
 
 def get_ffmpeg_path() -> str:
@@ -139,6 +151,11 @@ def get_ffmpeg_path() -> str:
 
     # fallback: let subprocess resolve
     return "ffmpeg"
+
+
+# ============================================================================
+# 文件下载函数
+# ============================================================================
 
 
 def download_mp4(
@@ -534,6 +551,11 @@ def check_ffmpeg_availability() -> bool:
     except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         logger.warning("FFmpeg不可用")
         return False
+
+
+# ============================================================================
+# 视频合并函数
+# ============================================================================
 
 
 def merge_videos(files: Sequence[str], output_file: str) -> bool:
@@ -1170,6 +1192,11 @@ def download_single_video(
         error_msg = handle_exception(e, "半节课下载失败")
         print(f"\n{error_msg}")
         return False
+
+
+# ============================================================================
+# 课程下载入口函数
+# ============================================================================
 
 
 def download_course_videos(

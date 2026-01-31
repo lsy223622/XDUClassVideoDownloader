@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """
 API 模块
-负责与西安电子科技大学录直播平台服务器进行安全通信
+
+负责与西安电子科技大学录直播平台服务器进行安全通信。
 
 主要功能：
-- 安全的 HTTP 请求处理，包含重试机制和超时控制
-- 课程数据获取和解析，包含数据验证
-- 视频链接获取，支持多种视频格式
-- 版本检查和更新通知
-- 统一的错误处理和日志记录
-- 统一身份认证（IDS）登录获取 Cookies（支持自动求解滑块验证码）
+    - 安全的 HTTP 请求处理：重试机制、超时控制、频率限制
+    - 课程数据获取和解析：数据验证、格式化
+    - 视频链接获取：支持多种视频格式
+    - 版本检查和更新通知
+    - 统一身份认证（IDS）登录获取 Cookies（支持自动求解滑块验证码）
 
 安全特性：
-- 输入验证和 URL 安全检查
-- 请求频率限制和反爬虫保护
-- 敏感信息过滤和安全日志记录
+    - 输入验证和 URL 安全检查
+    - 请求频率限制和反爬虫保护
+    - 敏感信息过滤和安全日志记录
 """
 
+# 标准库导入
 import base64
 import hashlib
 import io
@@ -29,6 +30,7 @@ from functools import wraps
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
+# 第三方库导入
 import numpy as np
 import requests
 from bs4 import BeautifulSoup
@@ -38,18 +40,23 @@ from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+# 本地模块导入
 from config import format_auth_cookies, get_auth_cookies
 from utils import remove_invalid_chars, setup_logging
 from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
-# 配置日志（模块日志 + 总日志；控制台仅 error+）
+# 模块日志器
 logger = setup_logging("api")
 
-# 应用版本和配置
+# ============================================================================
+# 应用常量
+# ============================================================================
+
+# 版本和平台配置
 VERSION = "4.0.0"
 FID = "16820"
 
-# 请求配置
+# HTTP 请求配置
 REQUEST_TIMEOUT = 30  # 请求超时时间（秒）
 MAX_RETRIES = 3  # 最大重试次数
 RETRY_BACKOFF_FACTOR = 0.3  # 重试退避因子
@@ -62,28 +69,33 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 # 上次请求时间，用于频率控制
 _last_request_time = 0
 
+# ============================================================================
 # IDS（统一身份认证）相关常量
+# ============================================================================
+
 IDS_BASE_URL = "https://ids.xidian.edu.cn/authserver"
 LEARNING_TARGET = "https://learning.xidian.edu.cn/cassso/xidian"
 IDS_AES_BLOCK_SIZE = 16
 IDS_AES_PREFIX = "xidianscriptsxdu" * 4
 IDS_AES_IV = b"xidianscriptsxdu"
-LUMINANCE_WEIGHTS = (0.299, 0.587, 0.114)  # R, G, B 灰度转换权重
+
+# 图像处理常量
+LUMINANCE_WEIGHTS = (0.299, 0.587, 0.114)  # RGB 灰度转换权重
 EPSILON = 1e-6  # 避免除零的小常数
 
-
+# 类型变量
 _Func = TypeVar("_Func", bound=Callable[..., Any])
+
+
+# ============================================================================
+# 异常类定义
+# ============================================================================
 
 
 class VideoGeneratingError(Exception):
     """Raised when the replay video is still being generated (页面提示: 视频回看生成中)."""
 
     pass
-
-
-# ==============================================================================
-# IDS（统一身份认证）相关异常和类
-# ==============================================================================
 
 
 class IDSLoginError(Exception):
@@ -102,6 +114,11 @@ class CaptchaError(IDSLoginError):
     """验证码处理失败"""
 
     pass
+
+
+# ============================================================================
+# IDS（统一身份认证）相关类
+# ============================================================================
 
 
 class SliderCaptchaSolver:
@@ -366,9 +383,9 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
     return result
 
 
-# ==============================================================================
+# ============================================================================
 # 超星平台登录相关函数
-# ==============================================================================
+# ============================================================================
 
 
 def aes_cbc_pkcs7_encrypt_base64(message: str, key_str: str) -> str:
@@ -484,6 +501,11 @@ def get_three_cookies_from_login(
     return {"_d": cookie_jar.get("_d"), "UID": cookie_jar.get("UID"), "vc3": cookie_jar.get("vc3")}
 
 
+# ============================================================================
+# HTTP 请求工具函数
+# ============================================================================
+
+
 def rate_limit(func: _Func) -> _Func:
     """
     装饰器：为 API 请求添加频率限制，防止对服务器造成过大压力。
@@ -564,6 +586,11 @@ def get_authenticated_headers() -> Dict[str, str]:
     except Exception as e:
         logger.error(f"获取认证头失败: {e}")
         raise ValueError(f"无法获取有效的认证信息: {e}")
+
+
+# ============================================================================
+# 课程数据获取函数
+# ============================================================================
 
 
 @rate_limit

@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
 配置管理模块
-专门负责所有配置文件的读写和管理操作
+
+负责所有配置文件的读写和管理操作，提供安全的配置处理接口。
 
 主要功能：
-- 配置文件的安全读写
-- 认证信息管理
-- 课程配置管理
-- 配置文件备份和恢复
+    - 配置文件的安全读写：原子性写入、自动备份
+    - 认证信息管理：IDS 登录、超星登录、Cookies 管理
+    - 课程配置管理：课程列表、下载设置
+    - 配置文件备份和恢复：定期备份、向后兼容
 """
+
+# 标准库导入
 import configparser
 import os
 import shutil
@@ -17,19 +20,32 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+# 本地模块导入
 from utils import handle_exception, remove_invalid_chars, setup_logging
 from validator import validate_term_params, validate_user_id
 
-# 配置日志（模块日志 + 总日志；控制台仅 error+）
+# 模块日志器
 logger = setup_logging("config")
+
+# ============================================================================
+# 配置常量
+# ============================================================================
 
 # 配置文件名
 AUTOMATION_CONFIG_FILE = "automation_config.ini"
 AUTH_CONFIG_FILE = "auth.ini"
 
-# 运行期（进程内）认证信息缓存：确保一次运行内仅登录一次
-# 形如 {'_d': '...', 'UID': '...', 'vc3': '...', 'fid': '...'}
-_runtime_auth_cache = None
+# ============================================================================
+# 运行期缓存
+# ============================================================================
+
+# 运行期认证信息缓存：确保一次运行内仅登录一次
+_runtime_auth_cache: Optional[Dict[str, str]] = None
+
+
+# ============================================================================
+# 配置文件读写函数
+# ============================================================================
 
 
 def safe_write_config(
@@ -113,6 +129,11 @@ def safe_read_config(filename: str) -> configparser.ConfigParser:
     except Exception as e:
         logger.error(f"读取配置文件失败: {e}")
         raise
+
+
+# ============================================================================
+# 认证管理函数
+# ============================================================================
 
 
 def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) -> Dict[str, str]:

@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 """
 验证模块
-专门负责各种数据验证和输入检查
+
+负责各种数据验证和输入检查，提供统一的参数校验接口。
 
 主要功能：
-- 参数验证
-- 输入格式检查
-- 数据完整性验证
-- URL 和文件名验证
+    - 参数验证：验证 LiveID、用户 ID、学期参数等
+    - 输入格式检查：URL 格式、正则匹配、用户输入验证
+    - 数据完整性验证：文件完整性、课程数据、视频信息
 """
 
+# 标准库导入
 import os
 import re
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
+# 本地模块导入
 from utils import setup_logging
 
-# 配置日志（模块日志 + 总日志；控制台仅 error+）
+# 模块日志器
 logger = setup_logging("validator")
+
+# ============================================================================
+# 参数验证函数
+# ============================================================================
 
 
 def validate_live_id(live_id: Union[int, str]) -> int:
@@ -165,6 +171,11 @@ def validate_input(
         return False
 
 
+# ============================================================================
+# URL 和文件验证函数
+# ============================================================================
+
+
 def is_valid_url(url: str) -> bool:
     """
     验证 URL 格式是否有效。
@@ -278,6 +289,9 @@ def validate_file_integrity(filepath: str, expected_size: Optional[int] = None) 
         logger.error(f"文件完整性验证失败: {e}")
         return False
 
+# ============================================================================
+# 业务数据验证函数
+# ============================================================================
 
 def validate_scan_parameters(user_id: str, term_year: Union[int, str], term_id: Union[int, str]) -> None:
     """
