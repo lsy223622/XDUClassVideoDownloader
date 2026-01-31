@@ -869,6 +869,56 @@ def get_video_info_from_html(live_id: Union[int, str], retry_count: int = 0) -> 
             raise ValueError(f"获取视频信息失败: {e}")
 
 
+def _extract_video_links_from_info(info_json: Dict[str, Any], live_id: Union[int, str], link_type: str = "MP4") -> Tuple[str, str]:
+    """
+    从视频信息 JSON 中提取 PPT 和教师视频链接（公共逻辑）。
+
+    参数:
+        info_json: 视频信息字典
+        live_id: 课程 ID（用于日志）
+        link_type: 链接类型描述（"MP4" 或 "M3U8"）
+
+    返回:
+        Tuple[str, str]: (ppt_video_url, teacher_track_url)
+    """
+    # 验证响应结构
+    if "videoPath" not in info_json:
+        logger.warning(f"响应中缺少 videoPath 字段，课程 ID: {live_id}")
+        return "", ""
+
+    video_paths = info_json["videoPath"]
+
+    if video_paths is None:
+        logger.warning(f"videoPath 为空，课程 ID: {live_id}")
+        return "", ""
+
+    if not isinstance(video_paths, dict):
+        logger.warning(f"videoPath 格式错误，期望字典但收到: {type(video_paths)}")
+        return "", ""
+
+    # 提取视频 URL 并验证
+    ppt_video = video_paths.get("pptVideo", "")
+    teacher_track = video_paths.get("teacherTrack", "")
+
+    # 验证 URL 格式
+    if ppt_video and not is_valid_url(ppt_video):
+        logger.warning(f"PPT 视频 {link_type} 链接格式无效: {ppt_video}")
+        ppt_video = ""
+
+    if teacher_track and not is_valid_url(teacher_track):
+        logger.warning(f"教师视频 {link_type} 链接格式无效: {teacher_track}")
+        teacher_track = ""
+
+    if not ppt_video and not teacher_track:
+        logger.warning(f"没有找到有效的 {link_type} 链接，课程 ID: {live_id}")
+    else:
+        logger.info(
+            f"成功获取 {link_type} 链接，课程 ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}"
+        )
+
+    return ppt_video, teacher_track
+
+
 def get_mp4_links(live_id: Union[int, str]) -> Tuple[str, str]:
     """
     从直播 ID 获取 PPT 视频和教师视频的下载链接（增强版）。
@@ -883,49 +933,9 @@ def get_mp4_links(live_id: Union[int, str]) -> Tuple[str, str]:
         ValueError: 当获取视频链接失败时
     """
     try:
-        # 获取视频信息
         info_json = get_video_info_from_html(live_id)
-
-        # 验证响应结构
-        if "videoPath" not in info_json:
-            logger.warning(f"响应中缺少 videoPath 字段，课程 ID: {live_id}")
-            return "", ""
-
-        video_paths = info_json["videoPath"]
-
-        if video_paths is None:
-            logger.warning(f"videoPath 为空，课程 ID: {live_id}")
-            return "", ""
-
-        if not isinstance(video_paths, dict):
-            logger.warning(f"videoPath 格式错误，期望字典但收到: {type(video_paths)}")
-            return "", ""
-
-        # 提取视频URL并验证
-        ppt_video = video_paths.get("pptVideo", "")
-        teacher_track = video_paths.get("teacherTrack", "")
-
-        # 验证 URL 格式（如果存在）
-        if ppt_video and not is_valid_url(ppt_video):
-            logger.warning(f"PPT 视频 URL 格式无效: {ppt_video}")
-            ppt_video = ""
-
-        if teacher_track and not is_valid_url(teacher_track):
-            logger.warning(f"教师视频 URL 格式无效: {teacher_track}")
-            teacher_track = ""
-
-        if not ppt_video and not teacher_track:
-            logger.warning(f"没有找到有效的视频链接，课程 ID: {live_id}")
-        else:
-            logger.info(
-                f"成功获取视频链接，课程 ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}"
-            )
-
-        return ppt_video, teacher_track
-
-    except VideoGeneratingError as e:
-        # 特殊情况：视频尚未生成，记录为 warning 并向上游表明应跳过
-        logger.warning(str(e))
+        return _extract_video_links_from_info(info_json, live_id, "MP4")
+    except VideoGeneratingError:
         raise
     except Exception as e:
         logger.error(f"获取视频链接失败，课程 ID: {live_id}, 错误: {e}")
@@ -1448,51 +1458,10 @@ def get_m3u8_links_legacy(live_id: Union[int, str]) -> Tuple[str, str]:
         ValueError: 当获取视频链接失败时
     """
     try:
-        # 获取视频信息
         info_json = get_m3u8_info_legacy(live_id)
-
-        # 验证响应结构
-        if "videoPath" not in info_json:
-            logger.warning(f"响应中缺少 videoPath 字段，课程 ID: {live_id}")
-            return "", ""
-
-        video_paths = info_json["videoPath"]
-
-        if video_paths is None:
-            logger.warning(f"videoPath 为空，课程 ID: {live_id}")
-            return "", ""
-
-        if not isinstance(video_paths, dict):
-            logger.warning(f"videoPath 格式错误，期望字典但收到: {type(video_paths)}")
-            return "", ""
-
-        # 提取 M3U8 URL 并验证
-        ppt_video = video_paths.get("pptVideo", "")
-        teacher_track = video_paths.get("teacherTrack", "")
-
-        # 验证 URL 格式（如果存在）
-        if ppt_video and not is_valid_url(ppt_video):
-            logger.warning(f"PPT 视频 M3U8 链接格式无效: {ppt_video}")
-            ppt_video = ""
-
-        if teacher_track and not is_valid_url(teacher_track):
-            logger.warning(f"教师视频 M3U8 链接格式无效: {teacher_track}")
-            teacher_track = ""
-
-        if not ppt_video and not teacher_track:
-            logger.warning(f"没有找到有效的 M3U8 链接，课程 ID: {live_id}")
-        else:
-            logger.info(
-                f"成功获取 M3U8 链接，课程 ID: {live_id}, PPT: {'是' if ppt_video else '否'}, 教师: {'是' if teacher_track else '否'}"
-            )
-
-        return ppt_video, teacher_track
-
-    except VideoGeneratingError as e:
-        # 特殊情况：视频尚未生成
-        logger.warning(str(e))
+        return _extract_video_links_from_info(info_json, live_id, "M3U8")
+    except VideoGeneratingError:
         raise
     except Exception as e:
-        # 使用 warning 级别，避免在获取链接时打断进度条显示
         logger.warning(f"获取 M3U8 链接失败，课程 ID: {live_id}, 错误: {e}")
         raise ValueError(f"获取 M3U8 链接失败: {str(e)}")

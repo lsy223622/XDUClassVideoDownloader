@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional
 
 # 本地模块导入
 from utils import handle_exception, remove_invalid_chars, setup_logging
-from validator import validate_term_params, validate_user_id
+from validator import make_choice_validator, validate_term_params, validate_user_id
 
 # 模块日志器
 logger = setup_logging("config")
@@ -279,14 +279,13 @@ def _get_auth_info_interactively(config, fid):
     print("2. 使用超星账号密码登录")
     print("3. 手动输入 cookies")
 
-    def validate_auth_method_choice(choice):
-        return choice in ["1", "2", "3"]
-
     try:
         from utils import user_input_with_check
 
         auth_method_choice = user_input_with_check(
-            "请输入选择（1、2或3）: ", validate_auth_method_choice, error_message="选择无效，请输入1、2或3"
+            "请输入选择（1、2或3）: ",
+            make_choice_validator("1", "2", "3"),
+            error_message="选择无效，请输入1、2或3"
         ).strip()
 
         if auth_method_choice == "1":
@@ -301,11 +300,10 @@ def _get_auth_info_interactively(config, fid):
         print("1. 是（推荐）")
         print("2. 否（每次都重新输入）")
 
-        def validate_save_choice(choice):
-            return choice in ["1", "2"]
-
         save_choice = user_input_with_check(
-            "请输入选择（1或2）: ", validate_save_choice, error_message="选择无效，请输入1或2"
+            "请输入选择（1或2）: ",
+            make_choice_validator("1", "2"),
+            error_message="选择无效，请输入1或2"
         ).strip()
 
         save_auth_info = save_choice == "1"
@@ -335,99 +333,83 @@ def _get_auth_info_interactively(config, fid):
         raise ValueError(f"获取认证信息失败: {e}")
 
 
-def _get_cookies_from_ids(fid):
+def _validate_non_empty(value: str) -> bool:
+    """验证值是否非空（用于输入验证）。"""
+    return bool(value and len(value.strip()) > 0)
+
+
+def _get_cookies_via_login(fid, auth_type: str):
     """
-    通过统一身份认证（IDS）获取 cookies。
+    通过登录获取 cookies（统一入口）。
 
     参数:
         fid: FID 值
+        auth_type: 认证类型，"ids" 为统一身份认证，"chaoxing" 为超星账号
 
     返回:
         dict: 认证 cookie 字典
     """
+    from utils import user_input_with_check
 
-    def validate_non_empty(value):
-        return bool(value and len(value.strip()) > 0)
+    # 根据类型导入对应的登录函数并设置提示文案
+    if auth_type == "ids":
+        from api import login_to_chaoxing_via_ids as login_func
+        prompt_title = "\n请输入您的西电统一身份认证账号信息："
+        username_prompt = "学号: "
+        username_error = "学号不能为空，请重新输入"
+        login_msg = "正在通过统一身份认证登录并获取认证信息..."
+        success_msg = "通过统一身份认证登录获取 cookies 成功"
+        error_prefix = "统一身份认证登录失败"
+    else:  # chaoxing
+        from api import get_three_cookies_from_login as login_func
+        prompt_title = "\n请输入您的超星账号信息："
+        username_prompt = "用户名: "
+        username_error = "用户名不能为空，请重新输入"
+        login_msg = "正在登录并获取认证信息..."
+        success_msg = "通过账号密码登录获取 cookies 成功"
+        error_prefix = "账号密码登录失败"
 
     try:
-        from api import login_to_chaoxing_via_ids
-        from utils import user_input_with_check
-
-        print("\n请输入您的西电统一身份认证账号信息：")
+        print(prompt_title)
         username = user_input_with_check(
-            "学号: ", validate_non_empty, error_message="学号不能为空，请重新输入"
+            username_prompt, _validate_non_empty, error_message=username_error
+        ).strip()
+        password = user_input_with_check(
+            "密码: ", _validate_non_empty, error_message="密码不能为空，请重新输入"
         ).strip()
 
-        password = user_input_with_check("密码: ", validate_non_empty, error_message="密码不能为空，请重新输入").strip()
-
-        print("正在通过统一身份认证登录并获取认证信息...")
-        cookies = login_to_chaoxing_via_ids(username, password)
+        print(login_msg)
+        cookies = login_func(username, password)
 
         if not all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
             raise ValueError("登录成功但获取的 cookies 不完整")
 
         cookies["fid"] = fid or ""
-        cookies["username"] = username  # 保存用户名用于配置文件
-        cookies["password"] = password  # 保存密码用于配置文件
-        cookies["auth_type"] = "ids"  # 标记认证类型
+        cookies["username"] = username
+        cookies["password"] = password
+        if auth_type == "ids":
+            cookies["auth_type"] = "ids"
 
         print("登录成功，认证信息获取完成")
-        logger.info("通过统一身份认证登录获取 cookies 成功")
-        # 写入运行期缓存
+        logger.info(success_msg)
+
         global _runtime_auth_cache
         _runtime_auth_cache = dict(cookies)
         return cookies
 
     except Exception as e:
-        logger.error(f"统一身份认证登录失败: {e}")
-        raise ValueError(f"统一身份认证登录失败: {e}")
+        logger.error(f"{error_prefix}: {e}")
+        raise ValueError(f"{error_prefix}: {e}")
+
+
+def _get_cookies_from_ids(fid):
+    """通过统一身份认证（IDS）获取 cookies。"""
+    return _get_cookies_via_login(fid, "ids")
 
 
 def _get_cookies_from_chaoxing(fid):
-    """
-    通过账号密码获取cookies。
-
-    参数:
-        fid: FID值
-
-    返回:
-        dict: 认证cookie字典
-    """
-
-    def validate_non_empty(value):
-        return bool(value and len(value.strip()) > 0)
-
-    try:
-        from api import get_three_cookies_from_login
-        from utils import user_input_with_check
-
-        print("\n请输入您的超星账号信息：")
-        username = user_input_with_check(
-            "用户名: ", validate_non_empty, error_message="用户名不能为空，请重新输入"
-        ).strip()
-
-        password = user_input_with_check("密码: ", validate_non_empty, error_message="密码不能为空，请重新输入").strip()
-
-        print("正在登录并获取认证信息...")
-        cookies = get_three_cookies_from_login(username, password)
-
-        if not all(cookies.get(key) for key in ["_d", "UID", "vc3"]):
-            raise ValueError("登录成功但获取的cookies不完整")
-
-        cookies["fid"] = fid or ""
-        cookies["username"] = username  # 保存用户名用于配置文件
-        cookies["password"] = password  # 保存密码用于配置文件
-
-        print("登录成功，认证信息获取完成")
-        logger.info("通过账号密码登录获取cookies成功")
-        # 写入运行期缓存（函数外已有 global 定义，且此处在函数作用域需保留 global）
-        global _runtime_auth_cache
-        _runtime_auth_cache = dict(cookies)
-        return cookies
-
-    except Exception as e:
-        logger.error(f"账号密码登录失败: {e}")
-        raise ValueError(f"账号密码登录失败: {e}")
+    """通过超星账号密码获取 cookies。"""
+    return _get_cookies_via_login(fid, "chaoxing")
 
 
 def _get_cookies_manually(fid):
@@ -447,23 +429,24 @@ def _get_cookies_manually(fid):
     print("-" * 60)
 
     def validate_cookie_value(value):
-        return bool(value and len(value.strip()) > 0 and not any(char in value for char in ["\n", "\r", "\t"]))
+        return _validate_non_empty(value) and not any(char in value for char in ["\n", "\r", "\t"])
 
     try:
         from utils import user_input_with_check
 
+        cookie_error_msg = "Cookie值不能为空且不能包含换行符，请重新输入"
         auth_cookies = {"fid": fid or ""}
 
         auth_cookies["_d"] = user_input_with_check(
-            "请输入 _d 的值: ", validate_cookie_value, error_message="Cookie值不能为空且不能包含换行符，请重新输入"
+            "请输入 _d 的值: ", validate_cookie_value, error_message=cookie_error_msg
         ).strip()
 
         auth_cookies["UID"] = user_input_with_check(
-            "请输入 UID 的值: ", validate_cookie_value, error_message="Cookie值不能为空且不能包含换行符，请重新输入"
+            "请输入 UID 的值: ", validate_cookie_value, error_message=cookie_error_msg
         ).strip()
 
         auth_cookies["vc3"] = user_input_with_check(
-            "请输入 vc3 的值: ", validate_cookie_value, error_message="Cookie值不能为空且不能包含换行符，请重新输入"
+            "请输入 vc3 的值: ", validate_cookie_value, error_message=cookie_error_msg
         ).strip()
 
         print("认证信息输入完成")

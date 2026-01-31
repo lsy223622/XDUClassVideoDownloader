@@ -171,6 +171,23 @@ def validate_input(
         return False
 
 
+def make_choice_validator(*valid_choices: str, allow_empty: bool = False) -> Callable[[str], bool]:
+    """
+    创建一个验证用户选择的验证器函数。
+
+    参数:
+        *valid_choices: 有效的选项值
+        allow_empty: 是否允许空输入
+
+    返回:
+        Callable[[str], bool]: 验证函数
+    """
+    valid_set = set(valid_choices)
+    if allow_empty:
+        valid_set.add("")
+    return lambda choice: choice in valid_set
+
+
 # ============================================================================
 # URL 和文件验证函数
 # ============================================================================

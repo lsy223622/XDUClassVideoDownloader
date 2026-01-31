@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Callable, Optional, Set, Union
 
 # 第三方库导入
-# 第三方库导入
 import psutil
 
 # ============================================================================
@@ -32,6 +31,11 @@ import psutil
 
 # 是否启用 DEBUG 级别日志文件（默认关闭，通过 --debug 参数启用）
 DEBUG_LOG_TO_FILE = False
+
+# 统一的日志格式
+_LOG_FORMAT_CONSOLE = "%(levelname)s: %(message)s"
+_LOG_FORMAT_FILE = "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
+_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # 全局日志初始化标记
 _GLOBAL_LOGGING_INITIALIZED = False
@@ -79,7 +83,7 @@ def _ensure_global_handlers(
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(console_level)
     console_handler.set_name("xdu_console")
-    console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    console_handler.setFormatter(logging.Formatter(_LOG_FORMAT_CONSOLE))
     # 添加过滤器，防止 traceback 输出到控制台
     console_handler.addFilter(NoExceptionInfoFilter())
     root_logger.addHandler(console_handler)
@@ -89,12 +93,7 @@ def _ensure_global_handlers(
     file_handler = logging.FileHandler(info_path, encoding="utf-8")
     file_handler.setLevel(logging.INFO)
     file_handler.set_name("all_file")
-    file_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
+    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT_FILE, datefmt=_LOG_DATE_FORMAT))
     root_logger.addHandler(file_handler)
 
     # 可选 debug 文件（debug+）
@@ -103,12 +102,7 @@ def _ensure_global_handlers(
         dbg_handler = logging.FileHandler(debug_path, encoding="utf-8")
         dbg_handler.setLevel(logging.DEBUG)
         dbg_handler.set_name("debug_file")
-        dbg_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
+        dbg_handler.setFormatter(logging.Formatter(_LOG_FORMAT_FILE, datefmt=_LOG_DATE_FORMAT))
         root_logger.addHandler(dbg_handler)
 
     _GLOBAL_LOGGING_INITIALIZED = True
@@ -133,12 +127,7 @@ def enable_debug_file_logging(path: Optional[str] = None) -> None:
             dbg_handler = logging.FileHandler(debug_path, encoding="utf-8")
             dbg_handler.setLevel(logging.DEBUG)
             dbg_handler.set_name("debug_file")
-            dbg_handler.setFormatter(
-                logging.Formatter(
-                    "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",
-                )
-            )
+            dbg_handler.setFormatter(logging.Formatter(_LOG_FORMAT_FILE, datefmt=_LOG_DATE_FORMAT))
             root.addHandler(dbg_handler)
 
 
@@ -171,12 +160,7 @@ def setup_logging(name: str = "app", level: int = logging.INFO, console_level: i
         fh = logging.FileHandler(module_file, encoding="utf-8")
         fh.setLevel(level)
         fh.set_name(handler_marker)
-        fh.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        )
+        fh.setFormatter(logging.Formatter(_LOG_FORMAT_FILE, datefmt=_LOG_DATE_FORMAT))
         logger.addHandler(fh)
 
     # 让模块日志向上冒泡到 root（写入总日志/控制台/调试文件）

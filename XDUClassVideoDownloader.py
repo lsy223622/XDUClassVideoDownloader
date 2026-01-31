@@ -26,7 +26,7 @@ from typing import Optional, Tuple
 from api import check_update
 from downloader import download_course_videos
 from utils import enable_debug_file_logging, handle_exception, parse_week_ranges, setup_logging, user_input_with_check
-from validator import validate_download_parameters, validate_live_id
+from validator import make_choice_validator, validate_download_parameters, validate_live_id
 
 # 使用统一的日志配置（模块日志 + 总日志；控制台仅 error+）
 logger = setup_logging("main")
@@ -65,12 +65,9 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
         print("2. 单节课模式（下载每节课的视频）")
         print("3. 半节课模式（下载每半节课的视频）")
 
-        def validate_mode_choice(choice: str) -> bool:
-            return choice in ["", "1", "2", "3"]
-
         mode_choice = user_input_with_check(
             "请输入选择（1-3，直接回车选择默认）: ",
-            validate_mode_choice,
+            make_choice_validator("1", "2", "3", allow_empty=True),
             error_message="选择无效，请输入 1、2、3 或直接回车",
             allow_empty=True,
         ).strip()
@@ -87,12 +84,9 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
         print("1. 是（默认）")
         print("2. 否")
 
-        def validate_merge_choice(choice: str) -> bool:
-            return choice in ["", "1", "2"]
-
         merge_choice = user_input_with_check(
             "请输入选择（1-2，直接回车选择默认）: ",
-            validate_merge_choice,
+            make_choice_validator("1", "2", allow_empty=True),
             error_message="选择无效，请输入 1、2 或直接回车",
             allow_empty=True,
         ).strip()
@@ -105,12 +99,9 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
         print("2. 仅下载 pptVideo")
         print("3. 仅下载 teacherTrack")
 
-        def validate_video_type_choice(choice: str) -> bool:
-            return choice in ["", "1", "2", "3"]
-
         video_type_choice = user_input_with_check(
             "请输入选择（1-3，直接回车选择默认）: ",
-            validate_video_type_choice,
+            make_choice_validator("1", "2", "3", allow_empty=True),
             error_message="选择无效，请输入 1、2、3 或直接回车",
             allow_empty=True,
         ).strip()
