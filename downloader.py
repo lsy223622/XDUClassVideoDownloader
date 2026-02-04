@@ -1392,7 +1392,7 @@ def download_course_videos(
                 except Exception as e:
                     logger.warning(f"格式化失败课程信息时出错: {e}")
                     print(f"  - 课程 ID: {entry.get('id', '未知')}")
-            print("建议：检查录直播平台网页能否播放，如果可以，请向开发者反馈此问题。")
+            print("建议：检查录直播平台网页能否播放，如果能，请向开发者反馈此问题。")
             logger.warning(f"共有 {len(failed_entries)} 节课程获取视频链接失败")
 
         # 根据下载模式执行不同的下载逻辑
