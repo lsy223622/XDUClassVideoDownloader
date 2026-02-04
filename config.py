@@ -159,6 +159,48 @@ def safe_read_config(filename: str) -> configparser.ConfigParser:
 # ============================================================================
 
 
+def _migrate_old_auth_config_if_needed():
+    """
+    检查并迁移旧版认证配置文件格式。
+    旧版: auth_method = password, [CREDENTIALS]
+    新版: auth_method = chaoxing, [CHAOXING_CREDENTIALS]
+    """
+    if not os.path.exists(AUTH_CONFIG_FILE):
+        return
+
+    try:
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        config.read(AUTH_CONFIG_FILE, encoding="utf-8")
+
+        needs_save = False
+
+        # 检查 auth_method
+        if "SETTINGS" in config and config["SETTINGS"].get("auth_method") == "password":
+            logger.info("检测到旧版配置(auth_method=password)，正在迁移至新版...")
+            config["SETTINGS"]["auth_method"] = "chaoxing"
+            needs_save = True
+
+        # 检查 CREDENTIALS section
+        if "CREDENTIALS" in config:
+            logger.info("检测到旧版配置([CREDENTIALS])，正在迁移至[CHAOXING_CREDENTIALS]...")
+            if "CHAOXING_CREDENTIALS" not in config:
+                config.add_section("CHAOXING_CREDENTIALS")
+
+            for key, value in config["CREDENTIALS"].items():
+                config["CHAOXING_CREDENTIALS"][key] = value
+
+            config.remove_section("CREDENTIALS")
+            needs_save = True
+
+        if needs_save:
+            safe_write_config(config, AUTH_CONFIG_FILE, backup=True)
+            logger.info("旧版认证配置已成功迁移到新版格式")
+
+    except Exception as e:
+        logger.warning(f"迁移旧版认证配置失败: {e}")
+
+
 def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) -> Dict[str, str]:
     """
     获取身份验证所需的cookie信息。
@@ -187,6 +229,9 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     config = configparser.ConfigParser(interpolation=None)
     # 保持键的大小写
     config.optionxform = str
+
+    # 尝试迁移旧配置
+    _migrate_old_auth_config_if_needed()
 
     # 读取认证配置
     auth_method = "ids"  # 默认使用统一身份认证方式
