@@ -553,3 +553,72 @@ def parse_week_ranges(week_str: str) -> Set[int]:
                 raise ValueError(f"无效的周数: {part}")
 
     return weeks
+
+
+# ============================================================================
+# GUI 日志适配
+# ============================================================================
+
+
+class GuiLogHandler(logging.Handler):
+    """
+    GUI 日志处理器，将日志消息通过回调函数发送到 GUI 组件。
+
+    用于 Flet GUI 中实时显示日志输出，而不影响现有的文件/控制台日志。
+
+    参数:
+        callback: 接收格式化日志消息的回调函数，签名为 (str) -> None
+    """
+
+    def __init__(self, callback: Callable[[str], None], level: int = logging.INFO):
+        super().__init__(level)
+        self._callback = callback
+        self.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """格式化日志记录并调用回调函数。"""
+        try:
+            msg = self.format(record)
+            self._callback(msg)
+        except Exception:
+            self.handleError(record)
+
+
+def add_gui_log_handler(callback: Callable[[str], None], level: int = logging.INFO) -> GuiLogHandler:
+    """
+    向根日志器添加 GUI 日志处理器。
+
+    参数:
+        callback: 接收格式化日志消息的回调函数
+        level: 日志级别，默认 INFO
+
+    返回:
+        GuiLogHandler: 创建的处理器实例（可用于后续 removeHandler）
+    """
+    _ensure_global_handlers()
+    handler = GuiLogHandler(callback, level)
+    handler.set_name("xdu_gui")
+    root = logging.getLogger("xdu")
+    # 避免重复添加
+    for h in root.handlers:
+        if getattr(h, "name", "") == "xdu_gui":
+            root.removeHandler(h)
+            break
+    root.addHandler(handler)
+    return handler
+
+
+def remove_gui_log_handler(handler: Optional[GuiLogHandler] = None) -> None:
+    """
+    移除 GUI 日志处理器。
+
+    参数:
+        handler: 要移除的处理器实例；为 None 时按名称查找移除
+    """
+    root = logging.getLogger("xdu")
+    if handler:
+        root.removeHandler(handler)
+    else:
+        for h in list(root.handlers):
+            if getattr(h, "name", "") == "xdu_gui":
+                root.removeHandler(h)

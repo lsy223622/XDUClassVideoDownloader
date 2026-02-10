@@ -618,6 +618,91 @@ def format_auth_cookies(auth_cookies: Dict[str, str]) -> str:
     return cookie_string
 
 
+# ============================================================================
+# GUI 非交互式认证函数
+# ============================================================================
+
+
+def get_auth_cookies_noninteractive(
+    auth_method: str,
+    credentials: Dict[str, str],
+    fid: Optional[str] = None,
+    save: bool = True,
+) -> Dict[str, str]:
+    """
+    非交互式获取认证 cookies，供 GUI 调用，不使用 input() 阻塞。
+
+    参数:
+        auth_method: 认证方式 ("ids" / "chaoxing" / "cookies")
+        credentials: 凭证字典
+            - ids/chaoxing: {"username": ..., "password": ...}
+            - cookies: {"_d": ..., "UID": ..., "vc3": ...}
+        fid: 可选 FID 值
+        save: 是否保存认证信息到配置文件
+
+    返回:
+        dict: 包含身份验证 cookie 的字典
+
+    异常:
+        ValueError: 当认证信息无效或登录失败时
+    """
+    global _runtime_auth_cache
+    import configparser as _cp
+
+    if auth_method == "cookies":
+        # 直接使用提供的 cookies
+        auth_cookies = {
+            "_d": credentials.get("_d", ""),
+            "UID": credentials.get("UID", ""),
+            "vc3": credentials.get("vc3", ""),
+            "fid": fid or "",
+        }
+        if not has_valid_auth_cookies(auth_cookies):
+            raise ValueError("提供的 Cookie 信息不完整，_d、UID、vc3 均不能为空")
+
+    elif auth_method == "ids":
+        from api import login_to_chaoxing_via_ids
+        username = credentials.get("username", "")
+        password = credentials.get("password", "")
+        if not username or not password:
+            raise ValueError("学号和密码不能为空")
+        auth_cookies = login_to_chaoxing_via_ids(username, password)
+        if not has_valid_auth_cookies(auth_cookies):
+            raise ValueError("登录成功但获取的 cookies 不完整")
+        auth_cookies["fid"] = fid or ""
+        auth_cookies["username"] = username
+        auth_cookies["password"] = password
+
+    elif auth_method == "chaoxing":
+        from api import get_three_cookies_from_login
+        username = credentials.get("username", "")
+        password = credentials.get("password", "")
+        if not username or not password:
+            raise ValueError("用户名和密码不能为空")
+        auth_cookies = get_three_cookies_from_login(username, password)
+        if not has_valid_auth_cookies(auth_cookies):
+            raise ValueError("登录成功但获取的 cookies 不完整")
+        auth_cookies["fid"] = fid or ""
+        auth_cookies["username"] = username
+        auth_cookies["password"] = password
+
+    else:
+        raise ValueError(f"不支持的认证方式: {auth_method}")
+
+    # 写入运行期缓存
+    _runtime_auth_cache = dict(auth_cookies)
+
+    # 保存到配置文件
+    if save:
+        config = _cp.ConfigParser(interpolation=None)
+        config.optionxform = str
+        include_credentials = auth_method in ("ids", "chaoxing")
+        _save_auth_config(config, auth_method, True, auth_cookies, include_credentials)
+
+    logger.info(f"非交互式认证成功 (方式={auth_method})")
+    return auth_cookies
+
+
 def update_course_config(
     config: configparser.ConfigParser, new_courses: Dict[str, Dict[str, Any]]
 ) -> bool:

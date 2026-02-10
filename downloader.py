@@ -163,6 +163,7 @@ def download_mp4(
     filename: str,
     save_dir: str,
     max_attempts: int = MAX_DOWNLOAD_RETRIES,
+    progress_callback: Any = None,
 ) -> bool:
     """
     下载 MP4 视频文件，支持断点续传和完整性验证。
@@ -172,6 +173,8 @@ def download_mp4(
         filename (str): 保存的文件名
         save_dir (str): 保存目录
         max_attempts (int): 最大重试次数
+        progress_callback: 进度回调函数，签名为 (downloaded_bytes, total_bytes, filename) -> None
+                          为 None 时使用 tqdm 显示进度（CLI 模式）
 
     返回:
         bool: 下载是否成功
@@ -298,22 +301,37 @@ def download_mp4(
                     t.start()
 
                 # show progress
-                with tqdm(total=total_size, desc=safe_filename, unit="B", unit_scale=True, leave=False) as pbar:
+                if progress_callback:
                     prev = 0
                     while any(t.is_alive() for t in threads):
                         with downloaded_lock:
                             cur = downloaded_total["value"]
-                        delta = cur - prev
-                        if delta > 0:
-                            pbar.update(delta)
+                        if cur != prev:
+                            progress_callback(cur, total_size, safe_filename)
                             prev = cur
                         for t in threads:
                             t.join(timeout=0.1)
-                    # final update
                     with downloaded_lock:
                         cur = downloaded_total["value"]
-                    if cur - prev > 0:
-                        pbar.update(cur - prev)
+                    if cur != prev:
+                        progress_callback(cur, total_size, safe_filename)
+                else:
+                    with tqdm(total=total_size, desc=safe_filename, unit="B", unit_scale=True, leave=False) as pbar:
+                        prev = 0
+                        while any(t.is_alive() for t in threads):
+                            with downloaded_lock:
+                                cur = downloaded_total["value"]
+                            delta = cur - prev
+                            if delta > 0:
+                                pbar.update(delta)
+                                prev = cur
+                            for t in threads:
+                                t.join(timeout=0.1)
+                        # final update
+                        with downloaded_lock:
+                            cur = downloaded_total["value"]
+                        if cur - prev > 0:
+                            pbar.update(cur - prev)
 
                 # ensure threads finished
                 for t in threads:
@@ -344,7 +362,13 @@ def download_mp4(
                             total_size = int(response.headers.get("content-length", 0) or 0)
                         downloaded_size = 0
                         with open(temp_path, "wb") as f:
-                            if total_size > 0:
+                            if progress_callback:
+                                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded_size += len(chunk)
+                                        progress_callback(downloaded_size, total_size, safe_filename)
+                            elif total_size > 0:
                                 with tqdm(
                                     total=total_size, unit="B", unit_scale=True, desc=safe_filename, leave=False
                                 ) as pbar:
@@ -401,7 +425,13 @@ def download_mp4(
                         # 下载文件
                         downloaded_size = resume_pos
                         with open(temp_path, "ab" if resume_pos > 0 else "wb") as f:
-                            if total_size > 0:
+                            if progress_callback:
+                                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                    if chunk:
+                                        f.write(chunk)
+                                        downloaded_size += len(chunk)
+                                        progress_callback(downloaded_size, total_size, safe_filename)
+                            elif total_size > 0:
                                 with tqdm(
                                     total=total_size,
                                     initial=downloaded_size,
@@ -732,6 +762,8 @@ def process_rows(
     merge: bool = True,
     video_type: str = "both",
     api_version: str = "new",
+    progress_callback: Any = None,
+    task_callback: Any = None,
 ) -> Dict[str, int]:
     """
     处理视频行数据，下载视频并可选择性地合并相邻节次的视频。
@@ -746,6 +778,8 @@ def process_rows(
         merge (bool): 是否自动合并相邻节次的视频
         video_type (str): 视频类型('both', 'ppt', 'teacher')
         api_version (str): API 版本，"new"表示新版（mp4），"legacy"表示旧版（m3u8）
+        progress_callback: 文件下载进度回调，透传给 download_mp4/download_m3u8
+        task_callback: 任务级进度回调，签名 (completed, total, current_name) -> None
 
     返回:
         dict: 处理结果统计信息
@@ -969,10 +1003,12 @@ def process_rows(
             try:
                 if api_version == "legacy":
                     # 旧版 API：下载 M3U8 格式
-                    download_success = download_m3u8(video_url, filename, save_dir)
+                    download_success = download_m3u8(video_url, filename, save_dir,
+                                                     progress_callback=progress_callback)
                 else:
                     # 新版 API：下载 MP4 格式
-                    download_success = download_mp4(video_url, filename, save_dir)
+                    download_success = download_mp4(video_url, filename, save_dir,
+                                                    progress_callback=progress_callback)
 
                 if download_success:
                     result["downloaded"] = True
@@ -1060,12 +1096,20 @@ def process_rows(
 
     stats["total_videos"] = total_tasks
 
-    with tqdm(total=total_tasks, desc="处理视频", unit="个") as pbar:
+    completed_count = 0
+
+    def _update_task(name=""):
+        nonlocal completed_count
+        completed_count += 1
+        if task_callback:
+            task_callback(completed_count, total_tasks, name)
+
+    if task_callback:
+        # GUI 模式：通过回调报告进度
         for i, row in enumerate(rows):
             try:
                 logger.debug(f"处理第 {i+1}/{len(rows)} 行数据")
 
-                # 处理PPT视频
                 if video_type in ["both", "ppt"]:
                     result = process_single_video(row[5], "pptVideo", row)
                     if result["downloaded"]:
@@ -1076,9 +1120,8 @@ def process_rows(
                         stats["failed"] += 1
                     if result["merged"]:
                         stats["merged"] += 1
-                    pbar.update(1)
+                    _update_task(f"pptVideo {i+1}")
 
-                # 处理教师视频
                 if video_type in ["both", "teacher"]:
                     result = process_single_video(row[6], "teacherTrack", row)
                     if result["downloaded"]:
@@ -1089,12 +1132,47 @@ def process_rows(
                         stats["failed"] += 1
                     if result["merged"]:
                         stats["merged"] += 1
-                    pbar.update(1)
+                    _update_task(f"teacherTrack {i+1}")
 
             except Exception as e:
                 logger.error(f"处理第 {i+1} 行数据时出错: {e}")
                 stats["failed"] += 1
-                pbar.update(1)
+                _update_task()
+    else:
+        # CLI 模式：使用 tqdm 显示进度
+        with tqdm(total=total_tasks, desc="处理视频", unit="个") as pbar:
+            for i, row in enumerate(rows):
+                try:
+                    logger.debug(f"处理第 {i+1}/{len(rows)} 行数据")
+
+                    if video_type in ["both", "ppt"]:
+                        result = process_single_video(row[5], "pptVideo", row)
+                        if result["downloaded"]:
+                            stats["downloaded"] += 1
+                        if result["skipped"]:
+                            stats["skipped"] += 1
+                        if result["failed"]:
+                            stats["failed"] += 1
+                        if result["merged"]:
+                            stats["merged"] += 1
+                        pbar.update(1)
+
+                    if video_type in ["both", "teacher"]:
+                        result = process_single_video(row[6], "teacherTrack", row)
+                        if result["downloaded"]:
+                            stats["downloaded"] += 1
+                        if result["skipped"]:
+                            stats["skipped"] += 1
+                        if result["failed"]:
+                            stats["failed"] += 1
+                        if result["merged"]:
+                            stats["merged"] += 1
+                        pbar.update(1)
+
+                except Exception as e:
+                    logger.error(f"处理第 {i+1} 行数据时出错: {e}")
+                    stats["failed"] += 1
+                    pbar.update(1)
 
     # 输出处理结果
     logger.info("视频处理完成！")
@@ -1117,6 +1195,7 @@ def download_single_video(
     year: int,
     save_dir: str,
     video_type: str,
+    progress_callback: Any = None,
 ) -> bool:
     """
     下载单个视频片段（半节课模式）。
@@ -1128,6 +1207,7 @@ def download_single_video(
         year (int): 年份
         save_dir (str): 保存目录
         video_type (str): 视频类型
+        progress_callback: 进度回调函数，透传给 download_mp4
 
     返回:
         bool: 下载是否成功
@@ -1152,7 +1232,7 @@ def download_single_video(
                 success_count += 1
             else:
                 print(f"开始下载 PPT 视频：{filename}")
-                if download_mp4(ppt_video, filename, save_dir):
+                if download_mp4(ppt_video, filename, save_dir, progress_callback=progress_callback):
                     success_count += 1
                     print(f"PPT 视频下载成功：{filename}")
                 else:
@@ -1169,7 +1249,7 @@ def download_single_video(
                 success_count += 1
             else:
                 print(f"开始下载教师视频：{filename}")
-                if download_mp4(teacher_track, filename, save_dir):
+                if download_mp4(teacher_track, filename, save_dir, progress_callback=progress_callback):
                     success_count += 1
                     print(f"教师视频下载成功：{filename}")
                 else:
@@ -1195,9 +1275,20 @@ def download_course_videos(
     merge: bool = True,
     video_type: str = "both",
     skip_weeks: set = None,
+    progress_callback: Any = None,
+    task_callback: Any = None,
 ) -> bool:
     """
     下载指定课程的视频，这是核心的下载逻辑函数。
+
+    参数:
+        live_id: 课程直播 ID
+        single: 下载模式 (0=全部, 1=单节课, 2=半节课)
+        merge: 是否自动合并相邻节次视频
+        video_type: 视频类型 ('both', 'ppt', 'teacher')
+        skip_weeks: 要跳过的周数集合
+        progress_callback: 文件下载进度回调，透传给 download_mp4/download_m3u8
+        task_callback: 任务级进度回调，透传给 process_rows
 
     参数:
         live_id: 课程直播 ID
@@ -1310,7 +1401,10 @@ def download_course_videos(
         clear_overwrite_line()
         print(f"找到 {len(valid_entries)} 个可下载的课程片段")
 
-        with tqdm(total=len(valid_entries), desc="获取视频链接") as desc:
+        # 使用 tqdm 或回调显示获取进度
+        desc_bar = None if task_callback else tqdm(total=len(valid_entries), desc="获取视频链接")
+
+        try:
             # 计算最佳线程数
             max_threads = calculate_optimal_threads()
             logger.info(f"使用 {max_threads} 个线程获取视频链接")
@@ -1318,7 +1412,7 @@ def download_course_videos(
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
                 # 提交所有任务，同时保存 entry 和 future 的对应关系
                 future_to_entry = {
-                    executor.submit(fetch_video_links, entry, lock, desc, api_version): entry
+                    executor.submit(fetch_video_links, entry, lock, desc_bar, api_version): entry
                     for entry in valid_entries
                 }
 
@@ -1335,6 +1429,9 @@ def download_course_videos(
                     except Exception as e:
                         logger.error(f"获取视频链接时出错: {e}")
                         failed_entries.append(entry)
+        finally:
+            if desc_bar is not None:
+                desc_bar.close()
 
         if not rows:
             print("没有成功获取到任何视频链接")
@@ -1411,11 +1508,13 @@ def download_course_videos(
 
         if single == 2:
             # 半节课模式的特殊处理
-            return download_single_video(download_rows[0], course_code, course_name, year, save_dir, video_type)
+            return download_single_video(download_rows[0], course_code, course_name, year, save_dir, video_type,
+                                         progress_callback=progress_callback)
         else:
             # 批量下载处理
             try:
-                stats = process_rows(download_rows, course_code, course_name, year, save_dir, merge, video_type, api_version)
+                stats = process_rows(download_rows, course_code, course_name, year, save_dir, merge, video_type, api_version,
+                                     progress_callback=progress_callback, task_callback=task_callback)
 
                 print(f"\n下载任务完成！")
                 print(
@@ -1441,13 +1540,18 @@ def download_course_videos(
         return False
 
 
-def process_all_courses(config: configparser.ConfigParser, video_type: str = "both") -> bool:
+def process_all_courses(config: configparser.ConfigParser, video_type: str = "both",
+                        progress_callback: Any = None, task_callback: Any = None,
+                        course_callback: Any = None) -> bool:
     """
     处理配置文件中的所有课程。
 
     参数:
         config: 配置对象
         video_type: 视频类型
+        progress_callback: 文件下载进度回调
+        task_callback: 任务级进度回调
+        course_callback: 课程级进度回调，签名 (current, total, course_name) -> None
 
     返回:
         bool: 是否成功处理
@@ -1475,9 +1579,12 @@ def process_all_courses(config: configparser.ConfigParser, video_type: str = "bo
         try:
             # 下载课程视频 - 使用提取的核心下载函数
             clear_overwrite_line()
-            success = download_course_videos(live_id, single=0, merge=True, video_type=video_type)
+            success = download_course_videos(live_id, single=0, merge=True, video_type=video_type,
+                                             progress_callback=progress_callback, task_callback=task_callback)
             if success:
                 success_count += 1
+                if course_callback:
+                    course_callback(success_count, total_count, f"{course_code} {course_name}")
             else:
                 clear_overwrite_line()
                 print(f"\n课程 {course_code} {course_name} 下载失败")
@@ -1573,6 +1680,7 @@ def download_m3u8(
     filename: str,
     save_dir: str,
     max_attempts: int = MAX_DOWNLOAD_RETRIES,
+    progress_callback: Any = None,
 ) -> bool:
     """
     下载M3U8视频文件，自动解析播放列表并下载所有 TS 分片，最后合并为完整视频。
@@ -1657,18 +1765,24 @@ def download_m3u8(
             failed_segments = []
 
             with open(temp_path, "wb") as f:
-                with tqdm(total=len(segment_urls), desc=safe_filename, unit="片段", leave=False) as pbar:
-                    # 使用多线程下载分片
-                    max_workers = min(8, len(segment_urls))
+                # 使用多线程下载分片
+                max_workers = min(8, len(segment_urls))
+                total_segments = len(segment_urls)
+                completed_segments = 0
+
+                def _on_segment_done():
+                    nonlocal completed_segments
+                    completed_segments += 1
+                    if progress_callback:
+                        progress_callback(completed_segments, total_segments, safe_filename)
+
+                if progress_callback:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        # 提交所有下载任务
                         future_to_index = {
                             executor.submit(download_m3u8_segment, url, idx, auth_cookies): idx
                             for idx, url in enumerate(segment_urls)
                         }
-
-                        # 按顺序收集结果
-                        segments_data = [None] * len(segment_urls)
+                        segments_data = [None] * total_segments
                         for future in concurrent.futures.as_completed(future_to_index):
                             idx = future_to_index[future]
                             try:
@@ -1681,14 +1795,35 @@ def download_m3u8(
                             except Exception as e:
                                 logger.error(f"下载 TS 分片 {idx} 时出错: {e}")
                                 failed_segments.append(idx)
-                            pbar.update(1)
+                            _on_segment_done()
+                else:
+                    with tqdm(total=total_segments, desc=safe_filename, unit="片段", leave=False) as pbar:
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                            future_to_index = {
+                                executor.submit(download_m3u8_segment, url, idx, auth_cookies): idx
+                                for idx, url in enumerate(segment_urls)
+                            }
+                            segments_data = [None] * total_segments
+                            for future in concurrent.futures.as_completed(future_to_index):
+                                idx = future_to_index[future]
+                                try:
+                                    segment_data = future.result()
+                                    if segment_data:
+                                        segments_data[idx] = segment_data
+                                        downloaded_segments += 1
+                                    else:
+                                        failed_segments.append(idx)
+                                except Exception as e:
+                                    logger.error(f"下载 TS 分片 {idx} 时出错: {e}")
+                                    failed_segments.append(idx)
+                                pbar.update(1)
 
-                    # 按顺序写入分片
-                    for idx, segment_data in enumerate(segments_data):
-                        if segment_data:
-                            f.write(segment_data)
-                        else:
-                            logger.warning(f"TS 分片 {idx} 缺失，可能导致视频不完整")
+                # 按顺序写入分片
+                for idx, segment_data in enumerate(segments_data):
+                    if segment_data:
+                        f.write(segment_data)
+                    else:
+                        logger.warning(f"TS 分片 {idx} 缺失，可能导致视频不完整")
 
             # 5. 检查下载完整性
             if failed_segments:

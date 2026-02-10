@@ -1200,7 +1200,8 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
     if not isinstance(entry, dict):
         logger.error(f"课程条目数据格式错误，期望字典但收到: {type(entry)}")
         with lock:
-            desc.update(1)
+            if desc:
+                desc.update(1)
         return None
 
     required_fields = ["id", "startTime", "jie", "days"]
@@ -1208,7 +1209,8 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         if field not in entry:
             logger.error(f"课程条目缺少必要字段: {field}")
             with lock:
-                desc.update(1)
+                if desc:
+                    desc.update(1)
             return None
 
     try:
@@ -1225,7 +1227,8 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         if not isinstance(start_time, dict) or "time" not in start_time:
             logger.error(f"开始时间格式错误: {start_time}")
             with lock:
-                desc.update(1)
+                if desc:
+                    desc.update(1)
             return None
 
         try:
@@ -1233,7 +1236,8 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         except (TypeError, ValueError, OSError) as e:
             logger.error(f"时间戳解析失败: {e}")
             with lock:
-                desc.update(1)
+                if desc:
+                    desc.update(1)
             return None
 
         # 构建返回的行数据
@@ -1249,14 +1253,16 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
 
         # 使用线程锁安全地更新进度条
         with lock:
-            desc.update(1)
+            if desc:
+                desc.update(1)
         logger.debug(f"成功获取课程 {entry['id']} 的视频链接")
         return row
 
     except VideoGeneratingError:
         # 回看仍在生成中：不视为错误，按需求用 warning 级别以示区别
         with lock:
-            desc.update(1)
+            if desc:
+                desc.update(1)
         logger.warning(f"课程 {entry.get('id')} 回看仍在生成中，跳过")
         return None
     except Exception as e:
@@ -1266,7 +1272,8 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         logger.warning(f"获取视频链接失败 (课程 ID: {live_id}): {type(e).__name__}: {e}", exc_info=True)
 
         with lock:
-            desc.update(1)
+            if desc:
+                desc.update(1)
         return None
 
 
