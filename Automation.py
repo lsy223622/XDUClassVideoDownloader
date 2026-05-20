@@ -89,7 +89,8 @@ def main() -> bool:
 
         # 检查程序更新
         try:
-            check_update()
+            if not check_update():
+                return False
         except Exception as e:
             logger.debug(f"检查更新时出现异常: {e}")
 

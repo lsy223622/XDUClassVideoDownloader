@@ -1125,9 +1125,12 @@ def compare_versions(v1: str, v2: str) -> int:
         return 0  # 比较失败时认为相等
 
 
-def check_update() -> None:
+def check_update() -> bool:
     """
     检查软件是否有新版本可用，包含更好的错误处理和用户体验。
+
+    返回:
+        bool: 当前版本是否允许继续运行。检查失败或旧版 API 未返回最低版本时默认允许运行。
     """
     print("正在检查更新...", end="", flush=True)
 
@@ -1144,9 +1147,26 @@ def check_update() -> None:
         except json.JSONDecodeError:
             logger.warning("版本检查响应不是有效的 JSON 格式")
             print("\r检查更新失败：服务器响应格式错误")
-            return
+            return True
 
-        # 先检查是否有新版本并提示用户（优先级高）
+        # 新版 API 可返回 min_version，用于强制阻止过旧客户端继续运行。
+        # 旧版 API 不返回该字段时按原逻辑处理，以保持向后兼容。
+        min_version = data.get("min_version")
+        if min_version:
+            try:
+                if compare_versions(VERSION, min_version) < 0:
+                    latest_version = data.get("latest_version") or min_version
+                    print(f"\r当前版本已不可用: {VERSION}")
+                    print(f"请更新到最新版本: {latest_version}")
+                    print("请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载新版本")
+                    logger.warning(
+                        f"当前版本 {VERSION} 低于最低可用版本 {min_version}，停止启动"
+                    )
+                    return False
+            except Exception as e:
+                logger.warning(f"最低可用版本比较失败: {e}")
+
+        # 再检查是否有新版本并提示用户；高于最低可用版本但低于最新版时不强制更新。
         latest_version = data.get("latest_version")
         if latest_version:
             try:
@@ -1170,16 +1190,21 @@ def check_update() -> None:
             # 将服务器消息放在单独一行，保留前面的版本提示
             print(f"\r{data['message']}")
 
+        return True
+
     except requests.Timeout:
         print("\r检查更新超时，跳过版本检查")
         logger.warning("版本检查超时")
+        return True
     except requests.RequestException as e:
         print(f"\r检查更新失败：网络错误")
         logger.warning(f"版本检查网络错误: {e}")
+        return True
     except Exception as e:
         # 检查更新失败时不影响主功能
         print(f"\r检查更新时发生错误")
         logger.warning(f"版本检查失败: {e}")
+        return True
 
 
 def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version: str = "new") -> Optional[List[Any]]:

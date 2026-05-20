@@ -297,7 +297,8 @@ if __name__ == "__main__":
 
     # 现在执行版本检查（可记录网络调试日志）
     try:
-        check_update()
+        if not check_update():
+            sys.exit(1)
     except Exception as e:
         logger.debug(f"检查更新时出现异常: {e}")
 
