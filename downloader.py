@@ -1033,12 +1033,16 @@ def process_rows(
             logger.debug(f"没有找到相邻的视频文件: {filepath.name}")
             return False
 
+        def _extract_jie_number(filename: str) -> int:
+            match = re.search(r"第(\d+)节", filename)
+            return int(match.group(1)) if match else 0
+
         # 准备合并
         all_files = adjacent_files + [str(filepath)]
-        all_files.sort(key=lambda f: int(re.search(r"第(\d+)节", f).group(1)))
+        all_files.sort(key=_extract_jie_number)
 
         # 生成合并后的文件名
-        jie_numbers = [int(re.search(r"第(\d+)节", f).group(1)) for f in all_files]
+        jie_numbers = [_extract_jie_number(f) for f in all_files]
         merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{min(jie_numbers)}-{max(jie_numbers)}节-{track_type}.mp4"
         merged_filepath = save_path / merged_filename
 
@@ -1194,7 +1198,7 @@ def download_course_videos(
     single: int = 0,
     merge: bool = True,
     video_type: str = "both",
-    skip_weeks: set = None,
+    skip_weeks: Optional[Set[int]] = None,
 ) -> bool:
     """
     下载指定课程的视频，这是核心的下载逻辑函数。
@@ -1668,7 +1672,7 @@ def download_m3u8(
                         }
 
                         # 按顺序收集结果
-                        segments_data = [None] * len(segment_urls)
+                        segments_data: List[Optional[bytes]] = [None] * len(segment_urls)
                         for future in concurrent.futures.as_completed(future_to_index):
                             idx = future_to_index[future]
                             try:

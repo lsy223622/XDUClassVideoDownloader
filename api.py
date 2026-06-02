@@ -22,11 +22,14 @@ import base64
 import hashlib
 import io
 import json
+import os
 import random
 import re
 import time
 import urllib.parse
+import webbrowser
 from functools import wraps
+from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
@@ -34,6 +37,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, c
 import numpy as np
 import requests
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 from PIL import Image
@@ -178,6 +182,9 @@ class SliderCaptchaSolver:
 
     def _match_template(self, border: int = 24) -> Optional[float]:
         """使用 NCC 模板匹配计算滑块位置"""
+        if self._puzzle_data is None or self._piece_data is None:
+            return None
+
         puzzle = Image.open(io.BytesIO(self._puzzle_data))
         piece = Image.open(io.BytesIO(self._piece_data))
 
@@ -244,11 +251,14 @@ class IDSSession:
         salt = ""
 
         for inp in soup.find_all("input", {"type": "hidden"}):
+            if not isinstance(inp, Tag):
+                continue
             name = inp.get("name")
-            if name:
-                form_data[name] = inp.get("value", "")
+            value = inp.get("value", "")
+            if isinstance(name, str):
+                form_data[name] = value if isinstance(value, str) else ""
             if inp.get("id") == "pwdEncryptSalt":
-                salt = inp.get("value", "")
+                salt = value if isinstance(value, str) else ""
 
         return form_data, salt
 
@@ -361,9 +371,9 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
     # 从响应 cookies 中提取所需的三个值
     cookie_dict = final_resp.cookies.get_dict()
     result = {
-        "_d": cookie_dict.get("_d"),
-        "UID": cookie_dict.get("UID"),
-        "vc3": cookie_dict.get("vc3"),
+        "_d": cookie_dict.get("_d") or "",
+        "UID": cookie_dict.get("UID") or "",
+        "vc3": cookie_dict.get("vc3") or "",
     }
 
     # 验证获取的 cookies 是否完整
@@ -371,9 +381,9 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
         # 尝试从整个 session 中获取
         session_cookies = requests.utils.dict_from_cookiejar(ids.session.cookies)
         result = {
-            "_d": session_cookies.get("_d") or result.get("_d"),
-            "UID": session_cookies.get("UID") or result.get("UID"),
-            "vc3": session_cookies.get("vc3") or result.get("vc3"),
+            "_d": session_cookies.get("_d") or result.get("_d") or "",
+            "UID": session_cookies.get("UID") or result.get("UID") or "",
+            "vc3": session_cookies.get("vc3") or result.get("vc3") or "",
         }
 
     if not has_valid_auth_cookies(result):
@@ -386,6 +396,9 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
 # ============================================================================
 # 超星平台登录相关函数
 # ============================================================================
+
+CHAOXING_BASE_URL = "https://passport2.chaoxing.com"
+CHAOXING_LOGIN_REFER = "https://i.mooc.chaoxing.com"
 
 
 def aes_cbc_pkcs7_encrypt_base64(message: str, key_str: str) -> str:
@@ -406,7 +419,7 @@ def get_three_cookies_from_login(
     password: str,
     base_url: str = "https://passport2.chaoxing.com",
     timeout: int = 10,
-) -> Dict[str, Optional[str]]:
+) -> Dict[str, str]:
     """通过账号密码登录获取三个 Cookie 值。
 
     参数:
@@ -433,7 +446,8 @@ def get_three_cookies_from_login(
 
     def _hid(name):
         el = soup.find(id=name)
-        return el.get("value") if el and el.has_attr("value") else ""
+        value = el.get("value") if isinstance(el, Tag) and el.has_attr("value") else ""
+        return value if isinstance(value, str) else ""
 
     t_flag = _hid("t")
 
@@ -445,7 +459,15 @@ def get_three_cookies_from_login(
     else:
         transfer_key = ""
         script_src = next(
-            (sc["src"] for sc in soup.find_all("script", src=True) if "login" in sc["src"].lower()),
+            (
+                src
+                for sc in soup.find_all("script", src=True)
+                if isinstance(sc, Tag)
+                for src_attr in [sc.get("src")]
+                if isinstance(src_attr, str)
+                for src in [src_attr]
+                if "login" in src.lower()
+            ),
             None,
         )
         if script_src:
@@ -498,7 +520,238 @@ def get_three_cookies_from_login(
 
     # 从会话中提取 cookie，返回指定的三项（若不存在则为 None）
     cookie_jar = requests.utils.dict_from_cookiejar(session.cookies)
-    return {"_d": cookie_jar.get("_d"), "UID": cookie_jar.get("UID"), "vc3": cookie_jar.get("vc3")}
+    return {
+        "_d": cookie_jar.get("_d") or "",
+        "UID": cookie_jar.get("UID") or "",
+        "vc3": cookie_jar.get("vc3") or "",
+    }
+
+
+def _get_input_value(soup: BeautifulSoup, html: str, name: str) -> str:
+    """从登录页 input 或脚本变量中读取指定字段。"""
+    el = soup.find(id=name) or soup.find(attrs={"name": name})
+    if isinstance(el, Tag) and el.has_attr("value"):
+        value = el.get("value", "")
+        return value if isinstance(value, str) else ""
+
+    patterns = [
+        rf"\b{name}\s*[:=]\s*['\"]([^'\"]+)['\"]",
+        rf"['\"]{name}['\"]\s*[:=]\s*['\"]([^'\"]+)['\"]",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html)
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+def _extract_chaoxing_auth_cookies(session: requests.Session) -> Dict[str, str]:
+    """从当前会话中提取程序需要的超星 Cookie。"""
+    cookie_jar = requests.utils.dict_from_cookiejar(session.cookies)
+    return {
+        "_d": cookie_jar.get("_d") or "",
+        "UID": cookie_jar.get("UID") or "",
+        "vc3": cookie_jar.get("vc3") or "",
+    }
+
+
+def _open_qr_image(qr_path: Path) -> None:
+    """尽量用系统默认程序打开二维码图片，失败时只保留命令行提示。"""
+    try:
+        if os.name == "nt":
+            os.startfile(str(qr_path.resolve()))  # type: ignore[attr-defined]
+        else:
+            webbrowser.open(qr_path.resolve().as_uri())
+    except Exception as e:
+        logger.debug("无法自动打开二维码图片 %s: %s", qr_path, e)
+
+
+def _parse_qr_status_response(resp: requests.Response) -> Tuple[bool, bool, str]:
+    """
+    解析扫码状态。
+
+    返回:
+        (是否登录成功, 是否已经扫码等待确认, 提示消息)
+    """
+    text = resp.text.strip()
+    try:
+        data = resp.json()
+    except ValueError:
+        data = {}
+
+    if isinstance(data, dict):
+        status = data.get("status")
+        msg = str(data.get("msg2") or data.get("mes") or data.get("msg") or data.get("message") or "")
+
+        if status is True or str(status).lower() == "true":
+            return True, False, msg or "扫码登录成功"
+
+        scanned_keys = ("uid", "UID", "nickname", "name", "realName")
+        scanned = any(data.get(key) for key in scanned_keys)
+        if scanned:
+            return False, True, msg or "已扫码，请在手机 App 中确认登录"
+
+        if any(word in msg for word in ("失效", "过期", "超时")):
+            raise RuntimeError(msg)
+
+        return False, False, msg
+
+    if any(word in text for word in ("失效", "过期", "超时")):
+        raise RuntimeError(text)
+
+    scanned = any(word in text for word in ("已扫描", "已扫码", "确认"))
+    return False, scanned, text
+
+
+def get_three_cookies_from_qr_login(
+    base_url: str = CHAOXING_BASE_URL,
+    refer: str = CHAOXING_LOGIN_REFER,
+    fid: str = "",
+    timeout: int = 10,
+    poll_interval: int = 2,
+    expires: int = 180,
+    qr_image_path: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    通过学在西电 App 扫码登录超星平台，并获取三个 Cookie 值。
+
+    参数:
+        base_url (str): 超星登录基础 URL
+        refer (str): 登录完成后的目标 URL
+        fid (str): 可选机构 ID
+        timeout (int): 单次请求超时时间
+        poll_interval (int): 轮询扫码状态的间隔秒数
+        expires (int): 二维码等待超时时间
+        qr_image_path (Optional[str]): 二维码图片保存路径
+
+    返回:
+        dict: 包含 _d, UID, vc3 的字典
+
+    异常:
+        RuntimeError: 二维码生成、扫码确认或 Cookie 获取失败时
+    """
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            )
+        }
+    )
+
+    base_url = base_url.rstrip("/")
+    login_url = base_url + "/login"
+    login_params = {
+        "fid": fid or "",
+        "newversion": "true",
+        "refer": refer,
+    }
+
+    logger.debug("GET %s params=%s", login_url, login_params)
+    resp = session.get(login_url, params=login_params, timeout=timeout)
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    uuid = _get_input_value(soup, resp.text, "uuid")
+    enc = _get_input_value(soup, resp.text, "enc")
+    page_fid = _get_input_value(soup, resp.text, "fid")
+    page_refer = urllib.parse.unquote(_get_input_value(soup, resp.text, "refer") or refer)
+
+    if not uuid or not enc:
+        raise RuntimeError("登录页未返回扫码登录所需的 uuid/enc 字段")
+
+    qr_fid = page_fid or fid or "-1"
+    qr_url = base_url + "/createqr"
+    qr_resp = session.get(qr_url, params={"uuid": uuid, "fid": qr_fid}, timeout=timeout)
+    qr_resp.raise_for_status()
+
+    qr_path = Path(qr_image_path) if qr_image_path else Path("logs") / "chaoxing_qr_login.png"
+    qr_path.parent.mkdir(parents=True, exist_ok=True)
+    qr_path.write_bytes(qr_resp.content)
+
+    print(f"二维码已生成: {qr_path.resolve()}")
+    print("请使用学在西电 App 扫码，并在手机端确认登录。")
+    _open_qr_image(qr_path)
+
+    status_urls = [base_url + "/getauthstatus/v2", base_url + "/getauthstatus"]
+    headers = {
+        "Referer": resp.url,
+        "Origin": base_url,
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+    }
+    status_payload = {"enc": enc, "uuid": uuid, "doubleFactorLogin": "0"}
+    deadline = time.monotonic() + expires
+    scanned_notified = False
+    last_error: Optional[str] = None
+
+    while time.monotonic() < deadline:
+        time.sleep(poll_interval)
+
+        for status_url in status_urls:
+            status_resp: Optional[requests.Response] = None
+            for method in ("post", "get"):
+                try:
+                    if method == "post":
+                        status_resp = session.post(
+                            status_url,
+                            data=status_payload,
+                            headers=headers,
+                            timeout=timeout,
+                        )
+                    else:
+                        status_resp = session.get(
+                            status_url,
+                            params=status_payload,
+                            headers=headers,
+                            timeout=timeout,
+                        )
+                except requests.RequestException as e:
+                    last_error = str(e)
+                    continue
+
+                if status_resp.status_code not in (404, 405):
+                    break
+
+            if status_resp is None:
+                continue
+
+            if status_resp.status_code in (404, 405):
+                continue
+            status_resp.raise_for_status()
+
+            success, scanned, message = _parse_qr_status_response(status_resp)
+            if scanned and not scanned_notified:
+                print(message or "已扫码，请在手机 App 中确认登录")
+                scanned_notified = True
+
+            if not success:
+                continue
+
+            redirect_url = ""
+            try:
+                status_data = status_resp.json()
+                if isinstance(status_data, dict):
+                    redirect_url = str(status_data.get("url") or status_data.get("refer") or "")
+            except ValueError:
+                pass
+
+            if redirect_url:
+                session.get(urllib.parse.urljoin(base_url, redirect_url), timeout=timeout)
+            if page_refer:
+                session.get(page_refer, timeout=timeout, allow_redirects=True)
+
+            cookies = _extract_chaoxing_auth_cookies(session)
+            if has_valid_auth_cookies(cookies):
+                logger.info("通过学在西电 App 扫码登录成功")
+                return cookies
+
+            raise RuntimeError("扫码确认成功但未能获取完整的 Cookies")
+
+    if last_error:
+        raise RuntimeError(f"扫码登录轮询失败: {last_error}")
+    raise RuntimeError("扫码登录超时，请重新生成二维码")
 
 
 # ============================================================================

@@ -18,7 +18,7 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 # 本地模块导入
 from utils import handle_exception, remove_invalid_chars, setup_logging
@@ -37,6 +37,13 @@ AUTH_CONFIG_FILE = "auth.ini"
 
 # 认证 cookie 所需的键名（与 auth.ini 键名一致）
 REQUIRED_AUTH_COOKIES = ("_d", "UID", "vc3")
+
+
+class CaseSensitiveConfigParser(configparser.ConfigParser):
+    """保持配置键大小写，避免 ConfigParser 默认转小写。"""
+
+    def optionxform(self, optionstr: str) -> str:
+        return optionstr
 
 # ============================================================================
 # 运行期缓存
@@ -169,8 +176,7 @@ def _migrate_old_auth_config_if_needed():
         return
 
     try:
-        config = configparser.ConfigParser(interpolation=None)
-        config.optionxform = str
+        config = CaseSensitiveConfigParser(interpolation=None)
         config.read(AUTH_CONFIG_FILE, encoding="utf-8")
 
         needs_save = False
@@ -204,7 +210,7 @@ def _migrate_old_auth_config_if_needed():
 def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) -> Dict[str, str]:
     """
     获取身份验证所需的cookie信息。
-    支持三种认证方式：统一身份认证（IDS）、超星账号密码登录和直接使用 cookies。
+    支持四种认证方式：统一身份认证（IDS）、超星账号密码登录、学在西电扫码登录和直接使用 cookies。
 
     参数:
         fid (Optional[str]): 可选的 FID 值。
@@ -219,16 +225,16 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     global _runtime_auth_cache
 
     # 运行期缓存优先（除非强制刷新）
-    if not force_refresh and has_valid_auth_cookies(_runtime_auth_cache):
+    cached_auth = _runtime_auth_cache
+    if not force_refresh and isinstance(cached_auth, dict) and has_valid_auth_cookies(cached_auth):
         # 按需覆盖/补充 fid（不改变其它键）
         if fid is not None:
-            _runtime_auth_cache["fid"] = fid or ""
+            cached_auth["fid"] = fid or ""
         logger.debug("使用运行期缓存的认证信息（本次运行内复用）")
-        return _runtime_auth_cache
+        _runtime_auth_cache = cached_auth
+        return cached_auth
 
-    config = configparser.ConfigParser(interpolation=None)
-    # 保持键的大小写
-    config.optionxform = str
+    config = CaseSensitiveConfigParser(interpolation=None)
 
     # 尝试迁移旧配置
     _migrate_old_auth_config_if_needed()
@@ -251,7 +257,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
     # 如果保存认证信息，尝试从配置文件读取
     if save_auth_info and os.path.exists(AUTH_CONFIG_FILE):
         try:
-            if auth_method == "cookies" and "AUTH" in config:
+            if auth_method in ("cookies", "chaoxing_qr") and "AUTH" in config:
                 auth_data = dict(config["AUTH"])
                 if has_valid_auth_cookies(auth_data):
                     auth_data["fid"] = fid or ""
@@ -275,7 +281,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
                             logger.info("通过超星账号密码登录获取cookies成功")
                             # 写入运行期缓存，确保本次运行仅登录一次
                             _runtime_auth_cache = dict(cookies)
-                            return _runtime_auth_cache
+                            return cookies
                         else:
                             logger.error("登录成功但获取的cookies不完整")
                     except Exception as e:
@@ -299,7 +305,7 @@ def get_auth_cookies(fid: Optional[str] = None, *, force_refresh: bool = False) 
                             logger.info("通过统一身份认证登录获取cookies成功")
                             # 写入运行期缓存
                             _runtime_auth_cache = dict(cookies)
-                            return _runtime_auth_cache
+                            return cookies
                         else:
                             logger.error("登录成功但获取的cookies不完整")
                     except Exception as e:
@@ -337,21 +343,24 @@ def _get_auth_info_interactively(config, fid):
     print("\n请选择认证方式：")
     print("1. 使用统一身份认证登录（推荐，自动解决滑块验证码）")
     print("2. 使用超星账号密码登录")
-    print("3. 手动输入 cookies")
+    print("3. 使用学在西电 App 扫码登录")
+    print("4. 手动输入 cookies")
 
     try:
         from utils import user_input_with_check
 
         auth_method_choice = user_input_with_check(
-            "请输入选择（1、2或3）: ",
-            make_choice_validator("1", "2", "3"),
-            error_message="选择无效，请输入1、2或3"
+            "请输入选择（1、2、3或4）: ",
+            make_choice_validator("1", "2", "3", "4"),
+            error_message="选择无效，请输入1、2、3或4"
         ).strip()
 
         if auth_method_choice == "1":
             auth_method = "ids"
         elif auth_method_choice == "2":
             auth_method = "chaoxing"
+        elif auth_method_choice == "3":
+            auth_method = "chaoxing_qr"
         else:
             auth_method = "cookies"
 
@@ -373,6 +382,8 @@ def _get_auth_info_interactively(config, fid):
             auth_cookies = _get_cookies_from_ids(fid)
         elif auth_method == "chaoxing":
             auth_cookies = _get_cookies_from_chaoxing(fid)
+        elif auth_method == "chaoxing_qr":
+            auth_cookies = _get_cookies_from_chaoxing_qr(fid)
         else:
             auth_cookies = _get_cookies_manually(fid)
 
@@ -472,6 +483,31 @@ def _get_cookies_from_chaoxing(fid):
     return _get_cookies_via_login(fid, "chaoxing")
 
 
+def _get_cookies_from_chaoxing_qr(fid):
+    """通过学在西电 App 扫码登录获取 cookies。"""
+    try:
+        from api import get_three_cookies_from_qr_login
+
+        print("\n正在生成登录二维码...")
+        cookies = get_three_cookies_from_qr_login(fid=fid or "")
+
+        if not has_valid_auth_cookies(cookies):
+            raise ValueError("扫码登录成功但获取的 cookies 不完整")
+
+        cookies["fid"] = fid or ""
+
+        print("扫码登录成功，认证信息获取完成")
+        logger.info("通过学在西电 App 扫码登录获取 cookies 成功")
+
+        global _runtime_auth_cache
+        _runtime_auth_cache = dict(cookies)
+        return cookies
+
+    except Exception as e:
+        logger.error(f"学在西电 App 扫码登录失败: {e}")
+        raise ValueError(f"学在西电 App 扫码登录失败: {e}")
+
+
 def _get_cookies_manually(fid):
     """
     手动输入cookies。
@@ -527,7 +563,7 @@ def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include
 
     参数:
         config: 配置对象
-        auth_method: 认证方式（ids、chaoxing、cookies）
+        auth_method: 认证方式（ids、chaoxing、chaoxing_qr、cookies）
         save_auth_info: 是否保存认证信息
         auth_cookies: 认证 cookie 字典
         include_credentials: 是否包含账号密码
@@ -537,7 +573,7 @@ def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include
         config["SETTINGS"] = {"auth_method": auth_method, "save_auth_info": str(save_auth_info)}
 
         # 保存认证信息
-        if auth_method == "cookies":
+        if auth_method in ("cookies", "chaoxing_qr"):
             config["AUTH"] = {k: v for k, v in auth_cookies.items() if k in REQUIRED_AUTH_COOKIES}
         elif auth_method == "chaoxing" and include_credentials:
             config["CHAOXING_CREDENTIALS"] = {
@@ -562,7 +598,7 @@ def _save_auth_config(config, auth_method, save_auth_info, auth_cookies, include
             except OSError as e:
                 logger.warning(f"无法设置认证文件权限: {e}")
 
-        print("认证信息已安全保存")
+        print("认证信息已保存")
         logger.info("认证配置已保存")
 
     except Exception as e:
@@ -619,14 +655,14 @@ def format_auth_cookies(auth_cookies: Dict[str, str]) -> str:
 
 
 def update_course_config(
-    config: configparser.ConfigParser, new_courses: Dict[str, Dict[str, Any]]
+    config: configparser.ConfigParser, new_courses: Mapping[Any, Dict[str, Any]]
 ) -> bool:
     """
     更新配置文件中的课程信息。
 
     参数:
         config (configparser.ConfigParser): 配置对象。
-        new_courses (Dict[str, Dict[str, Any]]): 新课程信息字典。
+        new_courses (Mapping[Any, Dict[str, Any]]): 新课程信息字典。
 
     返回:
         bool: 是否有更新。
