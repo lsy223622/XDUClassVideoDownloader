@@ -41,6 +41,26 @@ _LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 _GLOBAL_LOGGING_INITIALIZED = False
 
 
+def get_app_dir() -> Path:
+    """Return the directory that owns runtime files for source and PyInstaller runs."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def get_app_path(*parts: Union[str, os.PathLike]) -> Path:
+    return get_app_dir().joinpath(*parts)
+
+
+def pause_before_exit_if_frozen(prompt: str = "按回车键退出...") -> None:
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        input(prompt)
+    except (EOFError, OSError):
+        pass
+
+
 class NoExceptionInfoFilter(logging.Filter):
     """
     自定义日志过滤器，用于阻止异常 traceback 信息输出到控制台。
@@ -73,7 +93,7 @@ def _ensure_global_handlers(
     if _GLOBAL_LOGGING_INITIALIZED:
         return
 
-    log_dir = Path("logs")
+    log_dir = get_app_path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
 
     root_logger = logging.getLogger("xdu")
@@ -121,7 +141,7 @@ def enable_debug_file_logging(path: Optional[str] = None) -> None:
         root = logging.getLogger("xdu")
         # 若已存在则不重复添加
         if not any(getattr(h, "name", "") == "debug_file" for h in root.handlers):
-            log_dir = Path("logs")
+            log_dir = get_app_path("logs")
             log_dir.mkdir(parents=True, exist_ok=True)
             debug_path = Path(path) if path else (log_dir / "debug.log")
             dbg_handler = logging.FileHandler(debug_path, encoding="utf-8")
@@ -154,7 +174,7 @@ def setup_logging(name: str = "app", level: int = logging.INFO, console_level: i
     # 避免重复添加模块文件 handler（按自定义 name 区分）
     handler_marker = f"xdu_module_file::{logger_name}"
     if not any(getattr(h, "name", "") == handler_marker for h in logger.handlers):
-        log_dir = Path("logs")
+        log_dir = get_app_path("logs")
         log_dir.mkdir(parents=True, exist_ok=True)
         module_file = log_dir / f"{name}.log"
         fh = logging.FileHandler(module_file, encoding="utf-8")

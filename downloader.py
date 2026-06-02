@@ -50,6 +50,7 @@ from utils import (
     create_directory,
     day_to_chinese,
     format_file_size,
+    get_app_path,
     get_safe_filename,
     handle_exception,
     remove_invalid_chars,
@@ -1361,7 +1362,7 @@ def download_course_videos(
 
         # 保存视频信息到 CSV 文件（保存到 logs/ 目录以便集中管理日志/元数据）
         try:
-            logs_dir = Path("logs")
+            logs_dir = get_app_path("logs")
             logs_dir.mkdir(parents=True, exist_ok=True)
             csv_filename = logs_dir / f"{save_dir}.csv"
             with open(csv_filename, mode="w", newline="", encoding="utf-8") as file:

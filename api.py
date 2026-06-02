@@ -46,7 +46,7 @@ from urllib3.util.retry import Retry
 
 # 本地模块导入
 from config import format_auth_cookies, get_auth_cookies, has_valid_auth_cookies
-from utils import remove_invalid_chars, setup_logging
+from utils import get_app_path, remove_invalid_chars, setup_logging
 from validator import is_valid_url, validate_live_id, validate_scan_parameters
 
 # 模块日志器
@@ -398,7 +398,7 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
 
 CHAOXING_BASE_URL = "https://passport2.chaoxing.com"
 CHAOXING_LOGIN_REFER = "https://i.mooc.chaoxing.com"
-CHAOXING_QR_IMAGE_PATH = Path("logs") / "chaoxing_qr_login.png"
+CHAOXING_QR_IMAGE_PATH = get_app_path("logs", "chaoxing_qr_login.png")
 
 
 def _create_chaoxing_session() -> requests.Session:

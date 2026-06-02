@@ -27,7 +27,12 @@ from pathlib import Path
 from api import check_update
 from config import AUTOMATION_CONFIG_FILE, create_initial_config, safe_read_config, update_existing_config
 from downloader import process_all_courses
-from utils import enable_debug_file_logging, handle_exception, setup_logging
+from utils import (
+    enable_debug_file_logging,
+    handle_exception,
+    pause_before_exit_if_frozen,
+    setup_logging,
+)
 
 # 设置日志（模块日志 + 总日志；控制台仅 error+）
 logger = setup_logging("automation")
@@ -90,6 +95,7 @@ def main() -> bool:
         # 检查程序更新
         try:
             if not check_update():
+                pause_before_exit_if_frozen()
                 return False
         except Exception as e:
             logger.debug(f"检查更新时出现异常: {e}")
@@ -156,6 +162,7 @@ if __name__ == "__main__":
         success = main()
 
         # 根据执行结果设置退出码
+        pause_before_exit_if_frozen()
         sys.exit(0 if success else 1)
 
     except KeyboardInterrupt:
@@ -167,4 +174,5 @@ if __name__ == "__main__":
         print(f"发生错误：{e}")
         if logger.getEffectiveLevel() <= logging.DEBUG:
             print(traceback.format_exc())
+        pause_before_exit_if_frozen()
         sys.exit(1)

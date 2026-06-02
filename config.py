@@ -21,7 +21,12 @@ from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
 
 # 本地模块导入
-from utils import handle_exception, remove_invalid_chars, setup_logging
+from utils import (
+    get_app_path,
+    handle_exception,
+    remove_invalid_chars,
+    setup_logging,
+)
 from validator import make_choice_validator, validate_term_params, validate_user_id
 
 # 模块日志器
@@ -32,8 +37,8 @@ logger = setup_logging("config")
 # ============================================================================
 
 # 配置文件名
-AUTOMATION_CONFIG_FILE = "automation_config.ini"
-AUTH_CONFIG_FILE = "auth.ini"
+AUTOMATION_CONFIG_FILE = str(get_app_path("automation_config.ini"))
+AUTH_CONFIG_FILE = str(get_app_path("auth.ini"))
 
 # 认证 cookie 所需的键名（与 auth.ini 键名一致）
 REQUIRED_AUTH_COOKIES = ("_d", "UID", "vc3")
@@ -96,8 +101,8 @@ def safe_write_config(
 
     # 创建备份到 logs 目录
     if backup and filepath.exists():
-        logs_dir = Path("logs")
-        logs_dir.mkdir(exist_ok=True)
+        logs_dir = get_app_path("logs")
+        logs_dir.mkdir(parents=True, exist_ok=True)
 
         backup_filename = f"{filepath.stem}.bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}{filepath.suffix}"
         backup_path = logs_dir / backup_filename

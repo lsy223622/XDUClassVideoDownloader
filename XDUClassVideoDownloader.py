@@ -25,7 +25,14 @@ from typing import Optional, Tuple
 
 from api import check_update
 from downloader import download_course_videos
-from utils import enable_debug_file_logging, handle_exception, parse_week_ranges, setup_logging, user_input_with_check
+from utils import (
+    enable_debug_file_logging,
+    handle_exception,
+    parse_week_ranges,
+    pause_before_exit_if_frozen,
+    setup_logging,
+    user_input_with_check,
+)
 from validator import make_choice_validator, validate_download_parameters, validate_live_id
 
 # 使用统一的日志配置（模块日志 + 总日志；控制台仅 error+）
@@ -298,6 +305,7 @@ if __name__ == "__main__":
     # 现在执行版本检查（可记录网络调试日志）
     try:
         if not check_update():
+            pause_before_exit_if_frozen()
             sys.exit(1)
     except Exception as e:
         logger.debug(f"检查更新时出现异常: {e}")
@@ -307,6 +315,7 @@ if __name__ == "__main__":
         success = main(liveid=args.liveid, single=args.single, merge=args.merge, video_type=args.video_type, skip_weeks=args.skip_weeks)
 
         # 根据执行结果设置退出码
+        pause_before_exit_if_frozen()
         sys.exit(0 if success else 1)
 
     except KeyboardInterrupt:
@@ -318,4 +327,5 @@ if __name__ == "__main__":
         print(f"发生错误：{e}")
         if logger.getEffectiveLevel() <= logging.DEBUG:
             print(traceback.format_exc())
+        pause_before_exit_if_frozen()
         sys.exit(1)
