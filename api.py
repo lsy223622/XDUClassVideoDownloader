@@ -65,6 +65,7 @@ REQUEST_TIMEOUT = 30  # 请求超时时间（秒）
 MAX_RETRIES = 3  # 最大重试次数
 RETRY_BACKOFF_FACTOR = 0.3  # 重试退避因子
 MAX_REDIRECT = 5  # 最大重定向次数
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 # 频率限制配置
 REQUEST_DELAY_MIN = 1  # 最小请求间隔（秒）
@@ -234,9 +235,7 @@ class IDSSession:
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers["User-Agent"] = (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        )
+        self.session.headers["User-Agent"] = DEFAULT_USER_AGENT
 
     def _encrypt_password(self, password: str, salt: str) -> str:
         """AES-CBC 加密密码"""
@@ -399,6 +398,49 @@ def login_to_chaoxing_via_ids(username: str, password: str) -> Dict[str, str]:
 
 CHAOXING_BASE_URL = "https://passport2.chaoxing.com"
 CHAOXING_LOGIN_REFER = "https://i.mooc.chaoxing.com"
+CHAOXING_QR_IMAGE_PATH = Path("logs") / "chaoxing_qr_login.png"
+
+
+def _create_chaoxing_session() -> requests.Session:
+    """创建超星登录流程使用的会话。"""
+    session = create_session()
+    session.headers.update(
+        {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        }
+    )
+    return session
+
+
+def _get_login_page_value(soup: BeautifulSoup, html: str, name: str) -> str:
+    """读取超星登录页中的隐藏字段或同名脚本变量。"""
+    el = soup.find(id=name) or soup.find(attrs={"name": name})
+    if isinstance(el, Tag) and el.has_attr("value"):
+        value = el.get("value", "")
+        return value if isinstance(value, str) else ""
+
+    patterns = [
+        rf"\b{name}\s*[:=]\s*['\"]([^'\"]+)['\"]",
+        rf"['\"]{name}['\"]\s*[:=]\s*['\"]([^'\"]+)['\"]",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, html)
+        if match:
+            return match.group(1)
+
+    return ""
+
+
+def _extract_chaoxing_auth_cookies(session: requests.Session) -> Dict[str, str]:
+    """从当前会话中提取程序需要的超星 Cookie。"""
+    cookie_jar = requests.utils.dict_from_cookiejar(session.cookies)
+    return {
+        "_d": cookie_jar.get("_d") or "",
+        "UID": cookie_jar.get("UID") or "",
+        "vc3": cookie_jar.get("vc3") or "",
+    }
 
 
 def aes_cbc_pkcs7_encrypt_base64(message: str, key_str: str) -> str:
@@ -434,7 +476,7 @@ def get_three_cookies_from_login(
     异常:
         RuntimeError: 登录失败时
     """
-    session = requests.Session()
+    session = _create_chaoxing_session()
 
     login_url = base_url.rstrip("/") + "/login"
     logger.debug(f"GET {login_url}")
@@ -444,10 +486,8 @@ def get_three_cookies_from_login(
     html = resp.text
     soup = BeautifulSoup(html, "html.parser")
 
-    def _hid(name):
-        el = soup.find(id=name)
-        value = el.get("value") if isinstance(el, Tag) and el.has_attr("value") else ""
-        return value if isinstance(value, str) else ""
+    def _hid(name: str) -> str:
+        return _get_login_page_value(soup, html, name)
 
     t_flag = _hid("t")
 
@@ -507,7 +547,7 @@ def get_three_cookies_from_login(
         "independentNameId": _hid("independentNameId") or "0",
     }
 
-    headers = {"User-Agent": "python-requests/2.x", "Referer": login_url}
+    headers = {"Referer": login_url}
 
     r = session.post(post_url, data=data, headers=headers, timeout=timeout)
     try:
@@ -518,42 +558,7 @@ def get_three_cookies_from_login(
     if not j.get("status"):
         raise RuntimeError(j.get("msg2") or j.get("mes") or "登录失败")
 
-    # 从会话中提取 cookie，返回指定的三项（若不存在则为 None）
-    cookie_jar = requests.utils.dict_from_cookiejar(session.cookies)
-    return {
-        "_d": cookie_jar.get("_d") or "",
-        "UID": cookie_jar.get("UID") or "",
-        "vc3": cookie_jar.get("vc3") or "",
-    }
-
-
-def _get_input_value(soup: BeautifulSoup, html: str, name: str) -> str:
-    """从登录页 input 或脚本变量中读取指定字段。"""
-    el = soup.find(id=name) or soup.find(attrs={"name": name})
-    if isinstance(el, Tag) and el.has_attr("value"):
-        value = el.get("value", "")
-        return value if isinstance(value, str) else ""
-
-    patterns = [
-        rf"\b{name}\s*[:=]\s*['\"]([^'\"]+)['\"]",
-        rf"['\"]{name}['\"]\s*[:=]\s*['\"]([^'\"]+)['\"]",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, html)
-        if match:
-            return match.group(1)
-
-    return ""
-
-
-def _extract_chaoxing_auth_cookies(session: requests.Session) -> Dict[str, str]:
-    """从当前会话中提取程序需要的超星 Cookie。"""
-    cookie_jar = requests.utils.dict_from_cookiejar(session.cookies)
-    return {
-        "_d": cookie_jar.get("_d") or "",
-        "UID": cookie_jar.get("UID") or "",
-        "vc3": cookie_jar.get("vc3") or "",
-    }
+    return _extract_chaoxing_auth_cookies(session)
 
 
 def _open_qr_image(qr_path: Path) -> None:
@@ -565,43 +570,6 @@ def _open_qr_image(qr_path: Path) -> None:
             webbrowser.open(qr_path.resolve().as_uri())
     except Exception as e:
         logger.debug("无法自动打开二维码图片 %s: %s", qr_path, e)
-
-
-def _parse_qr_status_response(resp: requests.Response) -> Tuple[bool, bool, str]:
-    """
-    解析扫码状态。
-
-    返回:
-        (是否登录成功, 是否已经扫码等待确认, 提示消息)
-    """
-    text = resp.text.strip()
-    try:
-        data = resp.json()
-    except ValueError:
-        data = {}
-
-    if isinstance(data, dict):
-        status = data.get("status")
-        msg = str(data.get("msg2") or data.get("mes") or data.get("msg") or data.get("message") or "")
-
-        if status is True or str(status).lower() == "true":
-            return True, False, msg or "扫码登录成功"
-
-        scanned_keys = ("uid", "UID", "nickname", "name", "realName")
-        scanned = any(data.get(key) for key in scanned_keys)
-        if scanned:
-            return False, True, msg or "已扫码，请在手机 App 中确认登录"
-
-        if any(word in msg for word in ("失效", "过期", "超时")):
-            raise RuntimeError(msg)
-
-        return False, False, msg
-
-    if any(word in text for word in ("失效", "过期", "超时")):
-        raise RuntimeError(text)
-
-    scanned = any(word in text for word in ("已扫描", "已扫码", "确认"))
-    return False, scanned, text
 
 
 def get_three_cookies_from_qr_login(
@@ -631,15 +599,7 @@ def get_three_cookies_from_qr_login(
     异常:
         RuntimeError: 二维码生成、扫码确认或 Cookie 获取失败时
     """
-    session = requests.Session()
-    session.headers.update(
-        {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-            )
-        }
-    )
+    session = _create_chaoxing_session()
 
     base_url = base_url.rstrip("/")
     login_url = base_url + "/login"
@@ -654,10 +614,10 @@ def get_three_cookies_from_qr_login(
     resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    uuid = _get_input_value(soup, resp.text, "uuid")
-    enc = _get_input_value(soup, resp.text, "enc")
-    page_fid = _get_input_value(soup, resp.text, "fid")
-    page_refer = urllib.parse.unquote(_get_input_value(soup, resp.text, "refer") or refer)
+    uuid = _get_login_page_value(soup, resp.text, "uuid")
+    enc = _get_login_page_value(soup, resp.text, "enc")
+    page_fid = _get_login_page_value(soup, resp.text, "fid")
+    page_refer = urllib.parse.unquote(_get_login_page_value(soup, resp.text, "refer") or refer)
 
     if not uuid or not enc:
         raise RuntimeError("登录页未返回扫码登录所需的 uuid/enc 字段")
@@ -667,7 +627,7 @@ def get_three_cookies_from_qr_login(
     qr_resp = session.get(qr_url, params={"uuid": uuid, "fid": qr_fid}, timeout=timeout)
     qr_resp.raise_for_status()
 
-    qr_path = Path(qr_image_path) if qr_image_path else Path("logs") / "chaoxing_qr_login.png"
+    qr_path = Path(qr_image_path) if qr_image_path else CHAOXING_QR_IMAGE_PATH
     qr_path.parent.mkdir(parents=True, exist_ok=True)
     qr_path.write_bytes(qr_resp.content)
 
@@ -675,11 +635,10 @@ def get_three_cookies_from_qr_login(
     print("请使用学在西电 App 扫码，并在手机端确认登录。")
     _open_qr_image(qr_path)
 
-    status_urls = [base_url + "/getauthstatus/v2", base_url + "/getauthstatus"]
+    status_url = base_url + "/getauthstatus/v2"
     headers = {
         "Referer": resp.url,
         "Origin": base_url,
-        "Accept": "application/json, text/javascript, */*; q=0.01",
     }
     status_payload = {"enc": enc, "uuid": uuid, "doubleFactorLogin": "0"}
     deadline = time.monotonic() + expires
@@ -689,54 +648,28 @@ def get_three_cookies_from_qr_login(
     while time.monotonic() < deadline:
         time.sleep(poll_interval)
 
-        for status_url in status_urls:
-            status_resp: Optional[requests.Response] = None
-            for method in ("post", "get"):
-                try:
-                    if method == "post":
-                        status_resp = session.post(
-                            status_url,
-                            data=status_payload,
-                            headers=headers,
-                            timeout=timeout,
-                        )
-                    else:
-                        status_resp = session.get(
-                            status_url,
-                            params=status_payload,
-                            headers=headers,
-                            timeout=timeout,
-                        )
-                except requests.RequestException as e:
-                    last_error = str(e)
-                    continue
-
-                if status_resp.status_code not in (404, 405):
-                    break
-
-            if status_resp is None:
-                continue
-
-            if status_resp.status_code in (404, 405):
-                continue
+        try:
+            status_resp = session.post(status_url, data=status_payload, headers=headers, timeout=timeout)
             status_resp.raise_for_status()
+            status_data = status_resp.json()
+        except requests.RequestException as e:
+            last_error = str(e)
+            continue
+        except ValueError as e:
+            last_error = f"扫码状态响应不是 JSON: {e}"
+            continue
 
-            success, scanned, message = _parse_qr_status_response(status_resp)
-            if scanned and not scanned_notified:
-                print(message or "已扫码，请在手机 App 中确认登录")
-                scanned_notified = True
+        if not isinstance(status_data, dict):
+            last_error = "扫码状态响应格式错误"
+            continue
 
-            if not success:
-                continue
+        message = str(status_data.get("msg2") or status_data.get("mes") or status_data.get("msg") or "")
+        if any(word in message for word in ("失效", "过期", "超时")):
+            raise RuntimeError(message)
 
-            redirect_url = ""
-            try:
-                status_data = status_resp.json()
-                if isinstance(status_data, dict):
-                    redirect_url = str(status_data.get("url") or status_data.get("refer") or "")
-            except ValueError:
-                pass
-
+        status = status_data.get("status")
+        if status is True or str(status).lower() == "true":
+            redirect_url = str(status_data.get("url") or status_data.get("refer") or "")
             if redirect_url:
                 session.get(urllib.parse.urljoin(base_url, redirect_url), timeout=timeout)
             if page_refer:
@@ -748,6 +681,11 @@ def get_three_cookies_from_qr_login(
                 return cookies
 
             raise RuntimeError("扫码确认成功但未能获取完整的 Cookies")
+
+        scanned_keys = ("uid", "UID", "nickname", "name", "realName")
+        if not scanned_notified and any(status_data.get(key) for key in scanned_keys):
+            print(message or "已扫码，请在手机 App 中确认登录")
+            scanned_notified = True
 
     if last_error:
         raise RuntimeError(f"扫码登录轮询失败: {last_error}")
@@ -792,6 +730,7 @@ def create_session() -> requests.Session:
         requests.Session: 配置好的会话对象
     """
     session = requests.Session()
+    session.headers["User-Agent"] = DEFAULT_USER_AGENT
 
     # 配置重试策略
     retry_strategy = Retry(
@@ -823,7 +762,7 @@ def get_authenticated_headers() -> Dict[str, str]:
         cookie_string = format_auth_cookies(auth_cookies)
 
         return {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "User-Agent": DEFAULT_USER_AGENT,
             "Accept": "*/*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
             "Accept-Encoding": "gzip, deflate",
