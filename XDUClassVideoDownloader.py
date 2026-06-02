@@ -21,7 +21,7 @@ import logging
 import sys
 import traceback
 from argparse import ArgumentParser, Namespace
-from typing import Optional, Tuple
+from typing import Optional, Set, Tuple, Union
 
 from api import check_update
 from downloader import download_course_videos
@@ -37,17 +37,27 @@ from validator import make_choice_validator, validate_download_parameters, valid
 
 # 使用统一的日志配置（模块日志 + 总日志；控制台仅 error+）
 logger = setup_logging("main")
+InteractiveInput = Tuple[str, str, int, bool, str]
 
 # 注意：是否启用 debug 日志，将在 __main__ 中根据命令行参数决定；
 # 版本检查也延后到参数解析之后，确保若开启 debug 能记录网络日志。
 
 
-def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional[int], Optional[bool], Optional[str]]:
+def _is_valid_live_id(value: str) -> bool:
+    """适配 user_input_with_check：validate_live_id 返回规范化 ID，这里只返回校验结果。"""
+    try:
+        validate_live_id(value)
+        return True
+    except ValueError:
+        return False
+
+
+def get_user_input_interactive() -> Optional[InteractiveInput]:
     """
     交互式获取用户输入。
 
     返回:
-        tuple: (live_id, skip_weeks_str, single, merge, video_type)
+        tuple: (live_id, skip_weeks_str, single, merge, video_type)，用户取消或输入为空时返回 None。
     """
     try:
 
@@ -59,12 +69,12 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
 
         # 输入 LiveID
         live_id = user_input_with_check(
-            "请输入 LiveID: ", validate_live_id, error_message="LiveID 格式不正确，请输入一个正数字", allow_empty=True
+            "请输入 LiveID: ", _is_valid_live_id, error_message="LiveID 格式不正确，请输入一个正数字", allow_empty=True
         )
 
         if not live_id:
             print("未输入 LiveID，程序退出")
-            return None, None, None, None, None
+            return None
 
         # 下载模式选择
         print("\n请选择下载模式：")
@@ -172,11 +182,11 @@ def get_user_input_interactive() -> Tuple[Optional[str], Optional[str], Optional
 
     except KeyboardInterrupt:
         print("\n用户取消操作")
-        return None, None, None, None, None
+        return None
     except Exception as e:
         logger.error(f"获取用户输入时发生错误: {e}")
         print(f"输入处理错误: {e}")
-        return None, None, None, None, None
+        return None
 
 
 def parse_main_arguments() -> Namespace:
@@ -257,21 +267,33 @@ def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, vide
         # 交互模式：用户输入参数
         if liveid is None:
             result = get_user_input_interactive()
-            if result is None or result[0] is None:
+            if result is None:
                 return False
-            liveid, skip_weeks, single, merge, video_type = result
+            input_liveid, input_skip_weeks, input_single, input_merge, input_video_type = result
+            download_liveid: Union[int, str] = input_liveid
+            download_skip_weeks = input_skip_weeks
+            download_single = input_single
+            download_merge = input_merge
+            download_video_type = input_video_type
         else:
             # 验证命令行参数
-            liveid, single, video_type = validate_download_parameters(liveid, single, video_type)
-            # skip_weeks 从参数传入
+            validated_liveid, validated_single, validated_video_type = validate_download_parameters(liveid, single, video_type)
+            if validated_liveid is None:
+                print("错误：LiveID 不能为空")
+                return False
+            download_liveid = validated_liveid
+            download_single = validated_single
+            download_merge = merge
+            download_video_type = validated_video_type
+            download_skip_weeks = skip_weeks
 
             # 无 command 参数
 
         # 验证并解析 skip_weeks
-        skip_weeks_set = set()
-        if skip_weeks:
+        skip_weeks_set: Set[int] = set()
+        if download_skip_weeks:
             try:
-                skip_weeks_set = parse_week_ranges(skip_weeks)
+                skip_weeks_set = parse_week_ranges(download_skip_weeks)
                 if skip_weeks_set:
                     logger.info(f"将跳过以下周数: {sorted(list(skip_weeks_set))}")
             except ValueError as e:
@@ -279,10 +301,15 @@ def main(liveid: Optional[str] = None, single: int = 0, merge: bool = True, vide
                 print(f"错误：跳过周数格式无效 - {e}")
                 return False
 
-        logger.info(f"下载参数 - 课程 ID: {liveid}, 模式: {single}, 合并: {merge}, 类型: {video_type}")
+        logger.info(
+            f"下载参数 - 课程 ID: {download_liveid}, 模式: {download_single}, "
+            f"合并: {download_merge}, 类型: {download_video_type}"
+        )
 
         # 调用核心下载函数
-        return download_course_videos(liveid, single, merge, video_type, skip_weeks_set)
+        return download_course_videos(
+            download_liveid, download_single, download_merge, download_video_type, skip_weeks_set
+        )
 
     except KeyboardInterrupt:
         print("\n\n用户取消下载任务")
