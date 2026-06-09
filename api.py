@@ -103,6 +103,18 @@ class VideoGeneratingError(Exception):
     pass
 
 
+class VideoAccessDeniedError(Exception):
+    """Raised when the current account has no permission to view the replay."""
+
+    pass
+
+
+class VideoLoginRequiredError(Exception):
+    """Raised when the video endpoint reports that the login session is invalid."""
+
+    pass
+
+
 class IDSLoginError(Exception):
     """IDS 登录基础异常"""
 
@@ -119,6 +131,23 @@ class CaptchaError(IDSLoginError):
     """验证码处理失败"""
 
     pass
+
+
+VIDEO_ACCESS_DENIED_MARKERS = ("您没有查看权限", "没有查看权限", "无权查看", "无权限")
+VIDEO_LOGIN_REQUIRED_MARKERS = ("请先登录", "登录超时", "登录已过期", "请重新登录")
+
+
+def _raise_for_known_video_error_page(html_content: str, live_id: Union[int, str]) -> None:
+    """识别视频接口返回的提示页，避免把明确错误误判为解析失败。"""
+    compact_content = re.sub(r"\s+", "", html_content)
+
+    if any(marker in compact_content for marker in VIDEO_ACCESS_DENIED_MARKERS):
+        logger.warning(f"当前账号无权查看课程回放，liveId: {live_id}")
+        raise VideoAccessDeniedError(f"当前账号无权查看课程回放，课程 ID: {live_id}")
+
+    if any(marker in compact_content for marker in VIDEO_LOGIN_REQUIRED_MARKERS):
+        logger.warning(f"视频接口提示需要重新登录，liveId: {live_id}")
+        raise VideoLoginRequiredError(f"登录状态已失效，请重新登录后重试，课程 ID: {live_id}")
 
 
 # ============================================================================
@@ -965,6 +994,8 @@ def get_video_info_from_html(live_id: Union[int, str], retry_count: int = 0) -> 
         if not html_content:
             raise ValueError("服务器返回空响应")
 
+        _raise_for_known_video_error_page(html_content, validated_live_id)
+
         # 检测“视频回看生成中”提示页：无需继续解析，直接视为尚未结束/不可下载
         # 关键字可能包含：视频回看生成中，需要 1-3 天处理完成
         if "视频回看生成中" in html_content or "需要1-3天处理完成" in html_content:
@@ -1048,6 +1079,8 @@ def get_video_info_from_html(live_id: Union[int, str], retry_count: int = 0) -> 
             raise ValueError(error_msg)
     except VideoGeneratingError:
         # 直接向上抛出，不做重试也不包装
+        raise
+    except (VideoAccessDeniedError, VideoLoginRequiredError):
         raise
     except Exception as e:
         logger.warning(f"获取视频信息时发生未知错误: {e}")
@@ -1574,6 +1607,8 @@ def get_m3u8_info_legacy(live_id: Union[int, str], retry_count: int = 0) -> Dict
         if not html_content:
             raise ValueError("服务器返回空响应")
 
+        _raise_for_known_video_error_page(html_content, validated_live_id)
+
         # 检测"视频回看生成中"提示页
         if "视频回看生成中" in html_content or "需要1-3天处理完成" in html_content:
             logger.info(f"liveId {validated_live_id} 回看仍在生成中，跳过此次解析")
@@ -1648,6 +1683,8 @@ def get_m3u8_info_legacy(live_id: Union[int, str], retry_count: int = 0) -> Dict
             raise ValueError(error_msg)
     except VideoGeneratingError:
         # 直接向上抛出，不做重试也不包装
+        raise
+    except (VideoAccessDeniedError, VideoLoginRequiredError):
         raise
     except Exception as e:
         logger.warning(f"获取旧版视频信息时发生未知错误: {e}")
