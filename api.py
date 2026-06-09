@@ -1163,6 +1163,83 @@ def get_mp4_links(live_id: Union[int, str]) -> Tuple[str, str]:
         raise ValueError(f"获取视频链接失败: {str(e)}")
 
 
+def _extract_work_detail_id(html_content: str) -> Optional[str]:
+    """从直播页 HTML 中提取字幕接口所需的 workDetailId。"""
+    if not html_content:
+        return None
+
+    patterns = [
+        r"workDetailId\s*=\s*['\"]?(\d+)",
+        r"workDetailId\s*:\s*['\"]?(\d+)",
+        r"workDetailId=(\d+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, html_content)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+@rate_limit
+def get_video_subtitles_vtt(live_id: Union[int, str]) -> Optional[str]:
+    """
+    获取单个 liveId 对应的 VTT 字幕内容。
+
+    新版录直播页面会在直播页 HTML 中写入 workDetailId，字幕接口需要先提取该值，
+    再请求 getVideoSubtitles2Vtt。没有字幕或无法提取 workDetailId 时返回 None。
+    """
+    validated_live_id = validate_live_id(live_id)
+    page_url = f"http://newes.chaoxing.com/xidianpj/live/viewNewCourseLive1?isStudent=1&liveId={validated_live_id}"
+
+    try:
+        headers = get_authenticated_headers()
+        session = create_session()
+
+        logger.debug(f"GET {page_url}")
+        page_response = session.get(page_url, headers=headers, timeout=REQUEST_TIMEOUT)
+        page_response.raise_for_status()
+
+        html_content = page_response.text
+        _raise_for_known_video_error_page(html_content, validated_live_id)
+
+        work_detail_id = _extract_work_detail_id(html_content)
+        if not work_detail_id:
+            logger.info(f"课程 {validated_live_id} 未找到 workDetailId，跳过字幕下载")
+            return None
+
+        subtitle_url = (
+            "http://newes.chaoxing.com/xidianpj/smartSupervisor/getVideoSubtitles2Vtt"
+            f"?workDetailId={work_detail_id}"
+        )
+        subtitle_headers = dict(headers)
+        subtitle_headers["Referer"] = page_url
+
+        logger.debug(f"GET {subtitle_url}")
+        subtitle_response = session.get(subtitle_url, headers=subtitle_headers, timeout=REQUEST_TIMEOUT)
+        subtitle_response.raise_for_status()
+
+        subtitle_text = subtitle_response.text.lstrip("\ufeff")
+        if not subtitle_text.strip():
+            logger.info(f"课程 {validated_live_id} 字幕响应为空，workDetailId: {work_detail_id}")
+            return None
+
+        if not subtitle_text.lstrip().startswith("WEBVTT"):
+            logger.warning(f"课程 {validated_live_id} 字幕响应不是 VTT 格式，workDetailId: {work_detail_id}")
+            return None
+
+        logger.info(f"成功获取课程 {validated_live_id} 字幕，workDetailId: {work_detail_id}")
+        return subtitle_text
+
+    except requests.RequestException as e:
+        logger.warning(f"获取字幕失败，课程 ID: {validated_live_id}, 错误: {e}")
+        return None
+    except Exception as e:
+        logger.warning(f"获取字幕时发生未知错误，课程 ID: {validated_live_id}, 错误: {e}")
+        return None
+
+
 @rate_limit
 def fetch_data(url: str) -> Optional[Any]:
     """
@@ -1444,7 +1521,7 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
         api_version (str): API 版本，"new"表示新版（mp4），"legacy"表示旧版（m3u8）
 
     返回:
-        list: 包含视频信息的列表，格式为[月, 日, 星期, 节次, 周数, ppt_video_url, teacher_track_url]
+        list: 包含视频信息的列表，格式为[月, 日, 星期, 节次, 周数, ppt_video_url, teacher_track_url, liveId]
         None: 获取失败时返回 None
     """
     if not isinstance(entry, dict):
@@ -1495,6 +1572,7 @@ def fetch_video_links(entry: Dict[str, Any], lock: Lock, desc: Any, api_version:
             entry.get("days", ""),  # 周数
             ppt_video,  # PPT 视频 URL
             teacher_track,  # 教师视频 URL
+            entry["id"],  # liveId，用于下载该半节课对应字幕
         ]
 
         # 使用线程锁安全地更新进度条

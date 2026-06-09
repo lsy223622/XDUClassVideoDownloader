@@ -36,14 +36,14 @@ import time
 from contextlib import closing
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Sequence, Set, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 # 第三方库导入
 import requests
 from tqdm import tqdm
 
 # 本地模块导入
-from api import FID, REQUEST_TIMEOUT, fetch_video_links, get_authenticated_headers, get_initial_data
+from api import FID, REQUEST_TIMEOUT, fetch_video_links, get_authenticated_headers, get_initial_data, get_video_subtitles_vtt
 from config import format_auth_cookies, get_auth_cookies
 from utils import (
     calculate_optimal_threads,
@@ -72,6 +72,405 @@ MAX_DOWNLOAD_RETRIES = 3  # 最大下载重试次数
 MIN_FILE_SIZE = 1024  # 最小有效文件大小（字节）
 MAX_THREADS_PER_FILE = 32  # 每个文件的最大并发分片数
 MIN_SIZE_FOR_MULTITHREAD = 10 * 1024 * 1024  # 启用多线程下载的最小文件大小（10MB）
+SUBTITLE_EXTENSION = ".srt"
+
+
+# ============================================================================
+# 字幕处理函数
+# ============================================================================
+
+
+def _get_row_filename_components(row: List[Any]) -> Optional[Tuple[int, int, Any, int, Any, str]]:
+    """从课程行中提取文件名组件。"""
+    try:
+        if not isinstance(row, list) or len(row) < 7:
+            logger.warning(f"行数据格式错误: {row}")
+            return None
+
+        month, date, day, jie, days = row[:5]
+
+        try:
+            month = int(month)
+            date = int(date)
+            jie = int(jie)
+            if not (1 <= month <= 12):
+                raise ValueError(f"月份无效: {month}")
+            if not (1 <= date <= 31):
+                raise ValueError(f"日期无效: {date}")
+            if jie < 1:
+                raise ValueError(f"节次无效: {jie}")
+        except (TypeError, ValueError) as e:
+            logger.warning(f"时间数据格式错误: {e}")
+            return None
+
+        try:
+            day_chinese = day_to_chinese(day)
+        except ValueError as e:
+            logger.warning(f"星期转换失败: {e}")
+            return None
+
+        return month, date, day, jie, days, day_chinese
+
+    except Exception as e:
+        logger.warning(f"解析行数据时出错: {e}")
+        return None
+
+
+def _build_base_filename(
+    course_code: str,
+    course_name: str,
+    year: int,
+    month: int,
+    date: int,
+    days: Any,
+    day_chinese: str,
+    jie: int,
+) -> str:
+    """构建不含视频轨道后缀的基础文件名。"""
+    return f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{jie}节"
+
+
+def _parse_subtitle_timestamp(value: str) -> int:
+    """解析 VTT/SRT 时间戳为毫秒。"""
+    cleaned = value.strip().replace(",", ".")
+    parts = cleaned.split(":")
+    if len(parts) == 3:
+        hours_text, minutes_text, seconds_text = parts
+    elif len(parts) == 2:
+        hours_text = "0"
+        minutes_text, seconds_text = parts
+    else:
+        raise ValueError(f"字幕时间戳格式无效: {value}")
+
+    if "." in seconds_text:
+        seconds_part, milliseconds_part = seconds_text.split(".", 1)
+    else:
+        seconds_part = seconds_text
+        milliseconds_part = "0"
+
+    milliseconds = int((milliseconds_part + "000")[:3])
+    return (
+        int(hours_text) * 60 * 60 * 1000
+        + int(minutes_text) * 60 * 1000
+        + int(seconds_part) * 1000
+        + milliseconds
+    )
+
+
+def _format_srt_timestamp(milliseconds: int) -> str:
+    """格式化 SRT 时间戳。"""
+    milliseconds = max(0, int(milliseconds))
+    hours, remainder = divmod(milliseconds, 60 * 60 * 1000)
+    minutes, remainder = divmod(remainder, 60 * 1000)
+    seconds, milliseconds = divmod(remainder, 1000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{milliseconds:03d}"
+
+
+def _parse_vtt_cues(vtt_content: str) -> List[Dict[str, Any]]:
+    """解析 VTT 字幕块。"""
+    normalized = vtt_content.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    cues = []
+    index = 0
+
+    if lines and lines[0].strip().startswith("WEBVTT"):
+        index = 1
+        while index < len(lines) and lines[index].strip():
+            index += 1
+
+    while index < len(lines):
+        line = lines[index].strip()
+        if not line:
+            index += 1
+            continue
+
+        if line.startswith(("NOTE", "STYLE", "REGION")):
+            index += 1
+            while index < len(lines) and lines[index].strip():
+                index += 1
+            continue
+
+        if "-->" in line:
+            time_line = line
+        elif index + 1 < len(lines) and "-->" in lines[index + 1]:
+            index += 1
+            time_line = lines[index].strip()
+        else:
+            index += 1
+            continue
+
+        time_parts = time_line.split("-->", 1)
+        try:
+            start_ms = _parse_subtitle_timestamp(time_parts[0])
+            end_ms = _parse_subtitle_timestamp(time_parts[1].strip().split()[0])
+        except (IndexError, ValueError) as e:
+            logger.debug(f"跳过无法解析的 VTT 时间行: {time_line}, 错误: {e}")
+            index += 1
+            continue
+
+        index += 1
+        text_lines = []
+        while index < len(lines) and lines[index].strip():
+            text_lines.append(lines[index].rstrip())
+            index += 1
+
+        if text_lines and end_ms > start_ms:
+            cues.append({"start": start_ms, "end": end_ms, "text": text_lines})
+
+    return cues
+
+
+def _parse_srt_cues(srt_content: str) -> List[Dict[str, Any]]:
+    """解析 SRT 字幕块。"""
+    normalized = srt_content.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    blocks = re.split(r"\n\s*\n", normalized.strip())
+    cues = []
+
+    for block in blocks:
+        lines = [line.rstrip() for line in block.split("\n") if line.strip()]
+        if not lines:
+            continue
+
+        if lines[0].strip().isdigit():
+            lines = lines[1:]
+        if not lines:
+            continue
+
+        time_line_index = next((i for i, line in enumerate(lines) if "-->" in line), None)
+        if time_line_index is None:
+            continue
+
+        time_line = lines[time_line_index]
+        time_parts = time_line.split("-->", 1)
+        try:
+            start_ms = _parse_subtitle_timestamp(time_parts[0])
+            end_ms = _parse_subtitle_timestamp(time_parts[1].strip().split()[0])
+        except (IndexError, ValueError) as e:
+            logger.debug(f"跳过无法解析的 SRT 时间行: {time_line}, 错误: {e}")
+            continue
+
+        text_lines = lines[time_line_index + 1 :]
+        if text_lines and end_ms > start_ms:
+            cues.append({"start": start_ms, "end": end_ms, "text": text_lines})
+
+    return cues
+
+
+def _format_srt_cues(cues: List[Dict[str, Any]], offset_ms: int = 0, start_index: int = 1) -> str:
+    """将字幕块格式化为 SRT 内容。"""
+    blocks = []
+    for cue_index, cue in enumerate(cues, start=start_index):
+        start_ms = int(cue["start"]) + offset_ms
+        end_ms = int(cue["end"]) + offset_ms
+        if end_ms <= start_ms:
+            continue
+        blocks.append(
+            "\n".join(
+                [
+                    str(cue_index),
+                    f"{_format_srt_timestamp(start_ms)} --> {_format_srt_timestamp(end_ms)}",
+                    *[str(line) for line in cue["text"]],
+                ]
+            )
+        )
+
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
+def convert_vtt_to_srt(vtt_content: str) -> str:
+    """将接口返回的 VTT 字幕转换为 SRT。"""
+    return _format_srt_cues(_parse_vtt_cues(vtt_content))
+
+
+def _get_row_live_id(row: List[Any]) -> Optional[Union[int, str]]:
+    """获取课程行对应的 liveId。"""
+    if isinstance(row, list) and len(row) >= 8 and row[7]:
+        return row[7]
+    return None
+
+
+def _subtitle_path_for_video_file(video_file: Union[str, Path], track_type: str) -> Path:
+    """根据视频文件名推导同一 liveId 的字幕文件名。"""
+    video_path = Path(video_file)
+    track_suffix = f"-{track_type}{video_path.suffix}"
+    if video_path.name.endswith(track_suffix):
+        return video_path.with_name(video_path.name[: -len(track_suffix)] + SUBTITLE_EXTENSION)
+    return video_path.with_suffix(SUBTITLE_EXTENSION)
+
+
+def _write_text_atomic(output_file: Path, content: str) -> None:
+    """原子写入文本文件。"""
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    temp_file = output_file.with_name(f".{output_file.name}.tmp")
+    temp_file.write_text(content, encoding="utf-8")
+    os.replace(str(temp_file), str(output_file))
+
+
+def download_subtitle_for_row(
+    row: List[Any],
+    course_code: str,
+    course_name: str,
+    year: int,
+    save_dir: str,
+) -> Tuple[Optional[Path], bool]:
+    """
+    下载单个 liveId 的字幕并保存为 SRT。
+
+    返回:
+        tuple: (字幕路径, 是否新下载)
+    """
+    try:
+        live_id = _get_row_live_id(row)
+        if live_id is None:
+            logger.debug("行数据没有 liveId，跳过字幕下载")
+            return None, False
+
+        components = _get_row_filename_components(row)
+        if not components:
+            logger.warning(f"无法解析行数据，跳过字幕下载: {row}")
+            return None, False
+
+        month, date, _day, jie, days, day_chinese = components
+        base_filename = _build_base_filename(course_code, course_name, year, month, date, days, day_chinese, jie)
+        subtitle_path = Path(save_dir) / f"{base_filename}{SUBTITLE_EXTENSION}"
+
+        if subtitle_path.exists() and subtitle_path.stat().st_size > 0:
+            logger.info(f"字幕已存在，跳过下载: {subtitle_path.name}")
+            return subtitle_path, False
+
+        vtt_content = get_video_subtitles_vtt(live_id)
+        if not vtt_content:
+            logger.info(f"课程 {live_id} 没有可下载字幕")
+            return None, False
+
+        srt_content = convert_vtt_to_srt(vtt_content)
+        if not srt_content.strip():
+            logger.warning(f"课程 {live_id} 字幕转换后为空，跳过保存")
+            return None, False
+
+        _write_text_atomic(subtitle_path, srt_content)
+        logger.info(f"字幕下载成功: {subtitle_path.name}")
+        return subtitle_path, True
+
+    except Exception as e:
+        logger.warning(f"字幕下载失败: {e}")
+        return None, False
+
+
+def _get_srt_max_end_ms(subtitle_file: Path) -> Optional[int]:
+    """获取 SRT 字幕最后结束时间。"""
+    try:
+        cues = _parse_srt_cues(subtitle_file.read_text(encoding="utf-8-sig"))
+        if not cues:
+            return None
+        return max(int(cue["end"]) for cue in cues)
+    except Exception:
+        return None
+
+
+def _get_media_duration_seconds(video_file: Union[str, Path]) -> Optional[float]:
+    """通过 ffmpeg 输出获取媒体时长。"""
+    video_path = Path(video_file)
+
+    try:
+        ffmpeg_bin = get_ffmpeg_path()
+        result = subprocess.run(
+            [ffmpeg_bin, "-i", str(video_path)],
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        output = f"{result.stdout}\n{result.stderr}"
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", output)
+        if match:
+            hours = int(match.group(1))
+            minutes = int(match.group(2))
+            seconds = float(match.group(3))
+            return hours * 3600 + minutes * 60 + seconds
+
+    except Exception as e:
+        logger.debug(f"获取视频时长失败: {video_file}, 错误: {e}")
+
+    return None
+
+
+def _merge_srt_files(subtitle_files: Sequence[Path], offsets_ms: Sequence[int], output_file: Path) -> bool:
+    """合并多个 SRT 字幕文件并按 offsets_ms 平移时间轴。"""
+    if len(subtitle_files) < 2 or len(subtitle_files) != len(offsets_ms):
+        return False
+
+    if output_file.exists() and output_file.stat().st_size > 0:
+        logger.info(f"合并后的字幕已存在: {output_file.name}")
+        return False
+
+    try:
+        merged_cues = []
+        for subtitle_file, offset_ms in zip(subtitle_files, offsets_ms):
+            cues = _parse_srt_cues(subtitle_file.read_text(encoding="utf-8-sig"))
+            for cue in cues:
+                merged_cues.append(
+                    {
+                        "start": int(cue["start"]) + int(offset_ms),
+                        "end": int(cue["end"]) + int(offset_ms),
+                        "text": cue["text"],
+                    }
+                )
+
+        if not merged_cues:
+            logger.warning(f"没有可合并的字幕内容: {[f.name for f in subtitle_files]}")
+            return False
+
+        merged_cues.sort(key=lambda cue: (int(cue["start"]), int(cue["end"])))
+        content = _format_srt_cues(merged_cues)
+        _write_text_atomic(output_file, content)
+        logger.info(f"字幕合并完成: {output_file.name}")
+
+        for subtitle_file in subtitle_files:
+            if subtitle_file.resolve() == output_file.resolve():
+                continue
+            try:
+                subtitle_file.unlink()
+                logger.debug(f"已删除原始字幕: {subtitle_file}")
+            except OSError as e:
+                logger.warning(f"删除原始字幕失败: {subtitle_file}, 错误: {e}")
+
+        return True
+
+    except Exception as e:
+        logger.warning(f"合并字幕失败: {e}")
+        return False
+
+
+def merge_subtitles_for_videos(
+    video_files: Sequence[str],
+    track_type: str,
+    output_video_file: Union[str, Path],
+    durations_seconds: Sequence[Optional[float]],
+) -> bool:
+    """根据视频合并顺序合并对应 SRT 字幕。"""
+    subtitle_files = [_subtitle_path_for_video_file(video_file, track_type) for video_file in video_files]
+    if not all(subtitle_file.exists() and subtitle_file.stat().st_size > 0 for subtitle_file in subtitle_files):
+        logger.debug(f"缺少相邻字幕文件，跳过字幕合并: {[f.name for f in subtitle_files]}")
+        return False
+
+    output_subtitle = _subtitle_path_for_video_file(output_video_file, track_type)
+    offsets_ms = []
+    running_offset_ms = 0
+
+    for subtitle_file, duration_seconds in zip(subtitle_files, durations_seconds):
+        offsets_ms.append(running_offset_ms)
+        if duration_seconds and duration_seconds > 0:
+            running_offset_ms += int(round(duration_seconds * 1000))
+        else:
+            subtitle_duration_ms = _get_srt_max_end_ms(subtitle_file)
+            if subtitle_duration_ms is None:
+                logger.warning(f"无法确定字幕时间偏移，跳过字幕合并: {subtitle_file.name}")
+                return False
+            running_offset_ms += subtitle_duration_ms
+
+    logger.info(f"合并字幕文件: {[f.name for f in subtitle_files]} -> {output_subtitle.name}")
+    return _merge_srt_files(subtitle_files, offsets_ms, output_subtitle)
 
 
 # ============================================================================
@@ -776,7 +1175,15 @@ def process_rows(
         raise OSError(f"无法创建保存目录: {e}")
 
     # 统计信息
-    stats = {"total_videos": 0, "downloaded": 0, "skipped": 0, "failed": 0, "merged": 0}
+    stats = {
+        "total_videos": 0,
+        "downloaded": 0,
+        "skipped": 0,
+        "failed": 0,
+        "merged": 0,
+        "subtitles": 0,
+        "subtitle_merged": 0,
+    }
 
     logger.info(f"开始处理课程视频 - {course_code} {course_name} ({year}年)")
     logger.info(f"处理模式: {video_type}, 合并: {'启用' if merge else '禁用'}")
@@ -792,34 +1199,7 @@ def process_rows(
             tuple: (month, date, day, jie, days, day_chinese) 或 None（如果验证失败）
         """
         try:
-            if not isinstance(row, list) or len(row) < 7:
-                logger.warning(f"行数据格式错误: {row}")
-                return None
-
-            month, date, day, jie, days = row[:5]
-
-            # 类型转换和验证
-            try:
-                month = int(month)
-                date = int(date)
-                jie = int(jie)
-                if not (1 <= month <= 12):
-                    raise ValueError(f"月份无效: {month}")
-                if not (1 <= date <= 31):
-                    raise ValueError(f"日期无效: {date}")
-                if jie < 1:
-                    raise ValueError(f"节次无效: {jie}")
-            except (TypeError, ValueError) as e:
-                logger.warning(f"时间数据格式错误: {e}")
-                return None
-
-            try:
-                day_chinese = day_to_chinese(day)
-            except ValueError as e:
-                logger.warning(f"星期转换失败: {e}")
-                return None
-
-            return month, date, day, jie, days, day_chinese
+            return _get_row_filename_components(row)
 
         except Exception as e:
             logger.warning(f"解析行数据时出错: {e}")
@@ -1053,8 +1433,12 @@ def process_rows(
             return True
 
         # 执行合并
+        video_durations = [_get_media_duration_seconds(video_file) for video_file in all_files]
         logger.info(f"合并视频文件: {[Path(f).name for f in all_files]} -> {merged_filename}")
-        return merge_videos(all_files, str(merged_filepath))
+        merge_success = merge_videos(all_files, str(merged_filepath))
+        if merge_success and merge_subtitles_for_videos(all_files, track_type, merged_filepath, video_durations):
+            stats["subtitle_merged"] += 1
+        return merge_success
 
     # 处理所有视频
     total_tasks = 0
@@ -1069,6 +1453,11 @@ def process_rows(
         for i, row in enumerate(rows):
             try:
                 logger.debug(f"处理第 {i+1}/{len(rows)} 行数据")
+                _subtitle_path, subtitle_downloaded = download_subtitle_for_row(
+                    row, course_code, course_name, year, save_dir
+                )
+                if subtitle_downloaded:
+                    stats["subtitles"] += 1
 
                 # 处理PPT视频
                 if video_type in ["both", "ppt"]:
@@ -1108,6 +1497,8 @@ def process_rows(
     logger.info(f"  - 跳过: {stats['skipped']} 个")
     logger.info(f"  - 失败: {stats['failed']} 个")
     logger.info(f"  - 合并: {stats['merged']} 个")
+    logger.info(f"  - 字幕: {stats['subtitles']} 个")
+    logger.info(f"  - 字幕合并: {stats['subtitle_merged']} 个")
 
     if stats["failed"] > 0:
         logger.warning(f"有 {stats['failed']} 个视频处理失败，请检查网络连接或重试")
@@ -1138,11 +1529,15 @@ def download_single_video(
         bool: 下载是否成功
     """
     try:
-        month, date, day, jie, days, ppt_video, teacher_track = row
+        month, date, day, jie, days, ppt_video, teacher_track = row[:7]
         day_chinese = day_to_chinese(day)
 
         success_count = 0
         total_count = 0
+
+        subtitle_path, subtitle_downloaded = download_subtitle_for_row(row, course_code, course_name, year, save_dir)
+        if subtitle_downloaded and subtitle_path:
+            print(f"字幕下载成功：{subtitle_path.name}")
 
         # 下载PPT视频
         if video_type in ["both", "ppt"] and ppt_video:
@@ -1367,7 +1762,7 @@ def download_course_videos(
             csv_filename = logs_dir / f"{save_dir}.csv"
             with open(csv_filename, mode="w", newline="", encoding="utf-8") as file:
                 writer = csv.writer(file)
-                writer.writerow(["month", "date", "day", "jie", "days", "pptVideo", "teacherTrack"])
+                writer.writerow(["month", "date", "day", "jie", "days", "pptVideo", "teacherTrack", "liveId"])
                 writer.writerows(rows)
             print(f"视频信息已保存到：{csv_filename}")
             logger.info(f"视频信息 CSV 已保存: {csv_filename}")
@@ -1424,7 +1819,7 @@ def download_course_videos(
 
                 print(f"\n下载任务完成！")
                 print(
-                    f"总计 {stats['total_videos']} 个 | 下载 {stats['downloaded']} 个 | 跳过 {stats['skipped']} 个 | 失败 {stats['failed']} 个 | 合并 {stats['merged']} 个"
+                    f"总计 {stats['total_videos']} 个 | 下载 {stats['downloaded']} 个 | 跳过 {stats['skipped']} 个 | 失败 {stats['failed']} 个 | 合并 {stats['merged']} 个 | 字幕 {stats['subtitles']} 个 | 字幕合并 {stats['subtitle_merged']} 个"
                 )
 
                 if stats["failed"] > 0:
