@@ -33,6 +33,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 from bs4 import BeautifulSoup
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory, session
+from flask.typing import ResponseReturnValue
 
 import config as config_module
 from api import (
@@ -190,7 +191,7 @@ def _app_info_payload() -> Dict[str, Any]:
     }
 
 
-def _json_error(message: str, status: int = 400) -> Tuple[Response, int]:
+def _json_error(message: str, status: int = 400) -> ResponseReturnValue:
     return jsonify({"ok": False, "error": message}), status
 
 
@@ -890,7 +891,7 @@ qr_jobs: Dict[str, QRLoginJob] = {}
 
 
 @app.before_request
-def require_webui_access() -> Optional[Response]:
+def require_webui_access() -> Optional[ResponseReturnValue]:
     try:
         if not _client_ip_allowed(request.remote_addr):
             return jsonify({"ok": False, "error": "当前客户端 IP 不允许访问 WebUI"}), 403
@@ -1046,23 +1047,23 @@ def _index_local_library() -> Dict[str, Any]:
 
 
 @app.route("/")
-def index() -> Response:
+def index() -> ResponseReturnValue:
     return send_from_directory(str(STATIC_DIR), "index.html")
 
 
 @app.route("/api/app/info", methods=["GET"])
-def app_info() -> Response:
+def app_info() -> ResponseReturnValue:
     return _json_ok(**_app_info_payload())
 
 
 @app.route("/api/webui/access/status", methods=["GET"])
-def webui_access_status() -> Response:
+def webui_access_status() -> ResponseReturnValue:
     enabled = _webui_password_enabled()
     return _json_ok(enabled=enabled, unlocked=not enabled or bool(session.get("webui_access_granted")))
 
 
 @app.route("/api/webui/access/login", methods=["POST"])
-def webui_access_login() -> Response:
+def webui_access_login() -> ResponseReturnValue:
     try:
         config = _read_auth_config()
         stored = _get_webui_password_hash(config)
@@ -1080,7 +1081,7 @@ def webui_access_login() -> Response:
 
 
 @app.route("/api/automation/config", methods=["GET"])
-def get_automation_config() -> Response:
+def get_automation_config() -> ResponseReturnValue:
     term_year, term_id = _default_term()
     path = Path(AUTOMATION_CONFIG_FILE)
     if not path.exists():
@@ -1104,7 +1105,7 @@ def get_automation_config() -> Response:
 
 
 @app.route("/api/automation/config/init", methods=["POST"])
-def init_automation_config() -> Response:
+def init_automation_config() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
         term_year, term_id = _default_term()
@@ -1120,7 +1121,7 @@ def init_automation_config() -> Response:
 
 
 @app.route("/api/automation/config/selection", methods=["POST"])
-def save_automation_selection() -> Response:
+def save_automation_selection() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
         selected = set(_selected_sections_from_payload(payload))
@@ -1138,7 +1139,7 @@ def save_automation_selection() -> Response:
 
 
 @app.route("/api/download/start", methods=["POST"])
-def start_download() -> Response:
+def start_download() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
         mode = str(payload.get("mode", "single"))
@@ -1154,7 +1155,7 @@ def start_download() -> Response:
 
 
 @app.route("/api/download/jobs/<job_id>/stream", methods=["GET"])
-def stream_download_job(job_id: str) -> Response:
+def stream_download_job(job_id: str) -> ResponseReturnValue:
     job = jobs.get(job_id)
     if not job:
         return _json_error("任务不存在", 404)
@@ -1183,7 +1184,7 @@ def stream_download_job(job_id: str) -> Response:
 
 
 @app.route("/api/download/active", methods=["GET"])
-def active_download_job() -> Response:
+def active_download_job() -> ResponseReturnValue:
     job = jobs.active()
     if not job:
         return _json_ok(active=False)
@@ -1196,7 +1197,7 @@ def active_download_job() -> Response:
 
 
 @app.route("/api/library", methods=["GET"])
-def library() -> Response:
+def library() -> ResponseReturnValue:
     try:
         return _json_ok(**_index_local_library())
     except Exception as exc:
@@ -1204,7 +1205,7 @@ def library() -> Response:
 
 
 @app.route("/media/<path:relative_path>", methods=["GET"])
-def media(relative_path: str) -> Response:
+def media(relative_path: str) -> ResponseReturnValue:
     try:
         requested = (APP_DIR / relative_path).resolve()
         requested.relative_to(APP_DIR.resolve())
@@ -1216,7 +1217,7 @@ def media(relative_path: str) -> Response:
 
 
 @app.route("/api/settings/auth", methods=["GET"])
-def get_auth_settings() -> Response:
+def get_auth_settings() -> ResponseReturnValue:
     try:
         return _json_ok(**_auth_config_payload())
     except Exception as exc:
@@ -1224,7 +1225,7 @@ def get_auth_settings() -> Response:
 
 
 @app.route("/api/settings/auth", methods=["POST"])
-def save_auth_settings() -> Response:
+def save_auth_settings() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
         _save_auth_payload(payload)
@@ -1234,7 +1235,7 @@ def save_auth_settings() -> Response:
 
 
 @app.route("/api/settings/webui-password", methods=["GET"])
-def get_webui_password_settings() -> Response:
+def get_webui_password_settings() -> ResponseReturnValue:
     config = _read_auth_config()
     return _json_ok(
         enabled=bool(_get_webui_password_hash(config)),
@@ -1243,7 +1244,7 @@ def get_webui_password_settings() -> Response:
 
 
 @app.route("/api/settings/webui-password", methods=["POST"])
-def save_webui_password_settings() -> Response:
+def save_webui_password_settings() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
         password = str(payload.get("password", ""))
@@ -1267,7 +1268,7 @@ def save_webui_password_settings() -> Response:
 
 
 @app.route("/api/settings/qr/start", methods=["POST"])
-def start_qr_login() -> Response:
+def start_qr_login() -> ResponseReturnValue:
     try:
         payload = _request_json()
         fid = str(payload.get("fid") or FID)
@@ -1280,7 +1281,7 @@ def start_qr_login() -> Response:
 
 
 @app.route("/api/settings/qr/<job_id>", methods=["GET"])
-def qr_status(job_id: str) -> Response:
+def qr_status(job_id: str) -> ResponseReturnValue:
     job = qr_jobs.get(job_id)
     if not job:
         return _json_error("二维码任务不存在", 404)
@@ -1288,7 +1289,7 @@ def qr_status(job_id: str) -> Response:
 
 
 @app.route("/api/settings/qr/<job_id>/cancel", methods=["POST"])
-def cancel_qr_login(job_id: str) -> Response:
+def cancel_qr_login(job_id: str) -> ResponseReturnValue:
     job = qr_jobs.get(job_id)
     if job:
         job.cancel()
@@ -1296,7 +1297,7 @@ def cancel_qr_login(job_id: str) -> Response:
 
 
 @app.route("/api/settings/qr/<job_id>/image", methods=["GET"])
-def qr_image(job_id: str) -> Response:
+def qr_image(job_id: str) -> ResponseReturnValue:
     job = qr_jobs.get(job_id)
     if not job or not job.image_path.exists():
         return _json_error("二维码尚未生成", 404)
