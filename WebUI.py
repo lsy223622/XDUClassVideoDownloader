@@ -60,13 +60,20 @@ from config import (
     safe_write_config,
 )
 from downloader import process_all_courses
-from utils import get_app_path, parse_week_ranges, pause_before_exit_if_frozen, remove_invalid_chars, setup_logging
+from utils import (
+    get_bundled_app_path,
+    get_app_path,
+    parse_week_ranges,
+    pause_before_exit_if_frozen,
+    remove_invalid_chars,
+    setup_logging,
+)
 from validator import validate_download_parameters, validate_term_params, validate_user_id
 
 logger = setup_logging("webui")
 
 APP_DIR = get_app_path()
-STATIC_DIR = APP_DIR / "webui" / "static"
+STATIC_DIR = get_bundled_app_path("webui", "static")
 ALLOWED_MEDIA_SUFFIXES = {".mp4", ".ts", ".srt", ".vtt"}
 VIDEO_TYPE_CHOICES = {"both", "ppt", "teacher"}
 AUTH_METHOD_CHOICES = {"ids", "chaoxing", "chaoxing_qr", "cookies"}
