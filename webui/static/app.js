@@ -36,6 +36,20 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const $$ = (selector, scope = document) => Array.from(scope.querySelectorAll(selector));
+
+function on(id, eventName, handler, options) {
+  $(id).addEventListener(eventName, handler, options);
+}
+
+function setHidden(target, hidden) {
+  const el = typeof target === "string" ? $(target) : target;
+  el?.classList.toggle("hidden", hidden);
+}
+
+function setText(id, text) {
+  $(id).textContent = text;
+}
 
 function setStatus(text, kind = "") {
   const el = $("globalStatus");
@@ -191,16 +205,16 @@ async function apiJson(url, options = {}) {
 function showAccessGate(message = "") {
   document.body.classList.remove("access-checking", "access-granted");
   document.body.classList.add("access-locked");
-  $("accessGate").classList.remove("hidden");
-  $("accessError").textContent = message;
-  $("accessError").classList.toggle("hidden", !message);
+  setHidden("accessGate", false);
+  setText("accessError", message);
+  setHidden("accessError", !message);
   setTimeout(() => $("accessPassword")?.focus(), 0);
 }
 
 function showAppShell() {
   document.body.classList.remove("access-checking", "access-locked");
   document.body.classList.add("access-granted");
-  $("accessGate").classList.add("hidden");
+  setHidden("accessGate", true);
 }
 
 async function checkWebuiAccess() {
@@ -221,7 +235,7 @@ async function checkWebuiAccess() {
 
 async function submitAccessPassword(event) {
   event.preventDefault();
-  $("accessError").classList.add("hidden");
+  setHidden("accessError", true);
   try {
     const data = await apiJson("/api/webui/access/login", {
       method: "POST",
@@ -240,12 +254,12 @@ async function submitAccessPassword(event) {
 function switchPage(pageName) {
   if (pageName !== "viewer") pauseAllVideos(false);
   if (pageName !== "settings") stopQrPolling(true);
-  document.querySelectorAll(".nav-item").forEach((btn) => {
+  $$(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.page === pageName);
   });
-  document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+  $$(".page").forEach((page) => page.classList.remove("active"));
   $(`${pageName}Page`).classList.add("active");
-  $("pageHint").textContent = state.appMessage;
+  setText("pageHint", state.appMessage);
 }
 
 async function loadAppInfo() {
@@ -261,17 +275,17 @@ async function loadAppInfo() {
     if (data.update_available && data.latest_version) {
       notice.textContent = `有更新版本${data.latest_version}，请点击这里前往下载页面`;
       notice.href = data.releases_url || "https://github.com/lsy223622/XDUClassVideoDownloader/releases";
-      notice.classList.remove("hidden");
+      setHidden(notice, false);
     } else {
       notice.textContent = "";
-      notice.classList.add("hidden");
+      setHidden(notice, true);
     }
   } catch (error) {
     const message = "欢迎使用！如有问题请联系作者。检查更新失败。";
     state.appMessage = message;
-    $("pageHint").textContent = message;
-    $("versionBadge").textContent = "v--";
-    $("updateNotice").classList.add("hidden");
+    setText("pageHint", message);
+    setText("versionBadge", "v--");
+    setHidden("updateNotice", true);
   }
 }
 
@@ -280,8 +294,8 @@ function renderAutomation(data) {
     $("batchUid").value = data.defaults.user_id;
   }
   if (!data.exists) {
-    $("automationMissing").classList.remove("hidden");
-    $("automationReady").classList.add("hidden");
+    setHidden("automationMissing", false);
+    setHidden("automationReady", true);
     if (data.defaults) {
       if (data.defaults.user_id && (!state.batchUidTouched || !$("batchUid").value.trim())) {
         $("batchUid").value = data.defaults.user_id;
@@ -292,8 +306,8 @@ function renderAutomation(data) {
     }
     return;
   }
-  $("automationMissing").classList.add("hidden");
-  $("automationReady").classList.remove("hidden");
+  setHidden("automationMissing", true);
+  setHidden("automationReady", false);
   state.automationCourses = data.courses || [];
   if (data.defaults?.video_type) $("batchVideoType").value = data.defaults.video_type;
   const list = $("courseList");
@@ -362,7 +376,7 @@ async function initAutomation() {
 
 function setInitLoading(loading) {
   $("initAutomation").disabled = loading;
-  $("initAutomationSpinner").classList.toggle("hidden", !loading);
+  setHidden("initAutomationSpinner", !loading);
 }
 
 async function startDownload(payload) {
@@ -439,7 +453,7 @@ async function saveCourseSelection() {
 }
 
 function selectedCourseSections() {
-  return [...$("courseList").querySelectorAll("input[type=checkbox]:checked")].map((box) => box.dataset.section);
+  return $$("input[type=checkbox]:checked", $("courseList")).map((box) => box.dataset.section);
 }
 
 async function loadLibrary() {
@@ -488,7 +502,7 @@ function videoRatio(video) {
 function updateVideoLayout() {
   const grid = $("videoGrid");
   if (!grid) return;
-  const cards = [...grid.querySelectorAll(".video-card")];
+  const cards = $$(".video-card", grid);
   if (!cards.length) return;
 
   const gridStyle = getComputedStyle(grid);
@@ -531,12 +545,7 @@ function ensureVideoLayoutObserver() {
   state.videoLayoutObserver.observe(document.querySelector(".player-panel"));
 }
 
-async function selectLesson(button, item) {
-  document.querySelectorAll(".lesson-btn").forEach((btn) => btn.classList.remove("active"));
-  button.classList.add("active");
-  $("viewerTitle").textContent = item.title;
-  const grid = $("videoGrid");
-  grid.innerHTML = "";
+function resetViewerState() {
   state.activeVideos = [];
   state.subtitleDriver = null;
   state.syncSource = null;
@@ -548,6 +557,15 @@ async function selectLesson(button, item) {
   state.programmaticSeekUntil = new WeakMap();
   state.programmaticPlayUntil = new WeakMap();
   state.lastPlayAttempt = new WeakMap();
+}
+
+async function selectLesson(button, item) {
+  $$(".lesson-btn").forEach((btn) => btn.classList.remove("active"));
+  button.classList.add("active");
+  setText("viewerTitle", item.title);
+  const grid = $("videoGrid");
+  grid.innerHTML = "";
+  resetViewerState();
   stopSyncLoop();
   updatePlayerControls();
 
@@ -590,7 +608,7 @@ async function selectLesson(button, item) {
   state.syncSource = state.subtitleDriver;
   wireVideoSync();
   updateVideoLayout();
-  $("subtitleBlock").textContent = "字幕将在这里显示";
+  setText("subtitleBlock", "字幕将在这里显示");
   applySubtitleStyle();
   updatePlayerControls();
   const subtitleUrls = item.subtitle_urls?.length ? item.subtitle_urls : (item.subtitle_url ? [item.subtitle_url] : []);
@@ -614,16 +632,6 @@ async function loadSubtitles(urls) {
   }
   cues.sort((left, right) => left.start - right.start || left.end - right.end);
   return cues;
-}
-
-function setupPptOffsetControls(scope) {
-  const range = scope.querySelector("#pptOffsetRange");
-  const input = scope.querySelector("#pptOffsetInput");
-  if (!range || !input) return;
-  syncRangeAndNumber(range, input, state.pptOffset);
-  attachDefaultSnap(range, setPptOffset);
-  range.addEventListener("input", () => setPptOffset(range.value));
-  input.addEventListener("input", () => setPptOffset(input.value));
 }
 
 function syncRangeAndNumber(range, input, value) {
@@ -807,7 +815,7 @@ function updatePlayerControls() {
   $("playerPlayPause").classList.toggle("playing", playing);
   const allMuted = !state.activeVideos.some((video) => !video.muted);
   $("playerMute").classList.toggle("muted", allMuted);
-  document.querySelectorAll(".video-card").forEach((card) => {
+  $$(".video-card").forEach((card) => {
     const video = card.querySelector("video");
     card.querySelector(".video-mute-btn")?.classList.toggle("muted", !video || video.muted);
   });
@@ -1189,15 +1197,15 @@ async function clearWebuiPassword() {
 
 function updateAuthBlocks() {
   const method = $("authMethod").value;
-  document.querySelectorAll(".auth-block").forEach((block) => {
+  $$(".auth-block").forEach((block) => {
     const blockName = block.dataset.authBlock;
     const visible = blockName === method;
-    block.classList.toggle("hidden", !visible);
+    setHidden(block, !visible);
   });
 }
 
 function updateInitialSetupGuide() {
-  $("initialSetupGuide").classList.toggle("hidden", !state.initialSetupRequired);
+  setHidden("initialSetupGuide", !state.initialSetupRequired);
 }
 
 async function saveAuth() {
@@ -1222,22 +1230,22 @@ async function saveAuth() {
 }
 
 function setQrLoading(message) {
-  $("qrBox").classList.remove("hidden");
-  $("qrLoading").classList.remove("hidden");
-  $("qrImage").classList.add("hidden");
+  setHidden("qrBox", false);
+  setHidden("qrLoading", false);
+  setHidden("qrImage", true);
   $("qrImage").removeAttribute("src");
-  $("qrStatus").textContent = message;
+  setText("qrStatus", message);
 }
 
 function showQrImage(url) {
   const img = $("qrImage");
   img.onload = () => {
-    $("qrLoading").classList.add("hidden");
-    img.classList.remove("hidden");
+    setHidden("qrLoading", true);
+    setHidden(img, false);
   };
   img.onerror = () => {
-    $("qrLoading").classList.remove("hidden");
-    img.classList.add("hidden");
+    setHidden("qrLoading", false);
+    setHidden(img, true);
   };
   img.src = `${url}?t=${Date.now()}`;
 }
@@ -1263,18 +1271,18 @@ async function startQr() {
     if (state.qrTimer) clearInterval(state.qrTimer);
     const pollQrStatus = async () => {
       const status = await apiJson(`/api/settings/qr/${data.id}`);
-      $("qrStatus").textContent = status.message || status.status;
+      setText("qrStatus", status.message || status.status);
       if (status.status === "waiting" && $("qrImage").classList.contains("hidden")) {
         showQrImage(data.image_url);
       }
       if (["success", "failed", "cancelled"].includes(status.status)) {
         stopQrPolling(false);
         if (status.status !== "success") {
-          $("qrLoading").classList.add("hidden");
-          $("qrImage").classList.add("hidden");
+          setHidden("qrLoading", true);
+          setHidden("qrImage", true);
         }
         if (status.status === "success") {
-          $("qrLoading").classList.add("hidden");
+          setHidden("qrLoading", true);
           await loadAuth();
         }
         return true;
@@ -1284,11 +1292,11 @@ async function startQr() {
     const done = await pollQrStatus();
     if (!done) state.qrTimer = setInterval(pollQrStatus, 1000);
   } catch (err) {
-    $("qrBox").classList.remove("hidden");
-    $("qrLoading").classList.add("hidden");
-    $("qrImage").classList.add("hidden");
+    setHidden("qrBox", false);
+    setHidden("qrLoading", true);
+    setHidden("qrImage", true);
     stopQrPolling(false);
-    $("qrStatus").textContent = `二维码登录失败：${err.message}`;
+    setText("qrStatus", `二维码登录失败：${err.message}`);
   }
 }
 
@@ -1307,14 +1315,14 @@ function togglePopover(menuId) {
   const willOpen = menu.classList.contains("hidden");
   closePopovers();
   if (willOpen) {
-    menu.classList.remove("hidden");
+    setHidden(menu, false);
     requestAnimationFrame(() => positionPopover(menu));
   }
 }
 
 function closePopovers() {
-  document.querySelectorAll(".control-popover").forEach((menu) => {
-    menu.classList.add("hidden");
+  $$(".control-popover").forEach((menu) => {
+    setHidden(menu, true);
     menu.style.setProperty("--popover-shift-x", "0px");
   });
 }
@@ -1332,71 +1340,68 @@ function positionPopover(menu) {
   menu.style.setProperty("--popover-shift-x", `${shift}px`);
 }
 
+function bindPairedControl(rangeId, inputId, setter, initialValue) {
+  const range = $(rangeId);
+  const input = $(inputId);
+  attachDefaultSnap(range, setter);
+  range.addEventListener("input", () => setter(range.value));
+  input.addEventListener("input", () => setter(input.value));
+  syncRangeAndNumber(range, input, initialValue);
+}
+
+function getProgressRatio() {
+  return Math.max(0, Math.min(1, Number($("playerProgress").value) / 1000));
+}
+
+function commitProgressDrag(forcePlayState = false) {
+  state.progressDragging = false;
+  const duration = getTimelineDuration();
+  const ratio = getProgressRatio();
+  setProgressFill(ratio);
+  setTimelineTime(ratio * duration, forcePlayState);
+}
+
 function setupViewerControls() {
-  $("playerPlayPause").addEventListener("click", togglePlayback);
-  $("playerMute").addEventListener("click", toggleGlobalMute);
-  $("playbackSpeedSettings").addEventListener("click", (event) => {
+  on("playerPlayPause", "click", togglePlayback);
+  on("playerMute", "click", toggleGlobalMute);
+  on("playbackSpeedSettings", "click", (event) => {
     event.stopPropagation();
     togglePopover("playbackSpeedMenu");
   });
-  $("videoOffsetSettings").addEventListener("click", (event) => {
+  on("videoOffsetSettings", "click", (event) => {
     event.stopPropagation();
     togglePopover("videoOffsetMenu");
   });
-  $("subtitleSettings").addEventListener("click", (event) => {
+  on("subtitleSettings", "click", (event) => {
     event.stopPropagation();
     togglePopover("subtitleSettingsMenu");
   });
-  attachDefaultSnap($("playbackSpeedRange"), setPlaybackRate);
-  attachDefaultSnap($("pptOffsetRange"), setPptOffset);
-  attachDefaultSnap($("subtitleOffsetRange"), setSubtitleOffset);
-  attachDefaultSnap($("subtitleFontRange"), setSubtitleFontSize);
-  $("playbackSpeedRange").addEventListener("input", () => setPlaybackRate($("playbackSpeedRange").value));
-  $("playbackSpeedInput").addEventListener("input", () => setPlaybackRate($("playbackSpeedInput").value));
-  $("pptOffsetRange").addEventListener("input", () => setPptOffset($("pptOffsetRange").value));
-  $("pptOffsetInput").addEventListener("input", () => setPptOffset($("pptOffsetInput").value));
-  $("subtitleOffsetRange").addEventListener("input", () => setSubtitleOffset($("subtitleOffsetRange").value));
-  $("subtitleOffsetInput").addEventListener("input", () => setSubtitleOffset($("subtitleOffsetInput").value));
-  $("subtitleFontRange").addEventListener("input", () => setSubtitleFontSize($("subtitleFontRange").value));
-  $("subtitleFontInput").addEventListener("input", () => setSubtitleFontSize($("subtitleFontInput").value));
-  $("subtitleBoldToggle").addEventListener("click", () => setSubtitleBold(!state.subtitleBold));
-  $("playerProgress").addEventListener("pointerdown", () => {
+  bindPairedControl("playbackSpeedRange", "playbackSpeedInput", setPlaybackRate, state.playbackRate);
+  bindPairedControl("pptOffsetRange", "pptOffsetInput", setPptOffset, state.pptOffset);
+  bindPairedControl("subtitleOffsetRange", "subtitleOffsetInput", setSubtitleOffset, state.subtitleOffset);
+  bindPairedControl("subtitleFontRange", "subtitleFontInput", setSubtitleFontSize, state.subtitleFontSize);
+  on("subtitleBoldToggle", "click", () => setSubtitleBold(!state.subtitleBold));
+  on("playerProgress", "pointerdown", () => {
     state.progressDragging = true;
   });
-  $("playerProgress").addEventListener("input", () => {
+  on("playerProgress", "input", () => {
     const duration = getTimelineDuration();
-    const ratio = Math.max(0, Math.min(1, Number($("playerProgress").value) / 1000));
+    const ratio = getProgressRatio();
     setProgressFill(ratio);
     setTimelineTime(ratio * duration);
   });
-  $("playerProgress").addEventListener("change", () => {
-    state.progressDragging = false;
-    const duration = getTimelineDuration();
-    const ratio = Math.max(0, Math.min(1, Number($("playerProgress").value) / 1000));
-    setProgressFill(ratio);
-    setTimelineTime(ratio * duration, true);
-  });
-  $("playerProgress").addEventListener("pointerup", () => {
-    state.progressDragging = false;
-    const duration = getTimelineDuration();
-    const ratio = Math.max(0, Math.min(1, Number($("playerProgress").value) / 1000));
-    setProgressFill(ratio);
-    setTimelineTime(ratio * duration, true);
-  });
-  $("playerProgress").addEventListener("pointercancel", () => {
+  on("playerProgress", "change", () => commitProgressDrag(true));
+  on("playerProgress", "pointerup", () => commitProgressDrag(true));
+  on("playerProgress", "pointercancel", () => {
     state.progressDragging = false;
     updateProgress();
   });
-  syncRangeAndNumber($("playbackSpeedRange"), $("playbackSpeedInput"), state.playbackRate);
-  syncRangeAndNumber($("pptOffsetRange"), $("pptOffsetInput"), state.pptOffset);
-  syncRangeAndNumber($("subtitleOffsetRange"), $("subtitleOffsetInput"), state.subtitleOffset);
-  syncRangeAndNumber($("subtitleFontRange"), $("subtitleFontInput"), state.subtitleFontSize);
   setPlaybackRate(state.playbackRate);
   applySubtitleStyle();
   updatePlayerControls();
 }
 
-document.querySelectorAll(".nav-item").forEach((btn) => {
+$$(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => switchPage(btn.dataset.page));
 });
 
@@ -1410,17 +1415,17 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".control-popover")) closePopovers();
 });
 
-$("menuToggle").addEventListener("click", () => {
+on("menuToggle", "click", () => {
   document.querySelector(".app-shell").classList.toggle("sidebar-collapsed");
   setTimeout(updateVideoLayout, 240);
 });
-$("reloadAutomation").addEventListener("click", loadAutomation);
-$("refreshAutomation").addEventListener("click", refreshAutomation);
-$("initAutomation").addEventListener("click", initAutomation);
-$("batchUid").addEventListener("input", () => {
+on("reloadAutomation", "click", loadAutomation);
+on("refreshAutomation", "click", refreshAutomation);
+on("initAutomation", "click", initAutomation);
+on("batchUid", "input", () => {
   state.batchUidTouched = true;
 });
-$("startSingle").addEventListener("click", () => startDownload({
+on("startSingle", "click", () => startDownload({
   mode: "single",
   live_id: $("singleLiveId").value.trim(),
   single: Number($("singleMode").value),
@@ -1428,21 +1433,21 @@ $("startSingle").addEventListener("click", () => startDownload({
   video_type: $("singleVideoType").value,
   skip_weeks: $("singleSkipWeeks").value.trim(),
 }));
-$("startBatch").addEventListener("click", () => startDownload({
+on("startBatch", "click", () => startDownload({
   mode: "batch",
   selected_sections: selectedCourseSections(),
   video_type: $("batchVideoType").value,
 }));
-$("selectAllCourses").addEventListener("click", () => {
-  $("courseList").querySelectorAll("input[type=checkbox]").forEach((box) => { box.checked = true; });
+on("selectAllCourses", "click", () => {
+  $$("input[type=checkbox]", $("courseList")).forEach((box) => { box.checked = true; });
 });
-$("selectNoCourses").addEventListener("click", () => {
-  $("courseList").querySelectorAll("input[type=checkbox]").forEach((box) => { box.checked = false; });
+on("selectNoCourses", "click", () => {
+  $$("input[type=checkbox]", $("courseList")).forEach((box) => { box.checked = false; });
 });
-$("saveCourseSelection").addEventListener("click", saveCourseSelection);
-$("clearOutput").addEventListener("click", resetOutput);
-$("reloadLibrary").addEventListener("click", loadLibrary);
-$("maximizePlayer").addEventListener("click", () => {
+on("saveCourseSelection", "click", saveCourseSelection);
+on("clearOutput", "click", resetOutput);
+on("reloadLibrary", "click", loadLibrary);
+on("maximizePlayer", "click", () => {
   const panel = document.querySelector(".player-panel");
   const maximized = panel.classList.toggle("maximized");
   document.body.classList.toggle("player-maximized", maximized);
@@ -1450,16 +1455,16 @@ $("maximizePlayer").addEventListener("click", () => {
   $("maximizePlayer").setAttribute("aria-label", maximized ? "退出最大化" : "最大化视频块");
   setTimeout(updateVideoLayout, 0);
 });
-$("reloadAuth").addEventListener("click", loadAuth);
-$("authMethod").addEventListener("change", updateAuthBlocks);
-$("saveAuth").addEventListener("click", saveAuth);
-$("startQr").addEventListener("click", startQr);
-$("saveWebuiPassword").addEventListener("click", saveWebuiPassword);
-$("clearWebuiPassword").addEventListener("click", clearWebuiPassword);
-$("accessForm").addEventListener("submit", submitAccessPassword);
+on("reloadAuth", "click", loadAuth);
+on("authMethod", "change", updateAuthBlocks);
+on("saveAuth", "click", saveAuth);
+on("startQr", "click", startQr);
+on("saveWebuiPassword", "click", saveWebuiPassword);
+on("clearWebuiPassword", "click", clearWebuiPassword);
+on("accessForm", "submit", submitAccessPassword);
 window.addEventListener("resize", () => {
   updateVideoLayout();
-  document.querySelectorAll(".control-popover:not(.hidden)").forEach(positionPopover);
+  $$(".control-popover:not(.hidden)").forEach(positionPopover);
 });
 window.addEventListener("beforeunload", () => stopQrPolling(true));
 
