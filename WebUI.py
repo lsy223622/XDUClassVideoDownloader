@@ -999,7 +999,7 @@ def _assign_subtitles(items: Sequence[Dict[str, Any]], subtitles: Sequence[Dict[
 def _index_local_library() -> Dict[str, Any]:
     courses: Dict[str, Dict[str, Any]] = {}
     subtitle_index: Dict[str, List[Dict[str, Any]]] = {}
-    for file_path in APP_DIR.rglob("*"):
+    for file_path in APP_DIR.glob("[0-9][0-9][0-9][0-9]年*/**/*"):
         if not file_path.is_file() or file_path.suffix.lower() not in {".mp4", ".ts", ".srt", ".vtt"}:
             continue
         try:
