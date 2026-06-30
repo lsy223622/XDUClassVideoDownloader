@@ -1132,15 +1132,20 @@ def save_automation_selection() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
         selected = set(_selected_sections_from_payload(payload))
+        video_type = str(payload.get("video_type") or "both")
+        if video_type not in VIDEO_TYPE_CHOICES:
+            raise ValueError("视频类型无效")
     except ValueError as exc:
         return _json_error(str(exc), 400)
 
     try:
         config = _read_automation_config()
+        config["DEFAULT"]["video_type"] = video_type
         for section_name in config.sections():
             config[section_name]["download"] = "yes" if section_name in selected else "no"
         safe_write_config(config, AUTOMATION_CONFIG_FILE, backup=True)
-        return _json_ok(courses=_config_to_courses(config))
+        term_year, term_id = _default_term()
+        return _json_ok(**_automation_config_payload(config, term_year, term_id))
     except Exception as exc:
         return _json_error(str(exc), 400)
 

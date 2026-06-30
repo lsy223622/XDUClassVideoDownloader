@@ -321,7 +321,7 @@ function renderAutomation(data) {
         <span class="course-name">${escapeHtml(course.course_name || "未命名课程")}</span>
         <span class="course-meta">${escapeHtml(course.course_code || "")} · LiveID ${escapeHtml(course.live_id || "")}</span>
       </span>
-      <span class="course-meta">${course.download === "yes" ? "配置: yes" : "配置: no"}</span>
+      <span class="course-meta">${course.download === "yes" ? "配置: 下载" : "配置: 不下载"}</span>
     `;
     list.appendChild(row);
   }
@@ -441,9 +441,12 @@ async function saveCourseSelection() {
   try {
     const data = await apiJson("/api/automation/config/selection", {
       method: "POST",
-      body: JSON.stringify({ selected_sections: selectedCourseSections() }),
+      body: JSON.stringify({
+        selected_sections: selectedCourseSections(),
+        video_type: $("batchVideoType").value,
+      }),
     });
-    renderAutomation({ ...data, exists: true, defaults: { video_type: $("batchVideoType").value } });
+    renderAutomation(data);
     appendOutput("已保存当前课程选择到 automation_config.ini\n");
     setStatus("配置已保存", "success");
   } catch (err) {
