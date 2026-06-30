@@ -1109,19 +1109,57 @@ function updateSubtitle(currentTime) {
   $("subtitleBlock").textContent = cue ? cue.text : "";
 }
 
+const AUTH_FIELD_IDS = [
+  "idsUsername",
+  "idsPassword",
+  "chaoxingUsername",
+  "chaoxingPassword",
+  "cookieD",
+  "cookieUid",
+  "cookieVc3",
+];
+
+function setCredentialField(id, configured) {
+  const input = $(id);
+  input.value = configured ? "********" : "";
+  input.placeholder = configured ? "输入新值" : "";
+  input.dataset.credentialConfigured = configured ? "true" : "false";
+  input.dataset.credentialTouched = "false";
+}
+
+function clearCredentialMask(input) {
+  if (input.dataset.credentialConfigured !== "true" || input.dataset.credentialTouched === "true") return;
+  input.value = "";
+  input.dataset.credentialTouched = "true";
+  input.dataset.credentialConfigured = "false";
+}
+
+function credentialValue(id) {
+  const input = $(id);
+  if (input.dataset.credentialConfigured === "true" && input.dataset.credentialTouched !== "true") return null;
+  return input.value;
+}
+
+function setupCredentialFields() {
+  for (const id of AUTH_FIELD_IDS) {
+    on(id, "focus", () => clearCredentialMask($(id)));
+    on(id, "pointerdown", () => clearCredentialMask($(id)));
+  }
+}
+
 async function loadAuth() {
   try {
     const data = await apiJson("/api/settings/auth");
     state.initialSetupRequired = !data.auth_ready;
     $("authMethod").value = data.auth_ready ? (data.auth_method || "ids") : "chaoxing_qr";
     $("saveAuthInfo").checked = Boolean(data.save_auth_info);
-    $("idsUsername").value = data.ids?.username || "";
-    $("idsPassword").value = data.ids?.password || "";
-    $("chaoxingUsername").value = data.chaoxing?.username || "";
-    $("chaoxingPassword").value = data.chaoxing?.password || "";
-    $("cookieD").value = data.cookies?._d || "";
-    $("cookieUid").value = data.cookies?.UID || "";
-    $("cookieVc3").value = data.cookies?.vc3 || "";
+    setCredentialField("idsUsername", Boolean(data.ids?.username_configured));
+    setCredentialField("idsPassword", Boolean(data.ids?.password_configured));
+    setCredentialField("chaoxingUsername", Boolean(data.chaoxing?.username_configured));
+    setCredentialField("chaoxingPassword", Boolean(data.chaoxing?.password_configured));
+    setCredentialField("cookieD", Boolean(data.cookies?._d_configured));
+    setCredentialField("cookieUid", Boolean(data.cookies?.UID_configured));
+    setCredentialField("cookieVc3", Boolean(data.cookies?.vc3_configured));
     if (data.uid && (!state.batchUidTouched || !$("batchUid").value.trim())) {
       $("batchUid").value = data.uid;
     }
@@ -1215,9 +1253,9 @@ async function saveAuth() {
       body: JSON.stringify({
         auth_method: $("authMethod").value,
         save_auth_info: $("saveAuthInfo").checked,
-        ids: { username: $("idsUsername").value, password: $("idsPassword").value },
-        chaoxing: { username: $("chaoxingUsername").value, password: $("chaoxingPassword").value },
-        cookies: { _d: $("cookieD").value, UID: $("cookieUid").value, vc3: $("cookieVc3").value },
+        ids: { username: credentialValue("idsUsername"), password: credentialValue("idsPassword") },
+        chaoxing: { username: credentialValue("chaoxingUsername"), password: credentialValue("chaoxingPassword") },
+        cookies: { _d: credentialValue("cookieD"), UID: credentialValue("cookieUid"), vc3: credentialValue("cookieVc3") },
       }),
     });
     state.initialSetupRequired = false;
@@ -1471,6 +1509,7 @@ window.addEventListener("beforeunload", () => stopQrPolling(true));
 function initializeApp() {
   if (!state.viewerControlsReady) {
     setupViewerControls();
+    setupCredentialFields();
     ensureVideoLayoutObserver();
     state.viewerControlsReady = true;
   }

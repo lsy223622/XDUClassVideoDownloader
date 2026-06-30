@@ -13,11 +13,13 @@ import contextlib
 import hashlib
 import hmac
 import io
+import ipaddress
 import json
 import logging
 import os
 import re
 import socket
+import stat
 import sys
 import threading
 import time
@@ -27,7 +29,7 @@ import webbrowser
 from argparse import ArgumentParser, Namespace
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from bs4 import BeautifulSoup
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory, session
@@ -69,7 +71,7 @@ VIDEO_TYPE_CHOICES = {"both", "ppt", "teacher"}
 AUTH_METHOD_CHOICES = {"ids", "chaoxing", "chaoxing_qr", "cookies"}
 DOWNLOAD_ACTIVE_STATUSES = {"pending", "running"}
 QR_CANCELLABLE_STATUSES = {"pending", "waiting"}
-DEFAULT_WEBUI_HOST = "0.0.0.0"
+DEFAULT_WEBUI_HOST = "127.0.0.1"
 DEFAULT_WEBUI_PORT = 5050
 PORT_SCAN_LIMIT = 100
 QUIET_ACCESS_LOG_PATHS = ("/api/settings/qr/", "/media/")
@@ -77,6 +79,8 @@ WEBUI_AUTH_SECTION = "WEBUI"
 WEBUI_PASSWORD_KEY = "password_hash"
 WEBUI_LEGACY_PASSWORD_KEY = "password"
 WEBUI_ALLOW_PASSWORD_CHANGE_KEY = "allow_password_change"
+WEBUI_BIND_HOST_KEY = "bind_host"
+WEBUI_ALLOWED_CLIENTS_KEY = "allowed_clients"
 WEBUI_PBKDF2_ITERATIONS = 120_000
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
@@ -112,10 +116,13 @@ def _run_startup_update_check() -> bool:
 
 def _parse_args() -> Namespace:
     parser = ArgumentParser(description="启动 XDUClassVideoDownloader WebUI")
-    parser.add_argument("--host", default=DEFAULT_WEBUI_HOST, help=f"监听地址，默认 {DEFAULT_WEBUI_HOST}")
+    parser.add_argument("--host", default=None, help=f"监听地址，默认读取 auth.ini 的 WEBUI.{WEBUI_BIND_HOST_KEY}，未设置则为 {DEFAULT_WEBUI_HOST}")
     parser.add_argument("--port", type=int, default=DEFAULT_WEBUI_PORT, help=f"起始端口，默认 {DEFAULT_WEBUI_PORT}")
     parser.add_argument("--no-browser", action="store_true", help="启动后不要自动打开浏览器")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.host is None:
+        args.host = _configured_webui_host()
+    return args
 
 
 def _is_port_available(host: str, port: int) -> bool:
@@ -191,8 +198,15 @@ def _json_ok(**payload: Any) -> Response:
     return jsonify({"ok": True, **payload})
 
 
-def _request_json() -> Any:
-    return request.get_json(silent=True) or {}
+def _request_json(require_body: bool = False) -> Dict[str, Any]:
+    if not request.is_json:
+        raise ValueError("请求 Content-Type 必须是 application/json")
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        raise ValueError("请求 JSON 必须是对象")
+    if require_body and not data:
+        raise ValueError("请求内容不能为空")
+    return data
 
 
 def _default_term() -> Tuple[int, int]:
@@ -269,6 +283,55 @@ def _read_automation_config() -> configparser.ConfigParser:
 
 def _auth_config_exists() -> bool:
     return Path(AUTH_CONFIG_FILE).exists()
+
+
+def _configured_webui_host() -> str:
+    config = _read_auth_config()
+    if WEBUI_AUTH_SECTION not in config:
+        return DEFAULT_WEBUI_HOST
+    host = str(config[WEBUI_AUTH_SECTION].get(WEBUI_BIND_HOST_KEY, "")).strip()
+    return host or DEFAULT_WEBUI_HOST
+
+
+def _configured_allowed_clients() -> List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]:
+    config = _read_auth_config()
+    if WEBUI_AUTH_SECTION not in config:
+        return []
+    raw_value = str(config[WEBUI_AUTH_SECTION].get(WEBUI_ALLOWED_CLIENTS_KEY, "")).strip()
+    if not raw_value:
+        return []
+
+    networks: List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]] = []
+    for item in re.split(r"[\s,]+", raw_value):
+        if not item:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(item, strict=False))
+        except ValueError as exc:
+            raise ValueError(f"WEBUI.{WEBUI_ALLOWED_CLIENTS_KEY} 包含无效网段: {item}") from exc
+    return networks
+
+
+def _client_ip_allowed(remote_addr: Optional[str]) -> bool:
+    allowed_clients = _configured_allowed_clients()
+    if not allowed_clients:
+        return True
+    if not remote_addr:
+        return False
+    try:
+        client_ip = ipaddress.ip_address(remote_addr)
+    except ValueError:
+        return False
+    return any(client_ip in network for network in allowed_clients)
+
+
+def _set_auth_config_private_permissions() -> None:
+    if os.name != "posix":
+        return
+    try:
+        os.chmod(AUTH_CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError as exc:
+        logger.warning(f"无法设置认证文件权限: {exc}")
 
 
 def _download_stream_url(job_id: str) -> str:
@@ -563,9 +626,11 @@ def _save_webui_password(password: str) -> bool:
         enabled = True
     else:
         if config.has_section(WEBUI_AUTH_SECTION):
-            config.remove_section(WEBUI_AUTH_SECTION)
+            config[WEBUI_AUTH_SECTION].pop(WEBUI_PASSWORD_KEY, None)
+            config[WEBUI_AUTH_SECTION].pop(WEBUI_LEGACY_PASSWORD_KEY, None)
         enabled = False
     safe_write_config(config, AUTH_CONFIG_FILE, backup=True)
+    _set_auth_config_private_permissions()
     return enabled
 
 
@@ -619,6 +684,9 @@ def _auth_config_payload() -> Dict[str, Any]:
     auth_method = settings.get("auth_method", "ids") if hasattr(settings, "get") else "ids"
     auth_exists = _auth_config_exists()
     auth_ready = auth_exists and _has_usable_auth(config, auth_method)
+    ids = config["IDS_CREDENTIALS"] if "IDS_CREDENTIALS" in config else {}
+    chaoxing = config["CHAOXING_CREDENTIALS"] if "CHAOXING_CREDENTIALS" in config else {}
+    cookies = config["AUTH"] if "AUTH" in config else {}
     return {
         "exists": auth_exists,
         "auth_method": auth_method,
@@ -627,13 +695,26 @@ def _auth_config_payload() -> Dict[str, Any]:
         "save_auth_info": (
             str(settings.get("save_auth_info", "true")).lower() == "true" if hasattr(settings, "get") else True
         ),
-        "ids": dict(config["IDS_CREDENTIALS"]) if "IDS_CREDENTIALS" in config else {"username": "", "password": ""},
-        "chaoxing": (
-            dict(config["CHAOXING_CREDENTIALS"])
-            if "CHAOXING_CREDENTIALS" in config
-            else {"username": "", "password": ""}
-        ),
-        "cookies": dict(config["AUTH"]) if "AUTH" in config else {"_d": "", "UID": "", "vc3": ""},
+        "ids": {
+            "username": "",
+            "password": "",
+            "username_configured": bool(str(ids.get("username", "")).strip()),
+            "password_configured": bool(str(ids.get("password", "")).strip()),
+        },
+        "chaoxing": {
+            "username": "",
+            "password": "",
+            "username_configured": bool(str(chaoxing.get("username", "")).strip()),
+            "password_configured": bool(str(chaoxing.get("password", "")).strip()),
+        },
+        "cookies": {
+            "_d": "",
+            "UID": "",
+            "vc3": "",
+            "_d_configured": bool(str(cookies.get("_d", "")).strip()),
+            "UID_configured": bool(str(cookies.get("UID", "")).strip()),
+            "vc3_configured": bool(str(cookies.get("vc3", "")).strip()),
+        },
     }
 
 
@@ -645,6 +726,13 @@ def _replace_section(config: configparser.ConfigParser, section: str, values: Di
         config[section][key] = value
 
 
+def _payload_value_or_existing(values: Dict[str, Any], existing: Dict[str, str], key: str) -> str:
+    value = values.get(key)
+    if value is None:
+        return str(existing.get(key, ""))
+    return str(value)
+
+
 def _save_auth_payload(payload: Dict[str, Any]) -> None:
     auth_method = str(payload.get("auth_method", "ids"))
     if auth_method not in AUTH_METHOD_CHOICES:
@@ -652,6 +740,9 @@ def _save_auth_payload(payload: Dict[str, Any]) -> None:
     save_auth_info = bool(payload.get("save_auth_info", True))
 
     config = _read_auth_config()
+    existing_ids = dict(config["IDS_CREDENTIALS"]) if "IDS_CREDENTIALS" in config else {}
+    existing_chaoxing = dict(config["CHAOXING_CREDENTIALS"]) if "CHAOXING_CREDENTIALS" in config else {}
+    existing_auth = dict(config["AUTH"]) if "AUTH" in config else {}
     config["SETTINGS"] = {"auth_method": auth_method, "save_auth_info": str(save_auth_info)}
     for section in ("AUTH", "IDS_CREDENTIALS", "CHAOXING_CREDENTIALS"):
         if config.has_section(section):
@@ -662,23 +753,30 @@ def _save_auth_payload(payload: Dict[str, Any]) -> None:
         _replace_section(
             config,
             "IDS_CREDENTIALS",
-            {"username": str(ids.get("username", "")), "password": str(ids.get("password", ""))},
+            {
+                "username": _payload_value_or_existing(ids, existing_ids, "username"),
+                "password": _payload_value_or_existing(ids, existing_ids, "password"),
+            },
         )
     elif auth_method == "chaoxing":
         chaoxing = payload.get("chaoxing") or {}
         _replace_section(
             config,
             "CHAOXING_CREDENTIALS",
-            {"username": str(chaoxing.get("username", "")), "password": str(chaoxing.get("password", ""))},
+            {
+                "username": _payload_value_or_existing(chaoxing, existing_chaoxing, "username"),
+                "password": _payload_value_or_existing(chaoxing, existing_chaoxing, "password"),
+            },
         )
     elif auth_method in {"cookies", "chaoxing_qr"}:
         cookies = payload.get("cookies") or {}
-        auth_values = {key: str(cookies.get(key, "")) for key in REQUIRED_AUTH_COOKIES}
+        auth_values = {key: _payload_value_or_existing(cookies, existing_auth, key) for key in REQUIRED_AUTH_COOKIES}
         if not has_valid_auth_cookies(auth_values):
             raise ValueError("Cookie 信息不完整")
         _replace_section(config, "AUTH", auth_values)
 
     safe_write_config(config, AUTH_CONFIG_FILE, backup=True)
+    _set_auth_config_private_permissions()
     config_module._runtime_auth_cache = None
 
 
@@ -784,6 +882,7 @@ def _save_qr_cookies(cookies: Dict[str, str]) -> None:
     config["SETTINGS"] = {"auth_method": "chaoxing_qr", "save_auth_info": "True"}
     _replace_section(config, "AUTH", {key: cookies.get(key, "") for key in REQUIRED_AUTH_COOKIES})
     safe_write_config(config, AUTH_CONFIG_FILE, backup=True)
+    _set_auth_config_private_permissions()
     config_module._runtime_auth_cache = dict(cookies)
 
 
@@ -792,6 +891,11 @@ qr_jobs: Dict[str, QRLoginJob] = {}
 
 @app.before_request
 def require_webui_access() -> Optional[Response]:
+    try:
+        if not _client_ip_allowed(request.remote_addr):
+            return jsonify({"ok": False, "error": "当前客户端 IP 不允许访问 WebUI"}), 403
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
     if request.endpoint in {"index", "static", "webui_access_status", "webui_access_login"}:
         return None
     if not _webui_access_unlocked():
@@ -959,17 +1063,20 @@ def webui_access_status() -> Response:
 
 @app.route("/api/webui/access/login", methods=["POST"])
 def webui_access_login() -> Response:
-    config = _read_auth_config()
-    stored = _get_webui_password_hash(config)
-    if not stored:
-        session["webui_access_granted"] = True
-        return _json_ok(unlocked=True)
-    payload = _request_json()
-    password = str(payload.get("password", ""))
-    if _verify_webui_password(password, stored):
-        session["webui_access_granted"] = True
-        return _json_ok(unlocked=True)
-    return _json_error("密码错误", 401)
+    try:
+        config = _read_auth_config()
+        stored = _get_webui_password_hash(config)
+        if not stored:
+            session["webui_access_granted"] = True
+            return _json_ok(unlocked=True)
+        payload = _request_json(require_body=True)
+        password = str(payload.get("password", ""))
+        if _verify_webui_password(password, stored):
+            session["webui_access_granted"] = True
+            return _json_ok(unlocked=True)
+        return _json_error("密码错误", 401)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
 
 
 @app.route("/api/automation/config", methods=["GET"])
@@ -998,8 +1105,8 @@ def get_automation_config() -> Response:
 
 @app.route("/api/automation/config/init", methods=["POST"])
 def init_automation_config() -> Response:
-    payload = _request_json()
     try:
+        payload = _request_json(require_body=True)
         term_year, term_id = _default_term()
         config = _write_automation_config_from_scan(
             str(payload.get("uid", "")).strip(),
@@ -1014,11 +1121,11 @@ def init_automation_config() -> Response:
 
 @app.route("/api/automation/config/selection", methods=["POST"])
 def save_automation_selection() -> Response:
-    payload = _request_json()
     try:
+        payload = _request_json(require_body=True)
         selected = set(_selected_sections_from_payload(payload))
-    except ValueError:
-        return _json_error("课程选择格式无效", 400)
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
 
     try:
         config = _read_automation_config()
@@ -1032,9 +1139,9 @@ def save_automation_selection() -> Response:
 
 @app.route("/api/download/start", methods=["POST"])
 def start_download() -> Response:
-    payload = _request_json()
-    mode = str(payload.get("mode", "single"))
     try:
+        payload = _request_json(require_body=True)
+        mode = str(payload.get("mode", "single"))
         if mode == "single":
             job = _start_single_download_from_payload(payload)
         elif mode == "batch":
@@ -1118,8 +1225,8 @@ def get_auth_settings() -> Response:
 
 @app.route("/api/settings/auth", methods=["POST"])
 def save_auth_settings() -> Response:
-    payload = _request_json()
     try:
+        payload = _request_json(require_body=True)
         _save_auth_payload(payload)
         return _json_ok()
     except Exception as exc:
@@ -1137,11 +1244,11 @@ def get_webui_password_settings() -> Response:
 
 @app.route("/api/settings/webui-password", methods=["POST"])
 def save_webui_password_settings() -> Response:
-    payload = _request_json()
-    password = str(payload.get("password", ""))
-    confirm = str(payload.get("confirm", ""))
-    clear = bool(payload.get("clear", False))
     try:
+        payload = _request_json(require_body=True)
+        password = str(payload.get("password", ""))
+        confirm = str(payload.get("confirm", ""))
+        clear = bool(payload.get("clear", False))
         if not _webui_password_change_allowed():
             return _json_error("当前配置不允许从网页修改 WebUI 访问密码", 403)
         if clear:
@@ -1161,12 +1268,15 @@ def save_webui_password_settings() -> Response:
 
 @app.route("/api/settings/qr/start", methods=["POST"])
 def start_qr_login() -> Response:
-    payload = _request_json()
-    fid = str(payload.get("fid") or FID)
-    job = QRLoginJob(fid=fid)
-    qr_jobs[job.id] = job
-    job.start()
-    return _json_ok(id=job.id, image_url=_qr_image_url(job.id))
+    try:
+        payload = _request_json()
+        fid = str(payload.get("fid") or FID)
+        job = QRLoginJob(fid=fid)
+        qr_jobs[job.id] = job
+        job.start()
+        return _json_ok(id=job.id, image_url=_qr_image_url(job.id))
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
 
 
 @app.route("/api/settings/qr/<job_id>", methods=["GET"])
