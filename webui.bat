@@ -1,3 +1,3 @@
 @echo off
-python webui_app.py %*
+python WebUI.py %*
 pause
