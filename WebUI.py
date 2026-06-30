@@ -27,7 +27,7 @@ import webbrowser
 from argparse import ArgumentParser, Namespace
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from bs4 import BeautifulSoup
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory, session
@@ -65,6 +65,10 @@ logger = setup_logging("webui")
 APP_DIR = get_app_path()
 STATIC_DIR = APP_DIR / "webui" / "static"
 ALLOWED_MEDIA_SUFFIXES = {".mp4", ".ts", ".srt", ".vtt"}
+VIDEO_TYPE_CHOICES = {"both", "ppt", "teacher"}
+AUTH_METHOD_CHOICES = {"ids", "chaoxing", "chaoxing_qr", "cookies"}
+DOWNLOAD_ACTIVE_STATUSES = {"pending", "running"}
+QR_CANCELLABLE_STATUSES = {"pending", "waiting"}
 DEFAULT_WEBUI_HOST = "0.0.0.0"
 DEFAULT_WEBUI_PORT = 5050
 PORT_SCAN_LIMIT = 100
@@ -183,6 +187,14 @@ def _json_error(message: str, status: int = 400) -> Tuple[Response, int]:
     return jsonify({"ok": False, "error": message}), status
 
 
+def _json_ok(**payload: Any) -> Response:
+    return jsonify({"ok": True, **payload})
+
+
+def _request_json() -> Any:
+    return request.get_json(silent=True) or {}
+
+
 def _default_term() -> Tuple[int, int]:
     now = time.localtime()
     term_year = now.tm_year
@@ -210,39 +222,84 @@ def _config_to_courses(config: configparser.ConfigParser) -> List[Dict[str, str]
     return courses
 
 
+def _automation_defaults(user_id: str, term_year: int, term_id: int, video_type: str) -> Dict[str, str]:
+    return {
+        "user_id": user_id,
+        "term_year": str(term_year),
+        "term_id": str(term_id),
+        "video_type": video_type,
+    }
+
+
+def _automation_config_payload(config: configparser.ConfigParser, term_year: int, term_id: int) -> Dict[str, Any]:
+    default = config["DEFAULT"]
+    return {
+        "exists": True,
+        "defaults": {
+            "user_id": default.get("user_id", ""),
+            "term_year": default.get("term_year", str(term_year)),
+            "term_id": default.get("term_id", str(term_id)),
+            "video_type": default.get("video_type", "both"),
+        },
+        "courses": _config_to_courses(config),
+    }
+
+
+def _validate_scan_params(user_id: str, term_year: int, term_id: int, video_type: str) -> None:
+    if not validate_user_id(user_id):
+        raise ValueError("用户 ID 格式无效")
+    if not validate_term_params(term_year, term_id):
+        raise ValueError("学期参数无效")
+    if video_type not in VIDEO_TYPE_CHOICES:
+        raise ValueError("视频类型无效")
+
+
+def _course_config_section(course: Dict[str, Any], download: str = "yes") -> Dict[str, str]:
+    return {
+        "course_code": str(course.get("courseCode", "")),
+        "course_name": remove_invalid_chars(str(course.get("courseName", ""))),
+        "live_id": str(course.get("id", "")),
+        "download": download,
+    }
+
+
 def _read_automation_config() -> configparser.ConfigParser:
     return safe_read_config(AUTOMATION_CONFIG_FILE)
+
+
+def _auth_config_exists() -> bool:
+    return Path(AUTH_CONFIG_FILE).exists()
+
+
+def _download_stream_url(job_id: str) -> str:
+    return f"/api/download/jobs/{job_id}/stream"
+
+
+def _qr_image_url(job_id: str) -> str:
+    return f"/api/settings/qr/{job_id}/image"
+
+
+def _selected_sections_from_payload(payload: Dict[str, Any]) -> List[str]:
+    selected_sections = payload.get("selected_sections") or []
+    if not isinstance(selected_sections, list):
+        raise ValueError("课程选择格式无效")
+    return [str(section) for section in selected_sections]
 
 
 def _write_automation_config_from_scan(
     user_id: str, term_year: int, term_id: int, video_type: str
 ) -> configparser.ConfigParser:
-    if not validate_user_id(user_id):
-        raise ValueError("用户 ID 格式无效")
-    if not validate_term_params(term_year, term_id):
-        raise ValueError("学期参数无效")
-    if video_type not in {"both", "ppt", "teacher"}:
-        raise ValueError("视频类型无效")
+    _validate_scan_params(user_id, term_year, term_id, video_type)
 
     courses = scan_courses(user_id, term_year, term_id)
     if not courses:
         raise ValueError("没有找到任何课程，请检查用户 ID 和学期参数")
 
     config = configparser.ConfigParser()
-    config["DEFAULT"] = {
-        "user_id": user_id,
-        "term_year": str(term_year),
-        "term_id": str(term_id),
-        "video_type": video_type,
-    }
+    config["DEFAULT"] = _automation_defaults(user_id, term_year, term_id, video_type)
     for course_id, course in courses.items():
         section_name = str(course_id)
-        config[section_name] = {
-            "course_code": str(course.get("courseCode", "")),
-            "course_name": remove_invalid_chars(str(course.get("courseName", ""))),
-            "live_id": str(course.get("id", "")),
-            "download": "yes",
-        }
+        config[section_name] = _course_config_section(course)
     safe_write_config(config, AUTOMATION_CONFIG_FILE)
     return config
 
@@ -250,12 +307,7 @@ def _write_automation_config_from_scan(
 def _refresh_automation_config(
     base_config: configparser.ConfigParser, user_id: str, term_year: int, term_id: int, video_type: str
 ) -> configparser.ConfigParser:
-    if not validate_user_id(user_id):
-        raise ValueError("用户 ID 格式无效")
-    if not validate_term_params(term_year, term_id):
-        raise ValueError("学期参数无效")
-    if video_type not in {"both", "ppt", "teacher"}:
-        raise ValueError("视频类型无效")
+    _validate_scan_params(user_id, term_year, term_id, video_type)
 
     courses = scan_courses(user_id, term_year, term_id)
     if not courses:
@@ -263,21 +315,11 @@ def _refresh_automation_config(
 
     existing = {name: dict(base_config[name]) for name in base_config.sections()}
     new_config = configparser.ConfigParser()
-    new_config["DEFAULT"] = {
-        "user_id": user_id,
-        "term_year": str(term_year),
-        "term_id": str(term_id),
-        "video_type": video_type,
-    }
+    new_config["DEFAULT"] = _automation_defaults(user_id, term_year, term_id, video_type)
     for course_id, course in courses.items():
         section_name = str(course_id)
         old = existing.get(section_name, {})
-        new_config[section_name] = {
-            "course_code": str(course.get("courseCode", "")),
-            "course_name": remove_invalid_chars(str(course.get("courseName", ""))),
-            "live_id": str(course.get("id", "")),
-            "download": old.get("download", "yes"),
-        }
+        new_config[section_name] = _course_config_section(course, old.get("download", "yes"))
     safe_write_config(new_config, AUTOMATION_CONFIG_FILE)
     return new_config
 
@@ -375,7 +417,7 @@ class DownloadJobManager:
         with self._lock:
             if self._active_job_id:
                 active = self._jobs.get(self._active_job_id)
-                if active and active.status in {"pending", "running"}:
+                if active and active.status in DOWNLOAD_ACTIVE_STATUSES:
                     raise RuntimeError("已有下载任务正在运行")
                 self._active_job_id = None
             job = DownloadJob(target, args)
@@ -392,7 +434,7 @@ class DownloadJobManager:
             if not self._active_job_id:
                 return None
             job = self._jobs.get(self._active_job_id)
-            if job and job.status in {"pending", "running"}:
+            if job and job.status in DOWNLOAD_ACTIVE_STATUSES:
                 return job
             return None
 
@@ -423,9 +465,31 @@ def _run_batch_download(selected_sections: Iterable[str], video_type: str) -> bo
     return process_all_courses(runtime_config, video_type)
 
 
+def _start_single_download_from_payload(payload: Dict[str, Any]) -> DownloadJob:
+    live_id = str(payload.get("live_id", "")).strip()
+    single = int(payload.get("single", 0))
+    video_type = str(payload.get("video_type", "both"))
+    validate_download_parameters(live_id, single, video_type)
+    skip_weeks = str(payload.get("skip_weeks", "")).strip()
+    if skip_weeks:
+        parse_week_ranges(skip_weeks)
+    merge = bool(payload.get("merge", True))
+    return jobs.start(_run_single_download, (live_id, single, merge, video_type, skip_weeks))
+
+
+def _start_batch_download_from_payload(payload: Dict[str, Any]) -> DownloadJob:
+    selected_sections = _selected_sections_from_payload(payload)
+    if not selected_sections:
+        raise ValueError("请至少选择一门课程")
+    video_type = str(payload.get("video_type", "both"))
+    if video_type not in VIDEO_TYPE_CHOICES:
+        raise ValueError("视频类型无效")
+    return jobs.start(_run_batch_download, (selected_sections, video_type))
+
+
 def _read_auth_config() -> CaseSensitiveConfigParser:
     config = CaseSensitiveConfigParser(interpolation=None)
-    if Path(AUTH_CONFIG_FILE).exists():
+    if _auth_config_exists():
         config.read(AUTH_CONFIG_FILE, encoding="utf-8")
     return config
 
@@ -553,9 +617,10 @@ def _auth_config_payload() -> Dict[str, Any]:
     config = _read_auth_config()
     settings = config["SETTINGS"] if "SETTINGS" in config else {}
     auth_method = settings.get("auth_method", "ids") if hasattr(settings, "get") else "ids"
-    auth_ready = Path(AUTH_CONFIG_FILE).exists() and _has_usable_auth(config, auth_method)
+    auth_exists = _auth_config_exists()
+    auth_ready = auth_exists and _has_usable_auth(config, auth_method)
     return {
-        "exists": Path(AUTH_CONFIG_FILE).exists(),
+        "exists": auth_exists,
         "auth_method": auth_method,
         "auth_ready": auth_ready,
         "uid": _auth_uid(config, auth_method),
@@ -582,7 +647,7 @@ def _replace_section(config: configparser.ConfigParser, section: str, values: Di
 
 def _save_auth_payload(payload: Dict[str, Any]) -> None:
     auth_method = str(payload.get("auth_method", "ids"))
-    if auth_method not in {"ids", "chaoxing", "chaoxing_qr", "cookies"}:
+    if auth_method not in AUTH_METHOD_CHOICES:
         raise ValueError("认证方式无效")
     save_auth_info = bool(payload.get("save_auth_info", True))
 
@@ -634,7 +699,7 @@ class QRLoginJob:
 
     def cancel(self) -> None:
         self.cancelled.set()
-        if self.status in {"pending", "waiting"}:
+        if self.status in QR_CANCELLABLE_STATUSES:
             self.status = "cancelled"
             self.message = "二维码登录已取消"
 
@@ -883,13 +948,13 @@ def index() -> Response:
 
 @app.route("/api/app/info", methods=["GET"])
 def app_info() -> Response:
-    return jsonify({"ok": True, **_app_info_payload()})
+    return _json_ok(**_app_info_payload())
 
 
 @app.route("/api/webui/access/status", methods=["GET"])
 def webui_access_status() -> Response:
     enabled = _webui_password_enabled()
-    return jsonify({"ok": True, "enabled": enabled, "unlocked": not enabled or bool(session.get("webui_access_granted"))})
+    return _json_ok(enabled=enabled, unlocked=not enabled or bool(session.get("webui_access_granted")))
 
 
 @app.route("/api/webui/access/login", methods=["POST"])
@@ -898,12 +963,12 @@ def webui_access_login() -> Response:
     stored = _get_webui_password_hash(config)
     if not stored:
         session["webui_access_granted"] = True
-        return jsonify({"ok": True, "unlocked": True})
-    payload = request.get_json(silent=True) or {}
+        return _json_ok(unlocked=True)
+    payload = _request_json()
     password = str(payload.get("password", ""))
     if _verify_webui_password(password, stored):
         session["webui_access_granted"] = True
-        return jsonify({"ok": True, "unlocked": True})
+        return _json_ok(unlocked=True)
     return _json_error("密码错误", 401)
 
 
@@ -912,13 +977,10 @@ def get_automation_config() -> Response:
     term_year, term_id = _default_term()
     path = Path(AUTOMATION_CONFIG_FILE)
     if not path.exists():
-        return jsonify(
-            {
-                "ok": True,
-                "exists": False,
-                "defaults": {"term_year": term_year, "term_id": term_id, "video_type": "both"},
-                "courses": [],
-            }
+        return _json_ok(
+            exists=False,
+            defaults={"term_year": term_year, "term_id": term_id, "video_type": "both"},
+            courses=[],
         )
 
     try:
@@ -929,27 +991,14 @@ def get_automation_config() -> Response:
             refresh_term = int(request.args.get("term") or config["DEFAULT"].get("term_id", term_id))
             video_type = request.args.get("video_type") or config["DEFAULT"].get("video_type", "both")
             config = _refresh_automation_config(config, user_id, refresh_year, refresh_term, video_type)
-        default = config["DEFAULT"]
-        return jsonify(
-            {
-                "ok": True,
-                "exists": True,
-                "defaults": {
-                    "user_id": default.get("user_id", ""),
-                    "term_year": default.get("term_year", str(term_year)),
-                    "term_id": default.get("term_id", str(term_id)),
-                    "video_type": default.get("video_type", "both"),
-                },
-                "courses": _config_to_courses(config),
-            }
-        )
+        return _json_ok(**_automation_config_payload(config, term_year, term_id))
     except Exception as exc:
         return _json_error(str(exc), 500)
 
 
 @app.route("/api/automation/config/init", methods=["POST"])
 def init_automation_config() -> Response:
-    payload = request.get_json(silent=True) or {}
+    payload = _request_json()
     try:
         term_year, term_id = _default_term()
         config = _write_automation_config_from_scan(
@@ -958,57 +1007,41 @@ def init_automation_config() -> Response:
             int(payload.get("term") or term_id),
             str(payload.get("video_type") or "both"),
         )
-        return jsonify({"ok": True, "exists": True, "courses": _config_to_courses(config)})
+        return _json_ok(exists=True, courses=_config_to_courses(config))
     except Exception as exc:
         return _json_error(str(exc), 400)
 
 
 @app.route("/api/automation/config/selection", methods=["POST"])
 def save_automation_selection() -> Response:
-    payload = request.get_json(silent=True) or {}
-    selected_sections = payload.get("selected_sections") or []
-    if not isinstance(selected_sections, list):
+    payload = _request_json()
+    try:
+        selected = set(_selected_sections_from_payload(payload))
+    except ValueError:
         return _json_error("课程选择格式无效", 400)
 
     try:
         config = _read_automation_config()
-        selected = {str(section) for section in selected_sections}
         for section_name in config.sections():
             config[section_name]["download"] = "yes" if section_name in selected else "no"
         safe_write_config(config, AUTOMATION_CONFIG_FILE, backup=True)
-        return jsonify({"ok": True, "courses": _config_to_courses(config)})
+        return _json_ok(courses=_config_to_courses(config))
     except Exception as exc:
         return _json_error(str(exc), 400)
 
 
 @app.route("/api/download/start", methods=["POST"])
 def start_download() -> Response:
-    payload = request.get_json(silent=True) or {}
+    payload = _request_json()
     mode = str(payload.get("mode", "single"))
     try:
         if mode == "single":
-            live_id = str(payload.get("live_id", "")).strip()
-            single = int(payload.get("single", 0))
-            video_type = str(payload.get("video_type", "both"))
-            validate_download_parameters(live_id, single, video_type)
-            skip_weeks = str(payload.get("skip_weeks", "")).strip()
-            if skip_weeks:
-                parse_week_ranges(skip_weeks)
-            merge = bool(payload.get("merge", True))
-            job = jobs.start(_run_single_download, (live_id, single, merge, video_type, skip_weeks))
+            job = _start_single_download_from_payload(payload)
         elif mode == "batch":
-            selected_sections = payload.get("selected_sections") or []
-            if not isinstance(selected_sections, list):
-                raise ValueError("课程选择格式无效")
-            if not selected_sections:
-                raise ValueError("请至少选择一门课程")
-            video_type = str(payload.get("video_type", "both"))
-            if video_type not in {"both", "ppt", "teacher"}:
-                raise ValueError("视频类型无效")
-            job = jobs.start(_run_batch_download, (selected_sections, video_type))
+            job = _start_batch_download_from_payload(payload)
         else:
             raise ValueError("下载模式无效")
-        return jsonify({"ok": True, "job_id": job.id, "stream_url": f"/api/download/jobs/{job.id}/stream"})
+        return _json_ok(job_id=job.id, stream_url=_download_stream_url(job.id))
     except Exception as exc:
         return _json_error(str(exc), 400)
 
@@ -1024,11 +1057,11 @@ def stream_download_job(job_id: str) -> Response:
         index = 0
         while True:
             with job.condition:
-                if index >= len(job.history) and job.status in {"pending", "running"}:
+                if index >= len(job.history) and job.status in DOWNLOAD_ACTIVE_STATUSES:
                     job.condition.wait(timeout=1)
                 items = job.history[index:]
                 index = len(job.history)
-                done = job.status not in {"pending", "running"}
+                done = job.status not in DOWNLOAD_ACTIVE_STATUSES
 
             for item in items:
                 yield "data: " + json.dumps({"text": item}, ensure_ascii=False) + "\n\n"
@@ -1046,22 +1079,19 @@ def stream_download_job(job_id: str) -> Response:
 def active_download_job() -> Response:
     job = jobs.active()
     if not job:
-        return jsonify({"ok": True, "active": False})
-    return jsonify(
-        {
-            "ok": True,
-            "active": True,
-            "job_id": job.id,
-            "status": job.status,
-            "stream_url": f"/api/download/jobs/{job.id}/stream",
-        }
+        return _json_ok(active=False)
+    return _json_ok(
+        active=True,
+        job_id=job.id,
+        status=job.status,
+        stream_url=_download_stream_url(job.id),
     )
 
 
 @app.route("/api/library", methods=["GET"])
 def library() -> Response:
     try:
-        return jsonify({"ok": True, **_index_local_library()})
+        return _json_ok(**_index_local_library())
     except Exception as exc:
         return _json_error(str(exc), 500)
 
@@ -1081,17 +1111,17 @@ def media(relative_path: str) -> Response:
 @app.route("/api/settings/auth", methods=["GET"])
 def get_auth_settings() -> Response:
     try:
-        return jsonify({"ok": True, **_auth_config_payload()})
+        return _json_ok(**_auth_config_payload())
     except Exception as exc:
         return _json_error(str(exc), 500)
 
 
 @app.route("/api/settings/auth", methods=["POST"])
 def save_auth_settings() -> Response:
-    payload = request.get_json(silent=True) or {}
+    payload = _request_json()
     try:
         _save_auth_payload(payload)
-        return jsonify({"ok": True})
+        return _json_ok()
     except Exception as exc:
         return _json_error(str(exc), 400)
 
@@ -1099,18 +1129,15 @@ def save_auth_settings() -> Response:
 @app.route("/api/settings/webui-password", methods=["GET"])
 def get_webui_password_settings() -> Response:
     config = _read_auth_config()
-    return jsonify(
-        {
-            "ok": True,
-            "enabled": bool(_get_webui_password_hash(config)),
-            "allow_password_change": _webui_password_change_allowed(config),
-        }
+    return _json_ok(
+        enabled=bool(_get_webui_password_hash(config)),
+        allow_password_change=_webui_password_change_allowed(config),
     )
 
 
 @app.route("/api/settings/webui-password", methods=["POST"])
 def save_webui_password_settings() -> Response:
-    payload = request.get_json(silent=True) or {}
+    payload = _request_json()
     password = str(payload.get("password", ""))
     confirm = str(payload.get("confirm", ""))
     clear = bool(payload.get("clear", False))
@@ -1120,26 +1147,26 @@ def save_webui_password_settings() -> Response:
         if clear:
             enabled = _save_webui_password("")
             session.pop("webui_access_granted", None)
-            return jsonify({"ok": True, "enabled": enabled})
+            return _json_ok(enabled=enabled)
         if not password:
             raise ValueError("请输入 WebUI 访问密码")
         if password != confirm:
             raise ValueError("两次输入的密码不一致")
         enabled = _save_webui_password(password)
         session["webui_access_granted"] = True
-        return jsonify({"ok": True, "enabled": enabled})
+        return _json_ok(enabled=enabled)
     except Exception as exc:
         return _json_error(str(exc), 400)
 
 
 @app.route("/api/settings/qr/start", methods=["POST"])
 def start_qr_login() -> Response:
-    payload = request.get_json(silent=True) or {}
+    payload = _request_json()
     fid = str(payload.get("fid") or FID)
     job = QRLoginJob(fid=fid)
     qr_jobs[job.id] = job
     job.start()
-    return jsonify({"ok": True, "id": job.id, "image_url": f"/api/settings/qr/{job.id}/image"})
+    return _json_ok(id=job.id, image_url=_qr_image_url(job.id))
 
 
 @app.route("/api/settings/qr/<job_id>", methods=["GET"])
@@ -1147,7 +1174,7 @@ def qr_status(job_id: str) -> Response:
     job = qr_jobs.get(job_id)
     if not job:
         return _json_error("二维码任务不存在", 404)
-    return jsonify({"ok": True, "status": job.status, "message": job.message, "error": job.error})
+    return _json_ok(status=job.status, message=job.message, error=job.error)
 
 
 @app.route("/api/settings/qr/<job_id>/cancel", methods=["POST"])
@@ -1155,7 +1182,7 @@ def cancel_qr_login(job_id: str) -> Response:
     job = qr_jobs.get(job_id)
     if job:
         job.cancel()
-    return jsonify({"ok": True})
+    return _json_ok()
 
 
 @app.route("/api/settings/qr/<job_id>/image", methods=["GET"])
