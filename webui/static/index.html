@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XDUClassVideoDownloader WebUI</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="access-checking">
+  <div id="accessGate" class="access-gate hidden">
+    <form id="accessForm" class="access-card">
+      <h1>WebUI 访问密码</h1>
+      <label>
+        密码
+        <input id="accessPassword" type="password" autocomplete="current-password" autofocus>
+      </label>
+      <button class="primary-btn" type="submit">进入</button>
+      <div id="accessError" class="access-error hidden"></div>
+    </form>
+  </div>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <button id="menuToggle" class="menu-toggle" aria-label="展开或折叠菜单" title="展开或折叠菜单">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <nav class="nav">
+        <button class="nav-item active" data-page="download" title="下载">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 20h14"/></svg>
+          </span>
+          <span class="nav-label">下载</span>
+        </button>
+        <button class="nav-item" data-page="viewer" title="查看">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M7 5.5v13l11-6.5-11-6.5Z"/></svg>
+          </span>
+          <span class="nav-label">查看</span>
+        </button>
+        <button class="nav-item" data-page="settings" title="设置">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z"/><path d="M19 12a7.4 7.4 0 0 0-.08-1.07l2.08-1.6-2-3.46-2.52 1a7.2 7.2 0 0 0-1.86-1.08L14.25 3h-4.5l-.37 2.79a7.2 7.2 0 0 0-1.86 1.08l-2.52-1-2 3.46 2.08 1.6a7.47 7.47 0 0 0 0 2.14L3 14.67l2 3.46 2.52-1c.56.45 1.19.82 1.86 1.08l.37 2.79h4.5l.37-2.79a7.2 7.2 0 0 0 1.86-1.08l2.52 1 2-3.46-2.08-1.6c.05-.35.08-.71.08-1.07Z"/></svg>
+          </span>
+          <span class="nav-label">设置</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="title-row">
+            <h1>XDUClassVideoDownloader WebUI</h1>
+            <span id="versionBadge" class="version-badge">v--</span>
+          </div>
+          <p id="pageHint">欢迎使用！如有问题请联系作者。</p>
+          <a id="updateNotice" class="update-notice hidden" href="https://github.com/lsy223622/XDUClassVideoDownloader/releases" target="_blank" rel="noreferrer"></a>
+        </div>
+        <div id="globalStatus" class="status-dot">空闲</div>
+      </header>
+
+      <section id="downloadPage" class="page active">
+        <div class="grid two-col">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>单课程下载</h2>
+            </div>
+            <div class="form-grid">
+              <label>
+                LiveID
+                <input id="singleLiveId" type="text" inputmode="numeric" placeholder="请输入课程 LiveID">
+              </label>
+              <label>
+                下载模式
+                <select id="singleMode">
+                  <option value="0">全部视频</option>
+                  <option value="1">单节课</option>
+                  <option value="2">半节课</option>
+                </select>
+              </label>
+              <label>
+                视频类型
+                <select id="singleVideoType">
+                  <option value="both">两种都下载</option>
+                  <option value="ppt">仅 pptVideo</option>
+                  <option value="teacher">仅 teacherTrack</option>
+                </select>
+              </label>
+              <label>
+                跳过周数（可选）
+                <input id="singleSkipWeeks" type="text" placeholder="如 1-3,7,9-11">
+              </label>
+              <label class="check-row">
+                <input id="singleMerge" type="checkbox" checked>
+                <span>自动合并相邻节次</span>
+              </label>
+            </div>
+            <button id="startSingle" class="primary-btn">开启单课程下载</button>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>批量下载</h2>
+              <div class="inline-actions">
+                <button id="reloadAutomation" class="ghost-btn">读取配置</button>
+                <button id="refreshAutomation" class="ghost-btn">刷新课程</button>
+              </div>
+            </div>
+            <div id="automationMissing" class="hidden">
+              <div class="notice">未找到 automation_config.ini。请填写信息扫描课程并生成配置。</div>
+              <div class="form-grid compact">
+                <label>
+                  用户 ID
+                  <input id="batchUid" type="text" inputmode="numeric" placeholder="请输入 UID">
+                </label>
+                <label>
+                  学年
+                  <input id="batchYear" type="number">
+                </label>
+                <label>
+                  学期
+                  <select id="batchTerm">
+                    <option value="1">第一学期</option>
+                    <option value="2">第二学期</option>
+                  </select>
+                </label>
+                <label>
+                  视频类型
+                  <select id="batchInitVideoType">
+                    <option value="both">两种都下载</option>
+                    <option value="ppt">仅 pptVideo</option>
+                    <option value="teacher">仅 teacherTrack</option>
+                  </select>
+                </label>
+              </div>
+              <div class="button-with-loader">
+                <button id="initAutomation" class="secondary-btn">生成 automation_config.ini</button>
+                <span id="initAutomationSpinner" class="spinner hidden" aria-hidden="true"></span>
+              </div>
+            </div>
+
+            <div id="automationReady" class="hidden">
+              <div class="batch-toolbar">
+                <label>
+                  本次视频类型
+                  <select id="batchVideoType">
+                    <option value="both">两种都下载</option>
+                    <option value="ppt">仅 pptVideo</option>
+                    <option value="teacher">仅 teacherTrack</option>
+                  </select>
+                </label>
+                <div class="inline-actions">
+                  <button id="selectAllCourses" class="ghost-btn">全选</button>
+                  <button id="selectNoCourses" class="ghost-btn">全不选</button>
+                </div>
+              </div>
+              <div id="courseList" class="course-list"></div>
+              <div class="batch-footer">
+                <button id="startBatch" class="primary-btn">开启批量下载</button>
+                <button id="saveCourseSelection" class="secondary-btn">保存当前选择到配置文件</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel terminal-panel">
+          <div class="panel-header">
+            <div class="terminal-title">
+              <h2>命令行输出</h2>
+              <span id="streamIndicator" class="stream-indicator" title="输出流状态"></span>
+            </div>
+            <button id="clearOutput" class="ghost-btn">清空</button>
+          </div>
+          <pre id="terminalOutput" class="terminal">等待任务启动...</pre>
+        </section>
+      </section>
+
+      <section id="viewerPage" class="page">
+        <div class="viewer-layout">
+          <section class="panel library-panel">
+            <div class="panel-header">
+              <h2>课程与节次</h2>
+              <button id="reloadLibrary" class="ghost-btn">刷新</button>
+            </div>
+            <div id="libraryList" class="library-list"></div>
+          </section>
+          <section class="panel player-panel">
+            <div class="panel-header">
+              <h2 id="viewerTitle">请选择一节课</h2>
+              <button id="maximizePlayer" class="icon-btn" title="最大化视频块" aria-label="最大化视频块">
+                <svg class="expand-icon" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5"/></svg>
+                <svg class="collapse-icon" viewBox="0 0 24 24"><path d="M4 9h5V4M20 9h-5V4M9 20v-5H4M15 20v-5h5"/></svg>
+              </button>
+            </div>
+            <div id="videoGrid" class="video-grid"></div>
+            <div class="player-controls">
+              <div class="player-buttons">
+                <button id="playerPlayPause" class="icon-btn control-icon-btn" title="播放/暂停" aria-label="播放/暂停">
+                  <svg class="play-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7-11-7Z"/></svg>
+                  <svg class="pause-icon" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+                </button>
+                <button id="playerMute" class="icon-btn control-icon-btn" title="静音/取消静音" aria-label="静音/取消静音">
+                  <svg class="volume-icon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16 9.5a4 4 0 0 1 0 5"/><path d="M18.5 7a7 7 0 0 1 0 10"/></svg>
+                  <svg class="muted-icon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="m20 9.5-5 5m0-5 5 5"/></svg>
+                </button>
+                <div class="control-menu-wrap">
+                  <button id="playbackSpeedSettings" class="icon-btn control-icon-btn text-icon-btn" title="播放速度" aria-label="播放速度">1x</button>
+                  <div id="playbackSpeedMenu" class="control-popover hidden">
+                    <div class="control-row">
+                      <label for="playbackSpeedInput">播放速度</label>
+                      <input id="playbackSpeedInput" type="number" min="0.25" max="4" step="0.05" value="1">
+                    </div>
+                    <div class="range-wrap">
+                      <input id="playbackSpeedRange" type="range" min="0.5" max="3" step="0.05" value="1" data-default-value="1">
+                      <span class="range-default-dot" aria-hidden="true"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="control-menu-wrap">
+                  <button id="videoOffsetSettings" class="icon-btn control-icon-btn" title="视频时间偏移" aria-label="视频时间偏移">
+                    <svg viewBox="0 0 24 24"><path d="M12 6v6l4 2"/><path d="M21 12a9 9 0 1 1-3.2-6.9"/><path d="M21 3v6h-6"/></svg>
+                  </button>
+                  <div id="videoOffsetMenu" class="control-popover hidden">
+                    <div class="control-row">
+                      <label for="pptOffsetInput">PPT 偏移（秒）</label>
+                      <input id="pptOffsetInput" type="number" step="0.01" value="0">
+                    </div>
+                    <div class="range-wrap">
+                      <input id="pptOffsetRange" type="range" min="-10" max="10" step="0.1" value="0" data-default-value="0">
+                      <span class="range-default-dot" aria-hidden="true"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="control-menu-wrap">
+                  <button id="subtitleSettings" class="icon-btn control-icon-btn" title="字幕设置" aria-label="字幕设置">
+                    <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M12 5v4M8 15v4"/></svg>
+                  </button>
+                  <div id="subtitleSettingsMenu" class="control-popover hidden">
+                    <div class="control-row">
+                    <label for="subtitleOffsetInput">字幕偏移（秒）</label>
+                      <input id="subtitleOffsetInput" type="number" step="0.01" value="0">
+                    </div>
+                    <div class="range-wrap">
+                      <input id="subtitleOffsetRange" type="range" min="-10" max="10" step="0.1" value="0" data-default-value="0">
+                      <span class="range-default-dot" aria-hidden="true"></span>
+                    </div>
+                    <div class="control-row">
+                      <label for="subtitleFontInput">字号（px）</label>
+                      <div class="input-with-prefix">
+                        <button id="subtitleBoldToggle" class="bold-toggle" type="button" title="粗体" aria-label="粗体">B</button>
+                        <input id="subtitleFontInput" type="number" min="10" max="72" step="1" value="18">
+                      </div>
+                    </div>
+                    <div class="range-wrap">
+                      <input id="subtitleFontRange" type="range" min="12" max="36" step="1" value="18" data-default-value="18">
+                      <span class="range-default-dot" aria-hidden="true"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="player-progress">
+                <span id="playerCurrentTime">0:00</span>
+                <input id="playerProgress" type="range" min="0" max="1000" step="1" value="0">
+                <span id="playerDuration">0:00</span>
+              </div>
+            </div>
+            <div class="subtitle-panel">
+              <div id="subtitleBlock" class="subtitle-block">字幕将在这里显示</div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="settingsPage" class="page">
+        <div id="initialSetupGuide" class="notice setup-guide hidden">
+          尚未检测到可用的登录信息。请选择一种登录方式完成初始设置，推荐使用右侧的“学在西电扫码登录”，点击“生成二维码”后用学在西电 App 扫码确认。
+        </div>
+        <div class="grid two-col">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>登录配置</h2>
+              <button id="reloadAuth" class="ghost-btn">重新读取</button>
+            </div>
+            <div class="form-grid">
+              <label>
+                认证方式
+                <select id="authMethod">
+                  <option value="ids">统一身份认证</option>
+                  <option value="chaoxing">超星账号密码</option>
+                  <option value="cookies">手动 Cookie</option>
+                  <option value="chaoxing_qr">学在西电扫码登录</option>
+                </select>
+              </label>
+              <label class="check-row">
+                <input id="saveAuthInfo" type="checkbox" checked>
+                <span>保存认证信息</span>
+              </label>
+            </div>
+            <div class="auth-block" data-auth-block="ids">
+              <label>学号 <input id="idsUsername" type="text"></label>
+              <label>密码 <input id="idsPassword" type="password"></label>
+            </div>
+            <div class="auth-block hidden" data-auth-block="chaoxing">
+              <label>用户名 <input id="chaoxingUsername" type="text"></label>
+              <label>密码 <input id="chaoxingPassword" type="password"></label>
+            </div>
+            <div class="auth-block hidden" data-auth-block="cookies">
+              <label>_d <input id="cookieD" type="text"></label>
+              <label>UID <input id="cookieUid" type="text"></label>
+              <label>vc3 <input id="cookieVc3" type="text"></label>
+            </div>
+            <button id="saveAuth" class="primary-btn">保存登录配置</button>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>学在西电扫码登录</h2>
+            </div>
+            <button id="startQr" class="secondary-btn">生成二维码</button>
+            <div id="qrBox" class="qr-box hidden">
+              <div id="qrLoading" class="qr-placeholder hidden" aria-live="polite">
+                <span class="spinner" aria-hidden="true"></span>
+              </div>
+              <img id="qrImage" class="hidden" alt="二维码">
+              <div id="qrStatus" class="notice">等待扫码</div>
+            </div>
+          </section>
+
+          <section id="webuiPasswordPanel" class="panel">
+            <div class="panel-header">
+              <h2>WebUI 访问密码</h2>
+              <span id="webuiPasswordState" class="muted-text">未设置</span>
+            </div>
+            <div class="form-grid">
+              <label>
+                新密码
+                <input id="webuiPassword" type="password" autocomplete="new-password" placeholder="留空不保存">
+              </label>
+              <label>
+                确认密码
+                <input id="webuiPasswordConfirm" type="password" autocomplete="new-password">
+              </label>
+            </div>
+            <div class="inline-actions">
+              <button id="saveWebuiPassword" class="primary-btn" type="button">保存访问密码</button>
+              <button id="clearWebuiPassword" class="ghost-btn" type="button">清除密码</button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

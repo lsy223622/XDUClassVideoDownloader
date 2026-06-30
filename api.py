@@ -59,6 +59,9 @@ logger = setup_logging("api")
 # 版本和平台配置
 VERSION = "4.3.0"
 FID = "16820"
+RELEASES_URL = "https://github.com/lsy223622/XDUClassVideoDownloader/releases"
+DEFAULT_UPDATE_MESSAGE = "欢迎使用！如有问题请联系作者。"
+UPDATE_CHECK_FAILED_MESSAGE = "欢迎使用！如有问题请联系作者。检查更新失败。"
 
 # HTTP 请求配置
 REQUEST_TIMEOUT = 30  # 请求超时时间（秒）
@@ -73,6 +76,7 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 
 # 上次请求时间，用于频率控制
 _last_request_time = 0
+_last_update_info: Optional[Dict[str, Any]] = None
 
 # ============================================================================
 # IDS（统一身份认证）相关常量
@@ -1427,17 +1431,26 @@ def compare_versions(v1: str, v2: str) -> int:
         return 0  # 比较失败时认为相等
 
 
-def check_update() -> bool:
+def fetch_update_info() -> Dict[str, Any]:
     """
-    检查软件是否有新版本可用，包含更好的错误处理和用户体验。
+    获取结构化更新检查结果，供 CLI 打印和 WebUI 展示共用。
 
-    返回:
-        bool: 当前版本是否允许继续运行。检查失败或旧版 API 未返回最低版本时默认允许运行。
+    返回的 allow_start 在检查失败时为 True，保持现有“检查失败不影响主功能”的行为。
     """
-    print("正在检查更新...", end="", flush=True)
+    info: Dict[str, Any] = {
+        "ok": False,
+        "allow_start": True,
+        "current_version": VERSION,
+        "latest_version": None,
+        "min_version": None,
+        "update_available": False,
+        "message": UPDATE_CHECK_FAILED_MESSAGE,
+        "releases_url": RELEASES_URL,
+        "error": None,
+        "error_kind": None,
+    }
 
     try:
-        # 向API服务器请求最新版本信息
         session = create_session()
         url = f"https://api.lsy223622.com/xcvd.php?version={VERSION}"
         logger.debug(f"GET {url}")
@@ -1448,59 +1461,122 @@ def check_update() -> bool:
             data = response.json()
         except json.JSONDecodeError:
             logger.warning("版本检查响应不是有效的 JSON 格式")
-            print("\r检查更新失败：服务器响应格式错误")
+            info["error"] = "服务器响应格式错误"
+            info["error_kind"] = "format"
+            return info
+
+        latest_version = data.get("latest_version")
+        min_version = data.get("min_version")
+        message = data.get("message") or DEFAULT_UPDATE_MESSAGE
+
+        info.update(
+            {
+                "ok": True,
+                "latest_version": latest_version,
+                "min_version": min_version,
+                "message": message,
+                "raw": data,
+            }
+        )
+
+        if min_version:
+            try:
+                if compare_versions(VERSION, min_version) < 0:
+                    info["allow_start"] = False
+                    if not latest_version:
+                        info["latest_version"] = min_version
+            except Exception as e:
+                logger.warning(f"最低可用版本比较失败: {e}")
+
+        if latest_version:
+            try:
+                info["update_available"] = compare_versions(latest_version, VERSION) > 0
+            except Exception as e:
+                logger.warning(f"版本号比较失败: {e}")
+
+        return info
+
+    except requests.Timeout:
+        info["error"] = "检查更新超时"
+        info["error_kind"] = "timeout"
+        logger.warning("版本检查超时")
+        return info
+    except requests.RequestException as e:
+        info["error"] = "网络错误"
+        info["error_kind"] = "network"
+        logger.warning(f"版本检查网络错误: {e}")
+        return info
+    except Exception as e:
+        info["error"] = "检查更新时发生错误"
+        info["error_kind"] = "unknown"
+        logger.warning(f"版本检查失败: {e}")
+        return info
+
+
+def get_last_update_info() -> Optional[Dict[str, Any]]:
+    return _last_update_info
+
+
+def check_update() -> bool:
+    """
+    检查软件是否有新版本可用，包含更好的错误处理和用户体验。
+
+    返回:
+        bool: 当前版本是否允许继续运行。检查失败或旧版 API 未返回最低版本时默认允许运行。
+    """
+    print("正在检查更新...", end="", flush=True)
+
+    global _last_update_info
+    info = fetch_update_info()
+    _last_update_info = info
+
+    try:
+        if not info.get("ok"):
+            error_kind = info.get("error_kind")
+            if error_kind == "format":
+                print("\r检查更新失败：服务器响应格式错误")
+            elif error_kind == "timeout":
+                print("\r检查更新超时，跳过版本检查")
+            elif error_kind == "network":
+                print("\r检查更新失败：网络错误")
+            else:
+                print("\r检查更新时发生错误")
             return True
 
         # 新版 API 可返回 min_version，用于强制阻止过旧客户端继续运行。
         # 旧版 API 不返回该字段时按原逻辑处理，以保持向后兼容。
-        min_version = data.get("min_version")
-        if min_version:
-            try:
-                if compare_versions(VERSION, min_version) < 0:
-                    latest_version = data.get("latest_version") or min_version
-                    print(f"\r当前版本已不可用: {VERSION}")
-                    print(f"请更新到最新版本: {latest_version}")
-                    print("请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载新版本")
-                    logger.warning(
-                        f"当前版本 {VERSION} 低于最低可用版本 {min_version}，停止启动"
-                    )
-                    return False
-            except Exception as e:
-                logger.warning(f"最低可用版本比较失败: {e}")
+        min_version = info.get("min_version")
+        if min_version and not info.get("allow_start", True):
+            latest_version = info.get("latest_version") or min_version
+            print(f"\r当前版本已不可用: {VERSION}")
+            print(f"请更新到最新版本: {latest_version}")
+            print("请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载新版本")
+            logger.warning(
+                f"当前版本 {VERSION} 低于最低可用版本 {min_version}，停止启动"
+            )
+            return False
 
         # 再检查是否有新版本并提示用户；高于最低可用版本但低于最新版时不强制更新。
-        latest_version = data.get("latest_version")
+        latest_version = info.get("latest_version")
         if latest_version:
-            try:
-                if compare_versions(latest_version, VERSION) > 0:
-                    print(f"\r有新版本可用: {latest_version}")
-                    print("请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载")
-                    logger.info(f"发现新版本: {latest_version}")
-                else:
-                    # 没有新版本，清除"正在检查更新..."文字
-                    print("\r" + " " * 30 + "\r", end="", flush=True)
-                    logger.debug("当前版本已是最新版本")
-            except Exception as e:
-                logger.warning(f"版本号比较失败: {e}")
-                print("\r版本检查完成")
+            if info.get("update_available"):
+                print(f"\r有新版本可用: {latest_version}")
+                print("请访问 https://github.com/lsy223622/XDUClassVideoDownloader/releases 下载")
+                logger.info(f"发现新版本: {latest_version}")
+            else:
+                # 没有新版本，清除"正在检查更新..."文字
+                print("\r" + " " * 30 + "\r", end="", flush=True)
+                logger.debug("当前版本已是最新版本")
         else:
             # 未返回版本信息，清除提示占位
             print("\r" + " " * 30 + "\r", end="", flush=True)
 
         # 然后显示服务器返回的 message（如果有）
-        if data.get("message"):
+        raw = info.get("raw") or {}
+        if raw.get("message"):
             # 将服务器消息放在单独一行，保留前面的版本提示
-            print(f"\r{data['message']}")
+            print(f"\r{raw['message']}")
 
-        return True
-
-    except requests.Timeout:
-        print("\r检查更新超时，跳过版本检查")
-        logger.warning("版本检查超时")
-        return True
-    except requests.RequestException as e:
-        print(f"\r检查更新失败：网络错误")
-        logger.warning(f"版本检查网络错误: {e}")
         return True
     except Exception as e:
         # 检查更新失败时不影响主功能
