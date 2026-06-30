@@ -52,6 +52,14 @@ def get_app_path(*parts: Union[str, os.PathLike]) -> Path:
     return get_app_dir().joinpath(*parts)
 
 
+def get_bundled_app_path(*parts: Union[str, os.PathLike]) -> Path:
+    """Return a bundled resource path, preferring PyInstaller's extraction dir."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass).joinpath(*parts)
+    return get_app_path(*parts)
+
+
 def pause_before_exit_if_frozen(prompt: str = "按回车键退出...") -> None:
     if not getattr(sys, "frozen", False):
         return
