@@ -132,15 +132,28 @@ def _parse_args() -> Namespace:
 
 
 def _is_port_available(host: str, port: int) -> bool:
-    bind_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind((bind_host, port))
-        except OSError:
-            return False
-    return True
+    # Use loopback for wildcard binds to avoid reserving all interfaces during probe.
+    if host == "0.0.0.0":
+        bind_host = "127.0.0.1"
+    elif host == "::":
+        bind_host = "::1"
+    else:
+        bind_host = host
 
+    try:
+        addrinfos = socket.getaddrinfo(bind_host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False
+
+    for family, socktype, proto, _canon, sockaddr in addrinfos:
+        with socket.socket(family, socktype, proto) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(sockaddr)
+            except OSError:
+                continue
+            return True
+    return False
 
 def _find_available_port(host: str, start_port: int) -> int:
     if not 1 <= start_port <= 65535:
