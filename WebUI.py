@@ -7,7 +7,6 @@
 """
 
 import configparser
-import contextlib
 import hashlib
 import hmac
 import io
@@ -423,6 +422,28 @@ class QueueWriter(io.TextIOBase):
         return None
 
 
+class ThreadBoundStream(io.TextIOBase):
+    def __init__(self, target_thread_id: int, target: io.TextIOBase, fallback: io.TextIOBase) -> None:
+        self.target_thread_id = target_thread_id
+        self.target = target
+        self.fallback = fallback
+
+    def _stream(self) -> io.TextIOBase:
+        return self.target if threading.get_ident() == self.target_thread_id else self.fallback
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, value: str) -> int:
+        return self._stream().write(value)
+
+    def flush(self) -> None:
+        self._stream().flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.fallback, name)
+
+
 class QueueLogHandler(logging.Handler):
     def __init__(self, emit: Callable[[str], None]) -> None:
         # Match the CLI console behavior: INFO logs stay in log files, not stdout.
@@ -472,9 +493,13 @@ class DownloadJob:
         handler = QueueLogHandler(self.emit_output)
         root = logging.getLogger("xdu")
         root.addHandler(handler)
+        stdout_proxy = ThreadBoundStream(threading.get_ident(), writer, sys.stdout)
+        stderr_proxy = ThreadBoundStream(threading.get_ident(), writer, sys.stderr)
+        original_stdout, original_stderr = sys.stdout, sys.stderr
         try:
-            with contextlib.redirect_stdout(writer), contextlib.redirect_stderr(writer):
-                self.success = bool(self.target(*self.args))
+            sys.stdout = stdout_proxy
+            sys.stderr = stderr_proxy
+            self.success = bool(self.target(*self.args))
             self.status = "success" if self.success else "failed"
         except Exception as exc:
             self.success = False
@@ -483,6 +508,10 @@ class DownloadJob:
             self.emit_output(f"ERROR: {exc}\n")
             logger.exception("WebUI download job failed")
         finally:
+            if sys.stdout is stdout_proxy:
+                sys.stdout = original_stdout
+            if sys.stderr is stderr_proxy:
+                sys.stderr = original_stderr
             writer.flush()
             root.removeHandler(handler)
             self.finished_at = time.time()

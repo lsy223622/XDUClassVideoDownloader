@@ -1108,8 +1108,25 @@ function parseTimestamp(value) {
 
 function updateSubtitle(currentTime) {
   const subtitleTime = currentTime + state.subtitleOffset;
-  const cue = state.subtitles.find((item) => subtitleTime >= item.start && subtitleTime <= item.end);
+  const cue = findSubtitleCue(subtitleTime);
   $("subtitleBlock").textContent = cue ? cue.text : "";
+}
+
+function findSubtitleCue(subtitleTime) {
+  let left = 0;
+  let right = state.subtitles.length - 1;
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const cue = state.subtitles[mid];
+    if (subtitleTime < cue.start) {
+      right = mid - 1;
+    } else if (subtitleTime > cue.end) {
+      left = mid + 1;
+    } else {
+      return cue;
+    }
+  }
+  return null;
 }
 
 const AUTH_FIELD_IDS = [
