@@ -755,6 +755,11 @@ def _save_auth_payload(payload: Dict[str, Any]) -> None:
     for section in ("AUTH", "IDS_CREDENTIALS", "CHAOXING_CREDENTIALS"):
         if config.has_section(section):
             config.remove_section(section)
+    if not save_auth_info:
+        safe_write_config(config, AUTH_CONFIG_FILE, backup=True)
+        _set_auth_config_private_permissions()
+        config_module._runtime_auth_cache = None
+        return
 
     if auth_method == "ids":
         ids = payload.get("ids") or {}
@@ -1122,7 +1127,7 @@ def init_automation_config() -> ResponseReturnValue:
             int(payload.get("term") or term_id),
             str(payload.get("video_type") or "both"),
         )
-        return _json_ok(exists=True, courses=_config_to_courses(config))
+        return _json_ok(**_automation_config_payload(config, term_year, term_id))
     except Exception as exc:
         return _json_error(str(exc), 400)
 

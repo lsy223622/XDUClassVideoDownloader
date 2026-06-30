@@ -364,7 +364,7 @@ async function initAutomation() {
         video_type: $("batchInitVideoType").value,
       }),
     });
-    renderAutomation({ ...data, exists: true, defaults: { video_type: $("batchInitVideoType").value } });
+    renderAutomation(data);
     setStatus("空闲");
   } catch (err) {
     appendOutput(`生成 automation_config.ini 失败: ${err.message}\n`);
