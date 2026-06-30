@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Local Flask WebUI for XDUClassVideoDownloader.
+本地 Flask WebUI（仅本机/局域网使用）。
 
-The WebUI intentionally reuses the existing CLI-oriented downloader and config
-helpers. It adds a local browser surface without changing the command-line
-entry points or persisted automation choices unless the user explicitly saves
-settings.
+复用现有 CLI 的 downloader / config / api 逻辑，在不改变命令行入口与 automation_config.ini 行为的前提下，
+提供浏览器界面用于登录、下载、库浏览与设置管理。
 """
 
 import configparser
