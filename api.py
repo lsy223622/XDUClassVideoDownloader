@@ -59,7 +59,7 @@ logger = setup_logging("api")
 # ============================================================================
 
 # 版本和平台配置
-VERSION = "4.3.0"
+VERSION = "5.0.0"
 FID = "16820"
 RELEASES_URL = "https://github.com/lsy223622/XDUClassVideoDownloader/releases"
 DEFAULT_UPDATE_MESSAGE = "欢迎使用！如有问题请联系作者。"
