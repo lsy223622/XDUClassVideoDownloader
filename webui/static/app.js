@@ -267,14 +267,16 @@ async function loadAppInfo() {
     const data = await apiJson("/api/app/info");
     const version = data.version || "--";
     const message = data.message || "欢迎使用！如有问题请联系作者。检查更新失败。";
+    const releasesUrl = data.releases_url || "https://github.com/lsy223622/XDUClassVideoDownloader/releases";
     state.appMessage = message;
     $("versionBadge").textContent = `v${version}`;
+    $("versionBadge").href = releasesUrl;
     $("pageHint").textContent = message;
 
     const notice = $("updateNotice");
     if (data.update_available && data.latest_version) {
       notice.textContent = `有更新版本${data.latest_version}，请点击这里前往下载页面`;
-      notice.href = data.releases_url || "https://github.com/lsy223622/XDUClassVideoDownloader/releases";
+      notice.href = releasesUrl;
       setHidden(notice, false);
     } else {
       notice.textContent = "";

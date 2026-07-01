@@ -274,6 +274,13 @@ h1 {
   font-size: 12px;
   font-weight: 800;
   line-height: 1;
+  text-decoration: none;
+}
+
+.version-badge:hover,
+.version-badge:focus-visible {
+  color: var(--accent-dark);
+  text-decoration: underline;
 }
 
 h2 {
