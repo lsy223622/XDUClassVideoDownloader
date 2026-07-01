@@ -26,7 +26,7 @@ import webbrowser
 from argparse import ArgumentParser, Namespace
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Sequence, Tuple, Union
 
 from bs4 import BeautifulSoup
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory, session
@@ -422,13 +422,21 @@ class QueueWriter(io.TextIOBase):
         return None
 
 
+class WritableTextStream(Protocol):
+    def write(self, text: str, /) -> int:
+        ...
+
+    def flush(self) -> None:
+        ...
+
+
 class ThreadBoundStream(io.TextIOBase):
-    def __init__(self, target_thread_id: int, target: io.TextIOBase, fallback: io.TextIOBase) -> None:
+    def __init__(self, target_thread_id: int, target: WritableTextStream, fallback: WritableTextStream) -> None:
         self.target_thread_id = target_thread_id
         self.target = target
         self.fallback = fallback
 
-    def _stream(self) -> io.TextIOBase:
+    def _stream(self) -> WritableTextStream:
         return self.target if threading.get_ident() == self.target_thread_id else self.fallback
 
     def writable(self) -> bool:
