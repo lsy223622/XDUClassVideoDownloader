@@ -23,8 +23,10 @@ import hashlib
 import io
 import json
 import os
+import platform
 import random
 import re
+import sys
 import time
 import urllib.parse
 import webbrowser
@@ -77,6 +79,18 @@ REQUEST_DELAY_MAX = 3  # 最大请求间隔（秒）
 # 上次请求时间，用于频率控制
 _last_request_time = 0
 _last_update_info: Optional[Dict[str, Any]] = None
+
+
+def get_update_runtime_info() -> Dict[str, str]:
+    """返回更新检查上报用的系统和入口文件信息。"""
+    if getattr(sys, "frozen", False):
+        entry_file = Path(sys.executable).name
+    else:
+        entry_file = Path(sys.argv[0]).name
+    return {
+        "platform": platform.system() or os.name or "Unknown",
+        "runtime": entry_file or "unknown",
+    }
 
 # ============================================================================
 # IDS（统一身份认证）相关常量
@@ -1452,9 +1466,13 @@ def fetch_update_info() -> Dict[str, Any]:
 
     try:
         session = create_session()
-        url = f"https://api.lsy223622.com/xcvd.php?version={VERSION}"
-        logger.debug(f"GET {url}")
-        response = session.get(url, timeout=10)
+        url = "https://api.lsy223622.com/xcvd.php"
+        params = {
+            "version": VERSION,
+            **get_update_runtime_info(),
+        }
+        logger.debug(f"GET {url}?{urllib.parse.urlencode(params)}")
+        response = session.get(url, params=params, timeout=10)
         response.raise_for_status()
 
         try:
