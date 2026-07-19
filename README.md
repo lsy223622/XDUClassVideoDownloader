@@ -14,22 +14,24 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/lsy223622/XDUClassVideoDownloader)
 
-## 🎉🎉 4.0 版本重大更新：新学期和过往学期的课程都能下载了 🎉🎉
+## 🎉🎉 5.0 版本重大更新：新增本地 WebUI，下载、播放、设置一体化 🎉🎉
 
-本项目经过重大更新，同时适配新版和旧版录直播平台接口，并且全面重构代码，大幅优化了下载速度和用户体验。
+5.0 在保留原有命令行下载方式的基础上，新增本地 WebUI。您可以直接在浏览器中完成单课程下载、批量下载、登录配置和本地视频播放；新版和旧版录直播平台的课程均可下载。
 
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
-  - [🎉🎉 4.0 版本重大更新：新学期和过往学期的课程都能下载了 🎉🎉](#-40-版本重大更新新学期和过往学期的课程都能下载了-)
+  - [🎉🎉 5.0 版本重大更新：新增本地 WebUI，下载、播放、设置一体化 🎉🎉](#-50-版本重大更新新增本地-webui下载播放设置一体化-)
   - [**使用须知**](#使用须知)
   - [**项目简介**](#项目简介)
   - [**核心功能**](#核心功能)
   - [**环境准备**](#环境准备)
   - [**使用方法**](#使用方法)
     - [**Windows 用户看这里！（懒人包）**](#windows-用户看这里懒人包)
+    - [**本地 WebUI（推荐）**](#本地-webui推荐)
     - [**通过 Python 脚本运行**](#通过-python-脚本运行)
       - [**`XDUClassVideoDownloader.py`** (按 `liveId` 下载)](#xduclassvideodownloaderpy-按-liveid-下载)
       - [**`Automation.py`** (全自动下载)](#automationpy-全自动下载)
   - [**命令行参数详解**](#命令行参数详解)
+    - [`WebUI.py` 参数](#webuipy-参数)
     - [`XDUClassVideoDownloader.py` 参数](#xduclassvideodownloaderpy-参数)
     - [`Automation.py` 参数](#automationpy-参数)
   - [**注意事项**](#注意事项)
@@ -44,7 +46,7 @@
 
 ## **项目简介**
 
-本项目是为西安电子科技大学录播平台设计的课程视频下载工具，包含两个核心脚本：
+本项目是为西安电子科技大学录播平台设计的课程视频下载工具，包含三个核心脚本：
 
 - **`XDUClassVideoDownloader.py`**：基础下载脚本，通过课程的 `liveId` 来下载指定视频。您可以选择下载单节课（上下两集）、单集（半节课）或该课程的全部视频。
 
@@ -52,6 +54,8 @@
 
 - **`Automation.py`**：强大的自动化脚本，通过您的超星 `UID` 来自动发现并下载当前学期的所有课程。
   > 您的超星 `UID` 可以通过访问 `https://i.mooc.chaoxing.com/settings/info` 在页面中的 `id` 字段找到。
+
+- **`WebUI.py`**：功能完整、操作方便的图形化 WebUI，整合单课程下载、批量下载、登录配置和本地视频查看功能，推荐优先使用。
 
 ## **核心功能**
 
@@ -65,14 +69,19 @@
 - **视频链接导出**：在下载的同时，会将所有视频的下载链接保存到对应的 `.csv` 文件中，方便您使用其他下载工具。
 - **性能优化**：根据系统负载（CPU、内存）动态调整并发线程数，在保证系统稳定性的前提下，最大化下载效率。
 - **自动更新检查**：启动时会检查项目是否有新版本，并给出提示。
+- **本地 WebUI**：通过浏览器使用单课程下载、批量下载、命令行输出、登录设置和本地视频查看功能。
+- **双视角同步播放**：可同时播放同一节课的 `pptVideo` 和 `teacherTrack`，使用公共进度条同步控制，并可切换声音轨道。
+- **字幕支持**：自动识别本地 `.srt` / `.vtt` 字幕，支持字幕偏移、字号和粗体设置。
+- **扫码登录**：支持使用学在西电 App 扫码登录并自动保存登录 Cookies。
+- **访问控制与主题适配**：可设置 WebUI 访问密码和允许访问的客户端网段，并支持系统深色模式。
 
 ## **环境准备**
 
 1. **Python**: 建议使用 `Python 3.8+` 版本（作者开发时使用 3.11.7）。[从 Python 官网下载](https://www.python.org/downloads/)
-2. **依赖库**: 使用 `pip` 安装所需的库：
+2. **依赖库**: 使用 `pip` 安装所需的库（包含 WebUI 所需的 Flask）：
 
    ```shell
-   pip install requests tqdm psutil beautifulsoup4 pycryptodome numpy pillow
+   pip install -r requirements.txt
    ```
 
 3. **FFmpeg (可选)**: 如果您需要下载 2024 学年及以前的课程，或者使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。
@@ -83,10 +92,33 @@
 
 您可以直接从项目的 [**Releases**](https://github.com/lsy223622/XDUClassVideoDownloader/releases/latest) 页面下载打包好的 `exe` 程序。该版本无需安装 Python 和任何依赖库，开箱即用。
 
-- 要下载特定课程，运行 `XDUClassVideoDownloader.exe`。
-- 要全自动下载所有课程，运行 `Automation.exe`。
+**推荐运行 `WebUI.exe`**：它包含项目的全部主要功能，将单课程下载、批量下载、登录配置、本地视频播放和字幕控制集中在一个好用的图形化界面中，操作更直观。
+
+- 首选：运行 `WebUI.exe` 使用图形化界面。
+- 需要命令行下载特定课程时，运行 `XDUClassVideoDownloader.exe`。
+- 需要命令行全自动下载所有课程时，运行 `Automation.exe`。
 
 然后根据下方的说明操作即可。
+
+### **本地 WebUI（推荐）**
+
+WebUI 是 5.0 新增的浏览器界面，整合了 `XDUClassVideoDownloader.py` 和 `Automation.py` 的全部下载功能，并提供本地视频查看页面。
+
+Windows Release 用户直接运行 `WebUI.exe` 即可；源码用户可以双击 `webui.bat`，或运行：
+
+```shell
+python WebUI.py
+```
+
+启动后浏览器会自动打开 WebUI，默认地址为 `http://127.0.0.1:5050/`。如果端口被占用，程序会自动尝试其他端口，请以控制台显示的地址为准。
+
+WebUI 包含以下页面：
+
+- **下载**：按 `LiveID` 下载单门课程，或根据 `automation_config.ini` 批量下载课程；可选择视频类型、跳过周数和合并方式。
+- **查看**：扫描本地已下载视频，同时播放 `pptVideo` 和 `teacherTrack`，使用公共进度条同步播放，并显示字幕。
+- **设置**：配置统一身份认证、超星账号密码、手动 Cookie 或学在西电扫码登录，也可设置 WebUI 访问密码。
+
+如果需要局域网访问，可运行 `python WebUI.py --host 0.0.0.0`，并建议同时设置 WebUI 访问密码和 `allowed_clients`。完整的启动参数、页面操作和故障排除请参阅 [`WEBUI.md`](WEBUI.md)。
 
 ### **通过 Python 脚本运行**
 
@@ -121,17 +153,17 @@
 
 #### **`Automation.py`** (全自动下载)
 
-这是推荐的使用方式，可以一劳永逸地管理您的所有课程视频。
+可以一劳永逸地管理您的所有课程视频。
 
 - **使用流程**:
   1. 在 Windows 上双击 `automation.bat`，或在其他系统上运行 `python Automation.py`。
-  1. **首次运行**:
+  2. **首次运行**:
      - 程序会先进行认证（可选统一身份认证登录、超星账号密码登录、学在西电 App 扫码登录或手动 Cookies）。
      - 随后提示输入超星 `UID`，并扫描当前学期课程，生成一个 `automation_config.ini` 文件。
      - 您可以打开 `automation_config.ini`，将不希望下载的课程对应的 `download` 字段从 `yes` 改为 `no`。
      - 配置文件中的 `video_type` 字段控制全局视频类型（`both`/`ppt`/`teacher`），默认为 `both`。
      - 保存配置文件后，回到程序窗口按回车键，即可开始下载。
-  1. **后续运行**:
+  3. **后续运行**:
      - 程序会自动读取 `automation_config.ini`，并检查是否有新课程加入。
      - 如果发现新课程，会将其添加到配置文件中并提示您修改。确认后即可开始增量下载。
      - 程序会自动检查并更新旧版本的配置文件，确保包含 `video_type` 参数。
@@ -139,7 +171,31 @@
 
 ## **命令行参数详解**
 
-两个核心脚本都支持命令行参数，方便进阶用户或自动化调用。打包的 `.exe` 程序同样支持这些参数。
+三个核心脚本都支持命令行参数，方便进阶用户或自动化调用。打包的 `.exe` 程序同样支持这些参数。
+
+### `WebUI.py` 参数
+
+```shell
+# 用法
+python WebUI.py [--host HOST] [--port PORT] [--no-browser]
+```
+
+- `--host HOST` (可选): 指定 WebUI 监听地址。默认读取 `auth.ini` 中的 `WEBUI.bind_host`；未配置时使用 `127.0.0.1`。
+- `--port PORT` (可选): 指定起始端口，默认为 `5050`。如果端口被占用，程序会自动尝试后续端口。
+- `--no-browser` (可选): 启动后不自动打开浏览器，适合远程或局域网访问。
+
+**示例:**
+
+```shell
+# 使用默认配置启动 WebUI
+python WebUI.py
+
+# 使用 5060 作为起始端口启动，不自动打开浏览器
+python WebUI.py --port 5060 --no-browser
+
+# 允许局域网访问
+python WebUI.py --host 0.0.0.0
+```
 
 ### `XDUClassVideoDownloader.py` 参数
 
