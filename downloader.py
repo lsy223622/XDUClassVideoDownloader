@@ -298,6 +298,58 @@ def _subtitle_path_for_video_file(video_file: Union[str, Path], track_type: str)
     return video_path.with_suffix(SUBTITLE_EXTENSION)
 
 
+def _find_merged_subtitle_for_row(
+    save_dir: Union[str, Path], base_filename: str, jie: int
+) -> Optional[Tuple[Path, str, int, int]]:
+    """查找覆盖当前节次的有效合并字幕。"""
+    base_match = re.match(r"^(?P<prefix>.+?)第(?P<start>\d+)(?:-(?P<end>\d+))?节$", base_filename)
+    if not base_match:
+        return None
+
+    prefix = base_match.group("prefix")
+    candidates = []
+    for subtitle_file in Path(save_dir).glob(f"*{SUBTITLE_EXTENSION}"):
+        if not subtitle_file.is_file() or subtitle_file.stat().st_size <= 0:
+            continue
+
+        match = re.match(r"^(?P<prefix>.+?)第(?P<start>\d+)(?:-(?P<end>\d+))?节$", subtitle_file.stem)
+        if not match or match.group("prefix") != prefix:
+            continue
+
+        start = int(match.group("start"))
+        end = int(match.group("end") or start)
+        if start < end and start <= jie <= end:
+            candidates.append((end - start, start, subtitle_file.name, subtitle_file, end))
+
+    if not candidates:
+        return None
+
+    _, start, _, subtitle_file, end = min(candidates, key=lambda item: item[:3])
+    return subtitle_file, prefix, start, end
+
+
+def _remove_segment_subtitles_for_range(save_dir: Union[str, Path], prefix: str, start: int, end: int) -> None:
+    """删除合并范围内残留的单节字幕。"""
+    for subtitle_file in Path(save_dir).glob(f"*{SUBTITLE_EXTENSION}"):
+        if not subtitle_file.is_file():
+            continue
+
+        match = re.match(r"^(?P<prefix>.+?)第(?P<start>\d+)(?:-(?P<end>\d+))?节$", subtitle_file.stem)
+        if not match or match.group("prefix") != prefix:
+            continue
+
+        segment_start = int(match.group("start"))
+        segment_end = int(match.group("end") or segment_start)
+        if segment_start != segment_end or not (start <= segment_start <= end):
+            continue
+
+        try:
+            subtitle_file.unlink()
+            logger.debug(f"已删除合并范围内的原始字幕: {subtitle_file}")
+        except OSError as e:
+            logger.warning(f"删除合并范围内的原始字幕失败: {subtitle_file}, 错误: {e}")
+
+
 def _write_text_atomic(output_file: Path, content: str) -> None:
     """原子写入文本文件。"""
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -332,6 +384,14 @@ def download_subtitle_for_row(
 
         month, date, _day, jie, days, day_chinese = components
         base_filename = _build_base_filename(course_code, course_name, year, month, date, days, day_chinese, jie)
+
+        merged_subtitle = _find_merged_subtitle_for_row(save_dir, base_filename, jie)
+        if merged_subtitle:
+            merged_path, prefix, start, end = merged_subtitle
+            _remove_segment_subtitles_for_range(save_dir, prefix, start, end)
+            logger.info(f"合并后的字幕已存在，跳过单节字幕下载: {merged_path.name}")
+            return merged_path, False
+
         subtitle_path = Path(save_dir) / f"{base_filename}{SUBTITLE_EXTENSION}"
 
         if subtitle_path.exists() and subtitle_path.stat().st_size > 0:
@@ -395,6 +455,18 @@ def _get_media_duration_seconds(video_file: Union[str, Path]) -> Optional[float]
     return None
 
 
+def _remove_source_subtitles(subtitle_files: Sequence[Path], output_file: Path) -> None:
+    """删除合并输出对应的原始字幕文件。"""
+    for subtitle_file in subtitle_files:
+        if subtitle_file.resolve() == output_file.resolve():
+            continue
+        try:
+            subtitle_file.unlink()
+            logger.debug(f"已删除原始字幕: {subtitle_file}")
+        except OSError as e:
+            logger.warning(f"删除原始字幕失败: {subtitle_file}, 错误: {e}")
+
+
 def _merge_srt_files(subtitle_files: Sequence[Path], offsets_ms: Sequence[int], output_file: Path) -> bool:
     """合并多个 SRT 字幕文件并按 offsets_ms 平移时间轴。"""
     if len(subtitle_files) < 2 or len(subtitle_files) != len(offsets_ms):
@@ -402,7 +474,8 @@ def _merge_srt_files(subtitle_files: Sequence[Path], offsets_ms: Sequence[int], 
 
     if output_file.exists() and output_file.stat().st_size > 0:
         logger.info(f"合并后的字幕已存在: {output_file.name}")
-        return False
+        _remove_source_subtitles(subtitle_files, output_file)
+        return True
 
     try:
         merged_cues = []
@@ -426,14 +499,7 @@ def _merge_srt_files(subtitle_files: Sequence[Path], offsets_ms: Sequence[int], 
         _write_text_atomic(output_file, content)
         logger.info(f"字幕合并完成: {output_file.name}")
 
-        for subtitle_file in subtitle_files:
-            if subtitle_file.resolve() == output_file.resolve():
-                continue
-            try:
-                subtitle_file.unlink()
-                logger.debug(f"已删除原始字幕: {subtitle_file}")
-            except OSError as e:
-                logger.warning(f"删除原始字幕失败: {subtitle_file}, 错误: {e}")
+        _remove_source_subtitles(subtitle_files, output_file)
 
         return True
 
