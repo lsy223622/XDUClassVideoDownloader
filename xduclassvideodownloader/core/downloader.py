@@ -1089,8 +1089,10 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
     # 创建临时文件列表
     temp_list_file = None
     temp_output_file = None
+    temp_remux_files = []
 
     try:
+        mixed_containers = {Path(file_path).suffix.lower() for file_path in valid_files} == {".mp4", ".ts"}
         # 创建临时的文件列表文件
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -1110,6 +1112,20 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
                 return int(match.group(1)) if match else 0
             valid_files.sort(key=extract_jie_number)
             for file_path in valid_files:
+                # TS 与 MP4 的流时间基不同，混合拼接前先无损统一容器。
+                if mixed_containers and Path(file_path).suffix.lower() == ".ts":
+                    with tempfile.NamedTemporaryFile(
+                        delete=False, dir=output_path.parent, prefix=".remux.", suffix=".mp4"
+                    ) as remux_file:
+                        remux_path = remux_file.name
+                    temp_remux_files.append(remux_path)
+                    subprocess.run(
+                        [get_ffmpeg_path(), "-i", file_path, "-c", "copy", "-y", remux_path],
+                        check=True, capture_output=True, encoding="utf-8", errors="replace", timeout=600,
+                    )
+                    if not verify_file_integrity(remux_path):
+                        raise Exception(f"视频转封装验证失败: {file_path}")
+                    file_path = remux_path
                 # 使用绝对路径并转义，确保 FFmpeg 能正确处理
                 escaped_path = str(Path(file_path).resolve()).replace("'", r"\'").replace("\\", "/")
                 temp_file.write(f"file '{escaped_path}'\n")
@@ -1189,7 +1205,7 @@ def merge_videos(files: Sequence[str], output_file: str) -> bool:
 
     finally:
         # 清理临时文件
-        for temp_file in [temp_list_file, temp_output_file]:
+        for temp_file in [temp_list_file, temp_output_file, *temp_remux_files]:
             if temp_file and Path(temp_file).exists():
                 try:
                     Path(temp_file).unlink()
@@ -1472,39 +1488,42 @@ def process_rows(
         返回:
             bool: 是否成功合并
         """
-        # 查找相邻文件
-        adjacent_files = []
         save_path = Path(save_dir)
-
-        # 检查前一节和后一节
-        for adjacent_jie in [jie - 1, jie + 1]:
-            if adjacent_jie < 1:
+        prefix = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}"
+        pattern = re.compile(
+            rf"{re.escape(prefix)}第(?P<start>\d+)(?:-(?P<end>\d+))?节-{re.escape(track_type)}\.(?:mp4|ts)"
+        )
+        candidates = []
+        for candidate in save_path.iterdir():
+            match = pattern.fullmatch(candidate.name)
+            if not match or not candidate.is_file():
                 continue
+            start = int(match.group("start"))
+            end = int(match.group("end") or start)
+            if 1 <= start <= end:
+                candidates.append((start, end, candidate))
 
-            for ext in [".mp4", ".ts"]:
-                adjacent_file = (
-                    save_path
-                    / f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{adjacent_jie}节-{track_type}{ext}"
-                )
-                if adjacent_file.exists() and verify_file_integrity(str(adjacent_file)):
-                    adjacent_files.append(str(adjacent_file))
-                    break
+        # 优先使用覆盖范围更大的文件；同一区间优先使用 MP4。
+        candidates.sort(key=lambda item: (item[0], -item[1], item[2].suffix != ".mp4"))
+        start_jie = end_jie = jie
+        segments = [(jie, jie, filepath)]
+        while True:
+            for start, end, candidate in candidates:
+                if end == start_jie - 1 or start == end_jie + 1:
+                    if verify_file_integrity(str(candidate)):
+                        segments.append((start, end, candidate))
+                        start_jie = min(start_jie, start)
+                        end_jie = max(end_jie, end)
+                        break
+            else:
+                break
 
-        if not adjacent_files:
+        if len(segments) < 2:
             logger.debug(f"没有找到相邻的视频文件: {filepath.name}")
             return False
 
-        def _extract_jie_number(filename: str) -> int:
-            match = re.search(r"第(\d+)节", filename)
-            return int(match.group(1)) if match else 0
-
-        # 准备合并
-        all_files = adjacent_files + [str(filepath)]
-        all_files.sort(key=_extract_jie_number)
-
-        # 生成合并后的文件名
-        jie_numbers = [_extract_jie_number(f) for f in all_files]
-        merged_filename = f"{course_code}{course_name}{year}年{month}月{date}日第{days}周星期{day_chinese}第{min(jie_numbers)}-{max(jie_numbers)}节-{track_type}.mp4"
+        all_files = [str(segment[2]) for segment in sorted(segments, key=lambda item: item[0])]
+        merged_filename = f"{prefix}第{start_jie}-{end_jie}节-{track_type}.mp4"
         merged_filepath = save_path / merged_filename
 
         # 检查合并后的文件是否已存在
@@ -1886,8 +1905,7 @@ def download_course_videos(
 
         # 根据下载模式执行不同的下载逻辑
         if single == 1:
-            # 单节课模式：最多下载 2 个条目（上下半节课）
-            download_rows = rows[:2]
+            download_rows = rows
             print(f"\n单节课模式：准备下载 {len(download_rows)} 个视频片段")
         elif single == 2:
             # 半节课模式：只下载第一个条目
