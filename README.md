@@ -271,6 +271,12 @@ Automation.exe -u 123456789 -y 2024 -t 1 --video-type ppt
 Automation.exe --video-type teacher
 ```
 
+## **打包**
+
+在项目根目录准备好 `.venv`（已安装项目依赖和 PyInstaller）、三份 `.spec` 文件及 `ffmpeg_min.exe`，双击 `build.bat` 即可依次构建三个程序，无需手动激活虚拟环境。
+
+脚本从 `xduclassvideodownloader/_version.py` 读取版本号。三个程序全部构建成功后，输出到 `dist/`，命名为 `XDUClassVideoDownloader_v版本号-beta.exe`、`Automation_v版本号-beta.exe` 和 `WebUI_v版本号-beta.exe`。如果本版本的任一目标文件已存在，脚本会在构建前停止，请先更新版本号。构建使用独立临时目录，保留 `dist/` 中已有程序。
+
 ## **注意事项**
 
 - 本项目下载的视频仅供个人学习使用，请勿用于任何商业用途或在公共平台传播。

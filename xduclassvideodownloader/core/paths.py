@@ -20,10 +20,10 @@ def set_runtime_dir(path: Optional[PathPart]) -> None:
 def get_app_dir() -> Path:
     """Return the directory for configuration, logs and downloaded files."""
 
-    if _runtime_dir is not None:
-        return _runtime_dir
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
+    if _runtime_dir is not None:
+        return _runtime_dir
     return Path.cwd().resolve()
 
 
@@ -42,6 +42,4 @@ def get_package_dir() -> Path:
 def get_bundled_app_path(*parts: PathPart) -> Path:
     """Resolve a read-only resource from PyInstaller or the Python package."""
 
-    bundled_root = getattr(sys, "_MEIPASS", None)
-    root = Path(bundled_root) if bundled_root else get_package_dir()
-    return root.joinpath(*parts)
+    return get_package_dir().joinpath(*parts)
