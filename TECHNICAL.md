@@ -4,31 +4,30 @@
 
 ## 文档范围
 
-本文面向需要阅读、维护或扩展代码的开发者，说明当前项目的结构、运行边界和实现方式。它描述的是 `api.py` 中 `VERSION = "5.0.0"` 所对应的代码状态；录直播平台的接口和返回字段由外部平台维护，发生变化时应以实际响应和 `api.py` 中的适配逻辑为准。
+本文面向需要阅读、维护或扩展代码的开发者，说明当前项目的结构、运行边界和实现方式。项目仍保持 `5.0.0` 单一版本线；平台接口和返回字段由外部平台维护，发生变化时应以 `xduclassvideodownloader/core/platform.py` 中的适配逻辑为准。
 
 本文不替代面向普通用户的使用手册：启动方式、命令行参数和界面操作请优先查看 `README.md` 与 `WEBUI.md`；认证凭证的获取步骤请查看 `AUTHENTICATION.md`。
 
 ## 项目定位与总体架构
 
-XDUClassVideoDownloader 是一个在本机运行的课程录直播下载工具。它围绕课程的 `liveId` 工作：先使用有效的超星会话读取课程列表和视频信息，再分别下载课件视角 `pptVideo`、教师视角 `teacherTrack` 及可用字幕。项目提供三个入口，但不维护三套下载实现：命令行、批量自动化和 WebUI 最终都会进入同一组 `api.py`、`config.py`、`downloader.py` 与 `utils.py` 模块。
+XDUClassVideoDownloader 是一个在本机运行的课程录直播下载工具。它围绕课程的 `liveId` 工作：先使用有效的超星会话读取课程列表和视频信息，再分别下载课件视角 `pptVideo`、教师视角 `teacherTrack` 及可用字幕。项目提供三个入口，但不维护三套下载实现：命令行、批量自动化和 WebUI 最终都会进入同一个 Core facade。
 
 ```text
 用户输入 / 浏览器请求
         │
-        ├─ XDUClassVideoDownloader.py ─┐
-        ├─ Automation.py ──────────────┼─ 配置与认证：config.py
-        └─ WebUI.py ───────────────────┘          │
-                                                   ▼
-                                   平台访问与数据解析：api.py
-                                                   │
-                                                   ▼
-                              下载、字幕、合并与落盘：downloader.py
-                                                   │
-                                                   ▼
+        ├─ 根目录兼容启动器 ────────┐
+        ├─ xduclassvideodownloader.cli ─┼─ Core public facade
+        └─ xduclassvideodownloader.web ┘          │
+                                                  ▼
+                       core.services / courses / auth / config
+                                                  │
+                         platform / downloader / validator / utils
+                                                  │
+                                                  ▼
                          课程目录、logs/、CSV、INI 配置与本地媒体库
 ```
 
-这个分层的要点是：入口负责收集参数和呈现结果，核心模块负责业务处理。因此新增入口或调整 WebUI 时，应优先复用既有公共函数，而不要复制认证、课程扫描或下载逻辑。
+根目录的 `XDUClassVideoDownloader.py`、`Automation.py`、`WebUI.py` 继续保留原有调用方式，但只负责设置运行目录和转发到包内实现。`api.py`、`config.py`、`downloader.py`、`utils.py`、`validator.py` 也只是 5.x 兼容 shim。入口层负责收集参数和呈现结果，Core 负责业务处理，Web 层负责 HTTP 生命周期和展示，因此新增入口或调整 WebUI 时应优先复用 Core facade，而不要复制认证、课程扫描或下载逻辑。
 
 ## 项目结构
 
@@ -36,19 +35,26 @@ XDUClassVideoDownloader 是一个在本机运行的课程录直播下载工具�
 
 ```text
 .
-├─ XDUClassVideoDownloader.py  单课程命令行入口
-├─ Automation.py               批量自动化命令行入口
-├─ WebUI.py                    本地 Flask 服务与 WebUI API
-├─ api.py                      平台接口、登录、课程扫描、版本检查
-├─ config.py                   INI 读写、认证与批量课程配置
-├─ downloader.py               视频/字幕下载、完整性校验、FFmpeg 合并
-├─ utils.py                    路径、日志、输入、异常和资源辅助函数
-├─ validator.py                参数、URL、文件和业务数据校验
-├─ webui/
-│  └─ static/
-│     ├─ index.html            单页界面结构
-│     ├─ app.js                原生 JavaScript 状态、请求和播放器控制
-│     └─ styles.css            响应式样式与深色模式适配
+├─ XDUClassVideoDownloader.py  兼容单课程启动器
+├─ Automation.py               兼容批量自动化启动器
+├─ WebUI.py                    兼容 WebUI 启动器
+├─ api.py / config.py          5.x 兼容 shim
+├─ downloader.py               5.x 兼容 shim
+├─ utils.py / validator.py     5.x 兼容 shim
+├─ xduclassvideodownloader/
+│  ├─ core/
+│  │  ├─ services.py / courses.py / models.py
+│  │  ├─ auth.py / config.py / platform.py / downloader.py
+│  │  └─ paths.py / utils.py / validator.py
+│  ├─ cli/
+│  │  ├─ single.py / automation.py
+│  │  └─ __init__.py
+│  └─ web/
+│     ├─ app.py / access.py / auth.py / downloads.py / settings.py / library.py
+│     └─ static/
+│        ├─ index.html            单页界面结构
+│        ├─ app.js                原生 JavaScript 状态、请求和播放器控制
+│        └─ styles.css            响应式样式与深色模式适配
 ├─ merge/
 │  ├─ merge.py                独立的双视角视频合并辅助脚本
 │  └─ mergeUsage.md           该脚本的单独说明
@@ -63,14 +69,14 @@ XDUClassVideoDownloader 是一个在本机运行的课程录直播下载工具�
 
 | 文件或目录 | 职责 | 主要依赖关系 |
 | --- | --- | --- |
-| `XDUClassVideoDownloader.py` | 校验命令行或交互输入，发起单课程下载。 | 调用 `config.get_auth_cookies()` 与 `downloader.download_course_videos()`。 |
-| `Automation.py` | 计算默认学期、创建或更新课程选择配置，再顺序处理启用课程。 | 调用 `config` 的配置流程和 `downloader.process_all_courses()`。 |
-| `WebUI.py` | 提供本地 HTTP 服务、下载任务管理、扫码任务、配置 API 与媒体服务。 | 复用 CLI 入口和批量下载函数，不重新实现下载器。 |
-| `api.py` | 集中封装 HTTP 会话、认证登录、课程/视频/字幕请求、旧新接口兼容和更新检查。 | 依赖 `requests`、解析库和 `config` 提供的 Cookie。 |
-| `config.py` | 管理 `auth.ini` 与 `automation_config.ini`，并保存运行期认证缓存。 | 调用 `api.py` 的登录或课程扫描能力。 |
-| `downloader.py` | 执行 MP4、M3U8/TS、字幕、CSV、合并与下载统计。 | 使用 `api.py` 给出的链接、`config.py` 给出的认证、FFmpeg 和校验函数。 |
-| `utils.py` / `validator.py` | 提供全项目统一的基础能力与输入边界。 | 被所有业务层调用，避免各入口出现不一致的校验和日志格式。 |
-| `webui/static/` | 不依赖前端构建工具的静态单页界面。 | 通过 `fetch` 调用 JSON API，通过 `EventSource` 接收下载输出。 |
+| `core` | 认证、配置、平台请求、课程编排、下载、校验和叶子工具。 | 只依赖 Core 内部模块和外部平台/FFmpeg；不导入 Flask/Web。 |
+| `core/__init__.py` | 稳定的 `CourseDownloadOptions`、认证、扫描和下载 facade。 | CLI 与 Web 只从这里使用公共业务入口。 |
+| `cli` | argparse、交互提示、用户输出和退出码。 | 只调用 Core facade。 |
+| `web/app.py` | Flask 工厂、启动、路由注册和 JSON/SSE 编排。 | 依赖 Web 专用模块与 Core 公共接口。 |
+| `web/access.py` / `web/auth.py` | 客户端 allowlist、WebUI 密码、认证设置 payload 与二维码任务生命周期。 | 不直接修改 Core 认证缓存；认证协议由 Core auth/session 负责。 |
+| `web/downloads.py` / `web/settings.py` | 下载任务、输出捕获、课程配置和选择路由所需的 Web 辅助逻辑。 | 批量/单课操作统一调用 Core facade。 |
+| `web/library.py` / `web/static/` | 本地媒体库索引、路径安全和无构建链静态单页界面。 | 通过 `fetch` 调用 JSON API，通过 `EventSource` 接收下载输出。 |
+| 根目录 shim | 保留旧导入和 `python *.py` 工作流。 | 新代码不得反向依赖这些 shim。 |
 
 ## 三个运行入口
 
@@ -88,9 +94,9 @@ XDUClassVideoDownloader 是一个在本机运行的课程录直播下载工具�
 
 ### 本地 WebUI 入口
 
-`WebUI.py` 启动 Flask 本地服务，默认监听 `127.0.0.1:5050`。如果起始端口已被占用，会在后续端口中寻找可用端口；启动参数也允许覆盖监听地址、起始端口和自动打开浏览器的行为。静态页面由 `webui/static/` 直接提供，不使用 Node.js、打包器或额外的前端运行时。
+`WebUI.py` 启动 Flask 本地服务，默认监听 `127.0.0.1:5050`。如果起始端口已被占用，会在后续端口中寻找可用端口；启动参数也允许覆盖监听地址、起始端口和自动打开浏览器的行为。静态页面由打包资源路径 `xduclassvideodownloader/web/static/` 直接提供，不使用 Node.js、打包器或额外的前端运行时。
 
-WebUI 将单课程请求转发给 `XDUClassVideoDownloader.main()`，将批量请求转发给 `process_all_courses()`。这保证了 CLI 与网页在认证、文件名、下载策略和输出目录上的行为一致。
+WebUI 将单课程请求转发给 `core.download_course(CourseDownloadOptions(...))`，将批量请求转发给 `core.download_courses(...)`。这保证了 CLI 与网页在认证、文件名、下载策略和输出目录上的行为一致。
 
 ## 核心下载链路
 
@@ -98,13 +104,13 @@ WebUI 将单课程请求转发给 `XDUClassVideoDownloader.main()`，将批量�
 
 所有需要平台权限的请求都通过 `get_authenticated_headers()` 取得 Cookie 请求头。`api.create_session()` 为 `requests.Session` 配置统一的 User-Agent、超时和重试策略；对常见临时状态码会进行有限重试。`rate_limit` 装饰器还会在平台 API 请求之间加入随机的短间隔，避免短时间内过于密集地访问平台。
 
-认证 Cookie 的运行期缓存位于 `config.py`。一次进程运行中，已获得且完整的认证信息会被后续请求复用；只有没有可用缓存、配置不完整或显式要求刷新时才重新登录或提示输入。
+认证 Cookie 的运行期缓存位于 `core.auth`，持久化和原子写入位于 `core.config`。一次进程运行中，已获得且完整的认证信息会被后续请求复用；只有没有可用缓存、配置不完整或显式要求刷新时才重新登录或提示输入。
 
 ### 2. 课程发现与接口兼容
 
 单课程下载先按 `liveId` 请求课程记录。程序会只保留已经结束的课程片段，按月、日、星期、节次和周数排序，再按下载模式和跳过周数筛选。
 
-项目同时保留新旧课程接口的处理路径：当课程记录表明学年不晚于 2024 时，会尝试旧版课程接口，并将该课程按旧版 M3U8/TS 方式处理；其他课程使用 MP4 链接流程。这个判断集中在 `api.py` 与 `downloader.py`，入口层不需要关心平台格式差异。
+项目同时保留新旧课程接口的处理路径：当课程记录表明学年不晚于 2024 时，会尝试旧版课程接口，并将该课程按旧版 M3U8/TS 方式处理；其他课程使用 MP4 链接流程。这个判断集中在 `core.platform` 与 `core.downloader`，入口层不需要关心平台格式差异。
 
 对于 MP4 课程，程序会读取播放页中的视频信息字段，完成 URL 解码和 JSON 解析后提取 `pptVideo` 与 `teacherTrack` 链接。对于“回看生成中”、未登录、访问被拒绝等已知页面，代码使用明确异常或提示中止当前片段，避免把错误页当作视频元数据继续解析。
 
@@ -255,12 +261,12 @@ WebUI 访问密码不会以明文新格式保存：代码使用带随机盐的 P
 
 FFmpeg 是外部二进制而非 Python 依赖。它用于旧版视频链路和视频/字幕合并；项目在源码与 PyInstaller 运行时都会通过 `get_app_path()` 定位可写的应用目录，通过 `get_bundled_app_path()` 优先定位 PyInstaller 解包资源。这样在打包为 `.exe` 后，配置、日志和下载目录仍放在可执行文件旁，而静态前端资源可从 PyInstaller 的资源目录读取。
 
-`XDUClassVideoDownloader.spec`、`Automation.spec` 与 `WebUI.spec`（本地存在时）分别描述三个入口的 PyInstaller 打包方式。WebUI 打包还会携带 `webui/static/`，三个入口会携带精简 FFmpeg 文件。构建目录和发行目录属于生成物，不应作为业务源码修改。
+`XDUClassVideoDownloader.spec`、`Automation.spec` 与 `WebUI.spec`（本地存在时）分别描述三个入口的 PyInstaller 打包方式。WebUI 打包还会携带 `xduclassvideodownloader/web/static/`，三个入口会携带精简 FFmpeg 文件。构建目录和发行目录属于生成物，不应作为业务源码修改。
 
 ## 维护与扩展建议
 
-1. **新增下载能力时从共享链路进入。** 优先扩展 `api.py` 的数据获取与 `downloader.py` 的落盘逻辑，再让三个入口传递必要参数；不要只在 WebUI 或某个 CLI 中实现一套例外流程。
-2. **平台变更先定位数据边界。** 课程列表、播放页、`videoPath`、字幕和扫码都是外部接口边界。先在 `api.py` 增加明确的解析、异常和日志，再考虑 UI 表现。
+1. **新增下载能力时从共享链路进入。** 优先扩展 `core.platform` 的数据获取与 `core.downloader` 的落盘逻辑，再让三个入口传递必要参数；不要只在 WebUI 或某个 CLI 中实现一套例外流程。
+2. **平台变更先定位数据边界。** 课程列表、播放页、`videoPath`、字幕和扫码都是外部接口边界。先在 `core.platform` / `core.auth` 增加明确的解析、异常和日志，再考虑 UI 表现。
 3. **保持配置向后兼容。** 新字段应有默认值，更新配置时应保留用户的课程选择；涉及认证文件格式时使用现有备份和迁移模式。
 4. **不要破坏文件命名契约。** WebUI 媒体库和字幕匹配依赖下载器生成的文件名。若需要调整命名，同时更新下载器、正则索引与文档，并考虑已有文件的兼容策略。
 5. **WebUI 任务必须保持串行。** 新的长耗时操作若会写入同一配置、认证或课程目录，应纳入任务管理器，提供状态和输出，而不是直接在 Flask 请求线程中执行。

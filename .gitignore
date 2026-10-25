@@ -165,7 +165,6 @@ auth.ini
 automation_config.ini
 *.csv
 
-# 忽略所有以 test_ 开头的 Python 文件
-test_*.py
+# 测试代码位于 tests/，应随项目版本控制
 ffmpeg.exe
 ffmpeg_min.exe

@@ -1,141 +1,63 @@
 ## XDUClassVideoDownloader – AI Agent 快速协作指令
 
-面向西电录直播平台：单课/按学期批量下载；已完全切换为"直下 MP4 + 可选 FFmpeg 无损合并"。
-
----
+面向西电录直播平台：单课/按学期批量下载；已切换为“直下 MP4 + 可选 FFmpeg 无损合并”。
 
 ### 1. 架构概览
 
 ```
-CLI 入口 (XDUClassVideoDownloader.py / Automation.py)
-    ↓ 参数解析与交互
-validator.py  ← 参数校验
-    ↓
-config.py     ← 认证管理 (get_auth_cookies / safe_write_config)
-    ↓
-api.py        ← 网络请求 (rate_limit + Retry + IDS 登录)
-    ↓ 视频信息解析
-downloader.py ← 下载核心 (断点续传 / 多线程分片 / 校验 / FFmpeg 合并)
-    ↓
-输出: 目录 & CSV & 日志 (logs/*.log)
+XDUClassVideoDownloader.py / Automation.py / WebUI.py
+    ↓ 兼容启动器
+xduclassvideodownloader.cli / xduclassvideodownloader.web
+    ↓ 仅调用公开 Core facade
+xduclassvideodownloader.core
+    ├─ config / auth / platform
+    ├─ downloader / courses / services
+    └─ utils / validator / paths
 ```
 
----
+根目录的三个入口和 `api.py`、`config.py`、`downloader.py`、`utils.py`、`validator.py` 保留 5.x 兼容名称；新代码必须依赖包内模块，不得反向依赖根目录兼容 shim。
 
-### 2. 核心模块职责
+### 2. 模块职责与依赖边界
 
 | 模块 | 职责 |
 |------|------|
-| **api.py** | HTTP 请求封装、重试机制、频率限制、IDS/超星登录、课程数据获取 |
-| **downloader.py** | MP4 下载（HEAD 探测 → 多线程 Range → 校验 → 原子 rename）、FFmpeg 合并 |
-| **config.py** | 认证信息管理、自动化配置读写、安全写入（原子性 + 备份） |
-| **utils.py** | 日志系统、文件名清洗、线程数优化、异常处理、周数解析 |
-| **validator.py** | 参数验证、URL 校验、文件完整性检查、业务数据验证 |
+| **core.platform** | HTTP 请求、重试、频率限制、平台数据解析与更新检查；不得导入 `core.config` |
+| **core.auth** | IDS/超星/二维码认证协议、认证缓存与持久化协调 |
+| **core.config** | INI 读写、备份、认证设置和自动化课程选择持久化；不得承载网络登录 |
+| **core.downloader** | MP4/M3U8 下载、校验、字幕与 FFmpeg 合并；认证状态由服务层显式传入 |
+| **core.services/courses** | 默认学期、课程扫描、单课和批量下载编排 |
+| **core.utils/validator/paths** | 叶子工具、业务校验、运行目录与打包资源路径 |
+| **cli** | argparse、交互提示、用户输出和退出码；实际操作调用 Core facade |
+| **web** | Flask 工厂、访问控制、认证/下载/设置/媒体库路由；不得访问 Core 私有符号 |
 
----
+Core 不得 import Flask 或 `xduclassvideodownloader.web`。Web/CLI 不得 import Core 私有名称、直接修改认证缓存、直接调用 `core.downloader` 或根目录业务模块。
 
-### 3. 代码规范
+### 3. 不可破坏的约定
 
-#### 3.1 模块结构
+- Python 最低版本为 3.8，推荐 3.11。
+- 保持 `python XDUClassVideoDownloader.py`、`python Automation.py`、`python WebUI.py` 以及三个 `.bat` 文件的用途。
+- 输出目录命名：`{YEAR}年{COURSECODE}{COURSENAME}`。
+- 文件名保留周、星期、节次以及 `pptVideo` / `teacherTrack` 契约。
+- 仅下载“已结束”场次；失败有限次重试后输出清晰日志。
+- 合并失败不删除原始分段；成功后才清理源分段。
+- `auth.ini` 的 `_d`、`UID`、`vc3` 键保持兼容。
+- `merge/` 独立于主程序，除非明确要求，否则不修改。
+- 不引入数据库、ORM、依赖注入容器、异步框架、React/Vue/Node 构建链或新的 Web 框架。
 
-每个模块遵循统一的组织结构：
+### 4. 安全和实现规则
 
-```python
-#!/usr/bin/env python3
-"""模块文档（功能描述 + 主要功能列表）"""
+- 网络调用统一放在 Core 的 platform/auth，必须有超时和有限重试。
+- 配置写入使用 `safe_write_config(..., backup=True)`，禁止绕过 Core 直接写配置。
+- 日志、异常、测试输出不得包含完整 Cookie、密码或认证请求体。
+- `--help` 必须快速返回，不触发登录或长时间网络阻塞。
+- 保持 `remove_invalid_chars`、文件完整性校验、断点续传和现有媒体命名行为。
+- 运行期可变文件（配置、日志、下载目录）与只读打包资源（Web 静态文件）必须使用不同路径解析。
 
-# 标准库导入
-# 第三方库导入
-# 本地模块导入
+### 5. 修改后自检
 
-# 模块日志器
-logger = setup_logging("模块名")
-
-# ============================================================================
-# 常量定义（分组注释）
-# ============================================================================
-
-# ============================================================================
-# 功能分区（函数按逻辑分组）
-# ============================================================================
-```
-
-#### 3.2 命名约定
-
-- 常量：全大写 + 下划线（如 `MAX_RETRIES`）
-- 私有变量/函数：单下划线前缀（如 `_runtime_auth_cache`）
-- 类型变量：首字母大写（如 `_Func = TypeVar(...)`）
-
-#### 3.3 注释规范
-
-- 仅描述当前代码逻辑，不记录历史变更
-- 除专有名词外，注释使用中文
-- 汉字与英文/数字之间添加空格；汉字与标点之间不加空格
-
----
-
-### 4. 不可破坏的约定
-
-- 输出目录命名：`{YEAR}年{COURSECODE}{COURSENAME}`
-- 文件名模式：周/星期/节次 + -pptVideo / -teacherTrack
-- 仅下载"已结束"场次；失败有限次重试后输出清晰日志
-- 合并失败不影响原始分段文件；成功后清理源分段
-- auth.ini 键名不变：`_d`、`UID`、`vc3`；新增字段需保持兼容回落
-- merge 文件夹独立于主程序，除非明确指出否则不修改
-
----
-
-### 5. 新增功能指南
-
-| 场景 | 实现方式 |
-|------|----------|
-| 网络请求 | 使用 `create_session()` + `get_authenticated_headers()`，沿用重试结构 |
-| 写配置 | 通过 `safe_write_config(..., backup=True)`，禁止直接 `open().write()` |
-| 下载扩展 | 保持 `verify_file_integrity` 流程；多线程仅在 Accept-Ranges 且 size ≥ 10MB 时启用 |
-| 日志 | 始终用 `setup_logging(模块名)`；用户交互允许 print，业务错误走 logger |
-| CLI 变更 | 新增参数需保证 `--help` <10s 返回；默认不阻塞在网络检查失败 |
-
----
-
-### 6. 常见问题与处理
-
-| 问题 | 处理方式 |
-|------|----------|
-| 403/404 | 多为认证过期 → 触发重新获取 cookies；切勿无限重试 |
-| 版本检查失败 | 忽略；不中断主逻辑 |
-| 非法文件名 | 依赖 `remove_invalid_chars`；不要自造替换正则 |
-| 合并失败 | 仅记录 warning，不回滚已完成下载 |
-
----
-
-### 7. 开发环境
-
-- **Python**: 3.8+（推荐 3.11）
-- **必需依赖**: requests, tqdm, psutil, beautifulsoup4, pycryptodome, numpy, pillow
-- **可选**: pytest（测试）、FFmpeg（视频合并，放根目录或 PATH）
-
----
-
-### 8. 禁止事项
-
-- 禁止引入未讨论的重量级依赖 / GUI / 数据库存储
-- 禁止在日志或异常中回显完整 Cookie/密码
-- 禁止改写现有文件命名/目录模式（影响增量与去重）
-- 除 test_*.py 外，不要新增其他文件
-- 若需输出任务总结等 Markdown，写入 `copilot_reports` 目录（已在 .gitignore 中排除）
-
----
-
-### 9. 修改后自检清单
-
-- [ ] 参数验证集中在 validator？
-- [ ] 日志是否使用统一 logger？
-- [ ] 配置写入是否走 safe_write_config？
-- [ ] 新网络调用是否有超时与重试？
-- [ ] 文件名是否经 remove_invalid_chars？
-- [ ] 失败路径是否有清晰用户级提示？
-- [ ] 新增依赖是否同步更新 requirements.txt？
-
----
-
-*最后更新：2026-01-31*
+- [ ] 新代码是否位于正确的 package 模块？
+- [ ] Core 是否保持无 Flask/Web 依赖？
+- [ ] Web/CLI 是否只调用公开 Core facade？
+- [ ] 配置写入和认证缓存是否走 Core 公共接口？
+- [ ] 参数校验、文件名和重试行为是否保持兼容？
+- [ ] 非网络测试是否覆盖失败路径和旧配置？

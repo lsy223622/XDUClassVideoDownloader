@@ -321,7 +321,7 @@ WebUI 会使用或维护以下文件：
 | `automation_config.ini` | 保存批量下载课程列表、学期参数、视频类型和课程下载选择。 |
 | `logs/` | 保存日志和扫码登录二维码等临时文件。 |
 | `WebUI.py` | WebUI 启动入口。 |
-| `webui/static/` | WebUI 前端页面文件。 |
+| `xduclassvideodownloader/web/static/` | WebUI 前端页面文件；源码运行和打包运行均从只读资源路径读取。 |
 
 注意：`auth.ini` 可能包含敏感信息，请不要分享给他人，也不要提交到公开仓库。
 

@@ -4,31 +4,29 @@
 
 ## Scope of This Document
 
-This document is for developers who need to read, maintain, or extend the project. It explains the current structure, runtime boundaries, and implementation approach. It describes the code state associated with `VERSION = "5.0.0"` in `api.py`; the recording-platform APIs and response fields are maintained by external platforms, so actual responses and the adaptation code in `api.py` are authoritative when they change.
+This document is for developers who need to read, maintain, or extend the project. It explains the current structure, runtime boundaries, and implementation approach. The project remains on one `5.0.0` version line; recording-platform APIs and response fields are maintained by external platforms, so actual responses and the adaptation code in `xduclassvideodownloader/core/platform.py` are authoritative when they change.
 
 This document does not replace the user-facing manuals. For startup methods, command-line options, and UI operation, read `README.md` and `WEBUI.md` first. For obtaining authentication credentials, read `AUTHENTICATION.md`.
 
 ## Project Purpose and Overall Architecture
 
-XDUClassVideoDownloader is a locally run downloader for course recordings and live replays. It works around a course `liveId`: after using a valid Chaoxing session to retrieve course records and video information, it downloads the courseware view `pptVideo`, the instructor view `teacherTrack`, and available subtitles. The project exposes three entry points, but it does not maintain three download implementations: the CLI, batch automation, and WebUI all ultimately use the same `api.py`, `config.py`, `downloader.py`, and `utils.py` modules.
+XDUClassVideoDownloader is a locally run downloader for course recordings and live replays. It works around a course `liveId`: after using a valid Chaoxing session to retrieve course records and video information, it downloads the courseware view `pptVideo`, the instructor view `teacherTrack`, and available subtitles. The project exposes three entry points, but it does not maintain three download implementations: the CLI, batch automation, and WebUI all ultimately use the same Core facade.
 
 ```text
 User input / browser request
         │
-        ├─ XDUClassVideoDownloader.py ─┐
-        ├─ Automation.py ──────────────┼─ Configuration and authentication: config.py
-        └─ WebUI.py ───────────────────┘              │
-                                                       ▼
-                                     Platform access and parsing: api.py
-                                                       │
-                                                       ▼
-                             Download, subtitles, merging, and storage: downloader.py
-                                                       │
-                                                       ▼
+        ├─ Root compatibility launchers ─┐
+        ├─ xduclassvideodownloader.cli ──┼─ Core public facade
+        └─ xduclassvideodownloader.web ──┘          │
+                                                   ▼
+                        core.services / courses / auth / config
+                                                   │
+                          platform / downloader / validator / utils
+                                                   │
                     Course directories, logs/, CSV files, INI files, and local media library
 ```
 
-The important consequence of this layering is that entry points collect parameters and present results, while the shared modules perform business processing. When adding an entry point or changing the WebUI, reuse the existing common functions instead of copying authentication, course-scanning, or download logic.
+The important consequence of this layering is that entry points collect parameters and present results, while Core performs business processing. The three root scripts and the old shared module names remain compatibility shims only. When adding an entry point or changing the WebUI, use the Core facade instead of copying authentication, course-scanning, or download logic.
 
 ## Project Structure
 
@@ -36,16 +34,16 @@ The following structure omits virtual environments, PyInstaller output, and runt
 
 ```text
 .
-├─ XDUClassVideoDownloader.py  Single-course CLI entry point
-├─ Automation.py               Batch-automation CLI entry point
-├─ WebUI.py                    Local Flask service and WebUI API
-├─ api.py                      Platform APIs, login, scanning, and update checks
-├─ config.py                   INI I/O, authentication, and batch-course configuration
-├─ downloader.py               Video/subtitle downloads, integrity checks, and FFmpeg merging
-├─ utils.py                    Path, logging, input, exception, and resource helpers
-├─ validator.py                Parameter, URL, file, and business-data validation
-├─ webui/
-│  └─ static/
+├─ XDUClassVideoDownloader.py  Compatibility single-course launcher
+├─ Automation.py               Compatibility batch-automation launcher
+├─ WebUI.py                    Compatibility WebUI launcher
+├─ api.py / config.py          5.x compatibility shims
+├─ downloader.py               5.x compatibility shim
+├─ utils.py / validator.py     5.x compatibility shims
+├─ xduclassvideodownloader/
+│  ├─ core/                    Business and platform core
+│  ├─ cli/                     Single-course and automation frontends
+│  └─ web/                     Flask app, focused Web modules, and static/
 │     ├─ index.html            Single-page UI structure
 │     ├─ app.js                Vanilla-JavaScript state, requests, and player controls
 │     └─ styles.css            Responsive styles and dark-mode adaptation
@@ -63,14 +61,14 @@ The following structure omits virtual environments, PyInstaller output, and runt
 
 | File or directory | Responsibility | Main relationships |
 | --- | --- | --- |
-| `XDUClassVideoDownloader.py` | Validates command-line or interactive input and starts a single-course download. | Calls `config.get_auth_cookies()` and `downloader.download_course_videos()`. |
-| `Automation.py` | Determines the default term, creates or updates course-selection configuration, then processes enabled courses in sequence. | Uses the configuration workflow in `config` and `downloader.process_all_courses()`. |
-| `WebUI.py` | Provides the local HTTP service, download-job management, QR jobs, configuration APIs, and media serving. | Reuses the CLI entry point and batch downloader rather than reimplementing downloading. |
-| `api.py` | Centralizes HTTP sessions, login, course/video/subtitle requests, old/new API compatibility, and update checks. | Depends on `requests`, parsing libraries, and cookies supplied by `config`. |
-| `config.py` | Manages `auth.ini` and `automation_config.ini` and retains an in-process authentication cache. | Calls login or course-scanning capabilities from `api.py`. |
-| `downloader.py` | Performs MP4, M3U8/TS, subtitle, CSV, merging, and download-statistics work. | Uses links from `api.py`, authentication from `config.py`, FFmpeg, and validation helpers. |
-| `utils.py` / `validator.py` | Provide project-wide foundational behavior and input boundaries. | Used by every business layer to avoid inconsistent validation and logging. |
-| `webui/static/` | Static single-page UI with no frontend build tool. | Calls JSON APIs through `fetch` and receives download output through `EventSource`. |
+| `core` | Authentication, configuration, platform requests, course orchestration, downloading, validation, and leaf utilities. | Does not import Flask or Web. |
+| `core/__init__.py` | Stable `CourseDownloadOptions`, auth, scan, and download facade. | CLI and Web use these public business entry points. |
+| `cli` | argparse, prompts, user output, and exit codes. | Calls the Core facade only. |
+| `web/app.py` | Flask factory, startup, route registration, and JSON/SSE orchestration. | Uses focused Web modules and public Core APIs. |
+| `web/access.py` / `web/auth.py` | Client allowlists, WebUI passwords, auth-setting payloads, and QR job lifecycle. | Does not mutate Core auth cache directly; Core owns protocols and cache. |
+| `web/downloads.py` / `web/settings.py` | Download jobs, output capture, course configuration, and selection helpers. | Single and batch actions use the Core facade. |
+| `web/library.py` / `web/static/` | Local media indexing, path safety, and the no-build single-page UI. | Calls JSON APIs through `fetch` and receives download output through `EventSource`. |
+| Root shims | Preserve old imports and `python *.py` workflows. | New code must not depend on them. |
 
 ## The Three Runtime Entry Points
 
@@ -88,9 +86,9 @@ Batch downloading itself iterates through enabled courses sequentially rather th
 
 ### Local WebUI entry point
 
-`WebUI.py` starts a local Flask service, listening on `127.0.0.1:5050` by default. If the starting port is occupied, it searches following ports for an available one. Startup options can also override the bind address, starting port, and automatic browser opening. Static pages are served directly from `webui/static/`; there is no Node.js, bundler, or extra frontend runtime.
+`WebUI.py` starts a local Flask service, listening on `127.0.0.1:5050` by default. If the starting port is occupied, it searches following ports for an available one. Startup options can also override the bind address, starting port, and automatic browser opening. Static pages are served directly from the packaged resource path `xduclassvideodownloader/web/static/`; there is no Node.js, bundler, or extra frontend runtime.
 
-The WebUI passes single-course requests to `XDUClassVideoDownloader.main()` and batch requests to `process_all_courses()`. This keeps CLI and browser behavior consistent for authentication, filenames, download strategy, and output directories.
+The WebUI passes single-course requests to `core.download_course(CourseDownloadOptions(...))` and batch requests to `core.download_courses(...)`. This keeps CLI and browser behavior consistent for authentication, filenames, download strategy, and output directories.
 
 ## Core Download Pipeline
 
@@ -98,13 +96,13 @@ The WebUI passes single-course requests to `XDUClassVideoDownloader.main()` and 
 
 All platform requests that require permission obtain Cookie headers through `get_authenticated_headers()`. `api.create_session()` configures a `requests.Session` with a consistent User-Agent, timeouts, and retry behavior; common transient status codes receive limited retries. The `rate_limit` decorator also inserts short randomized intervals between platform API calls to avoid excessively dense access.
 
-The in-process authentication cache resides in `config.py`. Once complete authentication information has been obtained, later requests in the same process reuse it. Login or interactive input is requested again only when no usable cache exists, configuration is incomplete, or a refresh is explicitly requested.
+The in-process authentication cache resides in `core.auth`, while persistence and atomic writes reside in `core.config`. Once complete authentication information has been obtained, later requests in the same process reuse it. Login or interactive input is requested again only when no usable cache exists, configuration is incomplete, or a refresh is explicitly requested.
 
 ### 2. Course discovery and API compatibility
 
 A single-course download first retrieves course records by `liveId`. The program retains only completed course segments, sorts them by month, date, weekday, lesson number, and week number, and then filters them according to the selected mode and skipped weeks.
 
-The project keeps handling paths for both new and old course APIs. When course records indicate an academic year no later than 2024, it attempts the older course API and processes the course through the legacy M3U8/TS path; other courses use the MP4-link flow. This decision is centralized in `api.py` and `downloader.py`, so entry points do not need to understand platform-format differences.
+The project keeps handling paths for both new and old course APIs. When course records indicate an academic year no later than 2024, it attempts the older course API and processes the course through the legacy M3U8/TS path; other courses use the MP4-link flow. This decision is centralized in `core.platform` and `core.downloader`, so entry points do not need to understand platform-format differences.
 
 For MP4 courses, the program reads video information from the playback page, URL-decodes and JSON-parses it, and extracts `pptVideo` and `teacherTrack` links. For known pages such as replay generation in progress, login required, or access denied, the code raises explicit exceptions or shows clear messages instead of treating an error page as video metadata.
 
@@ -255,12 +253,12 @@ The dependencies in `requirements.txt` can be grouped by purpose:
 
 FFmpeg is an external binary rather than a Python dependency. It is used by the legacy video path and video/subtitle merging. In both source and PyInstaller runs, the project uses `get_app_path()` to locate the writable application directory and `get_bundled_app_path()` to prefer PyInstaller-extracted resources. Thus, after packaging as `.exe`, configuration, logs, and download folders remain beside the executable while static frontend assets can be read from PyInstaller's resource directory.
 
-`XDUClassVideoDownloader.spec`, `Automation.spec`, and `WebUI.spec`, when present locally, describe PyInstaller packaging for the three entry points. WebUI packaging also carries `webui/static/`, while the three entry points carry the compact FFmpeg file. Build and distribution directories are generated artifacts and should not be edited as business source.
+`XDUClassVideoDownloader.spec`, `Automation.spec`, and `WebUI.spec`, when present locally, describe PyInstaller packaging for the three entry points. WebUI packaging also carries `xduclassvideodownloader/web/static/`, while the three entry points carry the compact FFmpeg file. Build and distribution directories are generated artifacts and should not be edited as business source.
 
 ## Maintenance and Extension Guidance
 
-1. **Enter new download capability through the shared pipeline.** Extend data access in `api.py` and storage behavior in `downloader.py` first, then let all three entry points pass the necessary parameters. Do not implement an exceptional path only in WebUI or one CLI.
-2. **Locate platform changes at the data boundary first.** Course lists, playback pages, `videoPath`, subtitles, and QR login are external boundaries. Add clear parsing, exceptions, and logging in `api.py` before considering UI presentation.
+1. **Enter new download capability through the shared pipeline.** Extend data access in `core.platform` and storage behavior in `core.downloader` first, then let all three entry points pass the necessary parameters. Do not implement an exceptional path only in WebUI or one CLI.
+2. **Locate platform changes at the data boundary first.** Course lists, playback pages, `videoPath`, subtitles, and QR login are external boundaries. Add clear parsing, exceptions, and logging in `core.platform` / `core.auth` before considering UI presentation.
 3. **Keep configuration backward compatible.** New fields need defaults; configuration updates should preserve course selections. For authentication-format changes, use the existing backup and migration pattern.
 4. **Do not break the filename contract.** WebUI library indexing and subtitle matching depend on downloader-generated names. If naming must change, update the downloader, regex indexer, and documentation together, and consider existing-file compatibility.
 5. **Keep WebUI jobs serialized.** A new long-running action that writes shared configuration, authentication, or course folders should enter the job manager and provide status/output, rather than running directly in a Flask request thread.

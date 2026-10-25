@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "XDUClassVideoDownloader"
+description = "西安电子科技大学录直播平台课程视频下载器"
+dynamic = ["version"]
+requires-python = ">=3.8"
+dependencies = [
+  "requests>=2.32.5",
+  "beautifulsoup4>=4.13.5",
+  "pycryptodome>=3.23.0",
+  "tqdm>=4.67.1",
+  "psutil>=7.0.0",
+  "numpy>=1.24.0",
+  "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+web = ["flask>=3.0.0"]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+xduclassvideodownloader = "xduclassvideodownloader.cli.single:run"
+xduclassvideodownloader-automation = "xduclassvideodownloader.cli.automation:run"
+xduclassvideodownloader-webui = "xduclassvideodownloader.web.app:run"
+
+[tool.setuptools.dynamic]
+version = {attr = "xduclassvideodownloader._version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["xduclassvideodownloader*"]
+
+[tool.setuptools.package-data]
+xduclassvideodownloader = ["web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

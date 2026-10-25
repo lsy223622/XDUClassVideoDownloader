@@ -18,6 +18,8 @@
 
 5.0 在保留原有命令行下载方式的基础上，新增本地 WebUI。您可以直接在浏览器中完成单课程下载、批量下载、登录配置和本地视频播放；新版和旧版录直播平台的课程均可下载。
 
+从源码运行时，三个旧入口仍然保持不变：`XDUClassVideoDownloader.py`、`Automation.py` 和 `WebUI.py` 只是兼容启动器，实际实现位于 `xduclassvideodownloader/`。业务逻辑集中在 `core`，命令行前端位于 `cli`，Flask 前端位于 `web`；因此普通用户无需改变启动方式，开发者可以通过 Core facade 复用同一套认证、课程扫描和下载流程。
+
 - [XDUClassVideoDownloader](#xduclassvideodownloader)
   - [🎉🎉 5.0 版本重大更新：新增本地 WebUI，下载、播放、设置一体化 🎉🎉](#-50-版本重大更新新增本地-webui下载播放设置一体化-)
   - [**使用须知**](#使用须知)
@@ -82,6 +84,13 @@
 
    ```shell
    pip install -r requirements.txt
+   ```
+
+   开发者也可以安装包元数据和测试依赖：
+
+   ```shell
+   pip install -e ".[web,dev]"
+   python -m pytest -q
    ```
 
 3. **FFmpeg (可选)**: 如果您需要下载 2024 学年及以前的课程，或者使用上下半节视频合并功能，则需要下载 [FFmpeg](https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.7z)（这是 Windows 版本下载链接），并将 `ffmpeg` 可执行程序放在下载程序同目录下或者添加到系统环境变量 `PATH` 中。也可以在 [Releases](https://github.com/lsy223622/XDUClassVideoDownloader/releases) 页面找到专门编译的超小体积版本 `ffmpeg_min.exe`。

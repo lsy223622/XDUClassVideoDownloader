@@ -4,7 +4,7 @@
 
 - 控制台：仅输出 ERROR 及以上级别（用户关心的问题）。
 - 总日志（logs/all.log）：记录 INFO 及以上的所有模块日志（运行信息、统计、警告、错误）。
-- 模块日志（logs/{module}.log）：各模块各一份（如 api.log、downloader.log、config.log、validator.log、main.log、automation.log），记录 INFO 及以上，便于定位问题。
+- 模块日志（logs/{module}.log）：各模块各一份（如 platform.log、downloader.log、config.log、validator.log、main.log、automation.log），记录 INFO 及以上，便于定位问题。
 - 可选调试日志（logs/debug.log）：默认关闭；使用命令行参数 `--debug` 打开，记录 DEBUG 及以上，包括所有网络请求等调试信息。
 
 ## 日志级别规范
@@ -17,4 +17,4 @@
 
 ## 日志位置
 
-所有日志位于项目根目录的 logs/ 目录。
+所有日志位于可写应用目录的 `logs/` 目录。源码入口会把应用目录设为入口文件所在目录；冻结/打包运行时配置、日志和下载目录仍位于可执行文件旁，而 Web 静态资源从独立的只读打包资源目录读取。
