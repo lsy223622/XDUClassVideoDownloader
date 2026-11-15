@@ -64,9 +64,9 @@ The following structure omits virtual environments, PyInstaller output, and runt
 | `core` | Authentication, configuration, platform requests, course orchestration, downloading, validation, and leaf utilities. | Does not import Flask or Web. |
 | `core/__init__.py` | Stable `CourseDownloadOptions`, auth, scan, and download facade. | CLI and Web use these public business entry points. |
 | `cli` | argparse, prompts, user output, and exit codes. | Calls the Core facade only. |
-| `web/app.py` | Flask factory, startup, route registration, and JSON/SSE orchestration. | Uses focused Web modules and public Core APIs. |
+| `web/app.py` | Flask factory, startup, route registration, and JSON APIs. | Uses focused Web modules and public Core APIs. |
 | `web/access.py` / `web/auth.py` | Client allowlists, WebUI passwords, auth-setting payloads, and QR job lifecycle. | Does not mutate Core auth cache directly; Core owns protocols and cache. |
-| `web/downloads.py` / `web/settings.py` | Download jobs, output capture, course configuration, and selection helpers. | Single and batch actions use the Core facade. |
+| `web/downloads.py` / `web/settings.py` | Download jobs, structured progress, course configuration, and selection helpers. | Single and batch actions use the Core facade. |
 | `web/library.py` / `web/static/` | Local media indexing, path safety, and the no-build single-page UI. | Calls JSON APIs through `fetch` and receives download output through `EventSource`. |
 | Root shims | Preserve old imports and `python *.py` workflows. | New code must not depend on them. |
 
@@ -199,22 +199,20 @@ All configuration writes go through `safe_write_config()`: it first creates a UT
 
 The WebUI is a local single-page application served by Flask through static files and JSON APIs. `index.html` provides the download, viewer, and settings page skeletons; `app.js` manages state and events with native DOM APIs; and `styles.css` handles layout, responsiveness, and theme adaptation. No framework, Node.js, or build step is introduced.
 
-Normal data interaction uses JSON. The backend requires write operations to use an `application/json` body and returns `{ "ok": true/false, ... }`. Download logs use Server-Sent Events (SSE): the frontend connects to a job stream through `EventSource`; after a page refresh it also queries the active job and reconnects to its output stream.
+The JSON API accepts download options and returns job snapshots. The frontend polls queue state, progress by lesson, transfer rates, merge ranges, and errors. Reloading restores the jobs held by the running process.
 
 | API category | Representative paths | Purpose |
 | --- | --- | --- |
 | Application and access control | `/api/app/info`, `/api/webui/access/*` | Read version notices and query or submit the WebUI access password. |
-| Batch configuration | `/api/automation/config`, `/api/automation/config/init`, `/api/automation/config/selection` | Read, scan, refresh, and save batch-course selection. |
-| Download jobs | `/api/download/start`, `/api/download/active`, `/api/download/jobs/<id>/stream` | Create jobs, restore status, and continuously receive output. |
+| Batch configuration | `/api/automation/config`, `/api/download/courses` | Scan term courses and explicitly load or save the batch configuration. |
+| Download jobs | `/api/download/start`, `/api/download/jobs`, `/api/download/jobs/<id>/retry` | Enqueue jobs, read state, clear completed jobs, or retry failures. |
 | Local media library | `/api/library`, `/media/<path>` | Index downloaded media and serve playable content from controlled paths. |
 | Authentication and QR login | `/api/settings/auth`, `/api/settings/qr/*` | Read/write authentication settings and start, poll, or cancel QR jobs. |
 | WebUI settings | `/api/settings/webui-password` | Query, set, or clear the page access password. |
 
-### Download jobs and console-output bridging
+### Download queue and state
 
-The existing download core prints progress to standard output and writes errors to project logs. `DownloadJob` therefore runs the real download function in a background daemon thread and uses `QueueWriter` to collect that thread's standard output and standard error. `QueueLogHandler` also directs error-level log records into the same queue. `ThreadBoundStream` redirects only the job thread's output; other threads still write to the original console, avoiding accidental capture of Flask or other thread output when `sys.stdout` is replaced.
-
-Each job retains its latest 5,000 output fragments and wakes the SSE generator through a condition variable. `DownloadJobManager` permits only one `pending` or `running` download job at a time. This prevents two jobs from simultaneously modifying the same course directory and prevents multiple jobs from competing for the same authentication state and terminal output.
+Each job calls Core with a course LiveID and download options. A single worker runs queued courses in order to avoid concurrent writes to the same directory. The Core observer reports lesson metadata, transfer bytes, merge ranges, and errors. The WebUI stores these events as job state, and the CLI keeps its terminal feedback.
 
 ### QR login, media library, and player
 

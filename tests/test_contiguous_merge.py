@@ -223,3 +223,36 @@ def test_ts_lessons_extend_mp4_range_without_timebase_gaps(tmp_path, monkeypatch
         ], check=True, capture_output=True, timeout=30).stdout
         assert len(frame) == 3
         assert max(range(3), key=lambda index: frame[index]) == channel
+
+
+def test_structured_events_report_each_real_merge_and_missing_track(tmp_path, local_media):
+    events = []
+    rows = [lesson_row(period) for period in (9, 10, 11)]
+    rows[-1][6] = None
+    downloader.process_rows(
+        rows, "CS101", "测试课", 2026, str(tmp_path),
+        observer=lambda kind, **data: events.append((kind, data)),
+    )
+    merged = [(event["track"], event["start"], event["end"])
+              for kind, event in events if kind == "merged" and event["track"] != "subtitle"]
+    assert merged == [("pptVideo", 9, 10), ("teacherTrack", 9, 10), ("pptVideo", 9, 11)]
+    errors = [event for kind, event in events if kind == "track" and event["status"] == "failed"]
+    assert errors[0]["lesson"]["period"] == 11
+    assert errors[0]["track"] == "teacherTrack"
+    assert errors[0]["message"] == "获取不到视频链接"
+
+
+def test_subtitle_events_report_saved_rows_and_real_merged_ranges(tmp_path, local_media):
+    events = []
+    downloader.process_rows(
+        [lesson_row(period) for period in (9, 10, 11)], "CS101", "测试课", 2026,
+        str(tmp_path), video_type="ppt",
+        observer=lambda kind, **data: events.append((kind, data)),
+    )
+    saved = [event["lesson"]["period"] for kind, event in events
+             if kind == "track" and event["track"] == "subtitle" and event["status"] == "done"]
+    merged = [(event["start"], event["end"]) for kind, event in events
+              if kind == "merged" and event["track"] == "subtitle"]
+    assert saved == [9, 10, 11]
+    assert merged == [(9, 10), (9, 11)]
+    assert (tmp_path / f"{PREFIX}第9-11节.srt").exists()

@@ -50,3 +50,18 @@ def test_missing_auth_preserves_interactive_first_run_flow(monkeypatch):
     assert cookies["UID"] == "b"
     assert saved["settings"]["auth_method"] == "ids"
     assert saved["settings"]["username"] == "123456"
+
+
+def test_noninteractive_auth_reports_missing_configuration(monkeypatch):
+    import pytest
+
+    from xduclassvideodownloader.core import auth
+    from xduclassvideodownloader.core.config import CaseSensitiveConfigParser
+
+    monkeypatch.setattr(auth, "_runtime_auth_cache", {})
+    monkeypatch.setattr(auth, "_read_auth_settings", lambda: CaseSensitiveConfigParser())
+    monkeypatch.setattr(auth, "_read_saved_auth_cookies", lambda: {})
+    monkeypatch.setattr(auth, "_get_auth_info_interactively",
+                        lambda *args: pytest.fail("WebUI should not prompt for credentials"))
+    with pytest.raises(ValueError, match="配置登录信息"):
+        auth.get_auth_cookies(interactive=False)

@@ -6,7 +6,7 @@
 提供浏览器界面用于登录、下载、库浏览与设置管理。
 """
 
-import json
+import configparser
 import logging
 import os
 import socket
@@ -16,16 +16,14 @@ import uuid
 import webbrowser
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory, session
 from flask.typing import ResponseReturnValue
 
 from ..core import ChaoxingQRLoginSession, check_update, set_runtime_auth_cookies
-from ..core.config import (
-    AUTOMATION_CONFIG_FILE,
-    safe_write_config,
-)
+from ..core.config import AUTOMATION_CONFIG_FILE
+from ..core.models import CourseDownloadOptions
 from ..core.courses import default_term
 from ..core.paths import get_app_path, get_bundled_app_path
 from ..core.platform import (
@@ -56,15 +54,13 @@ from .auth import (
     auth_config_payload as _auth_config_payload,
     save_auth_payload as _save_auth_payload,
 )
-from .downloads import DOWNLOAD_ACTIVE_STATUSES, DownloadJob, jobs, run_batch_download, run_single_download
+from .downloads import jobs
 from .library import index_local_library
 from .settings import (
     automation_config_payload as _automation_config_payload,
-    config_to_courses as _config_to_courses,
     read_automation_config as _read_automation_config,
-    refresh_automation_config as _refresh_automation_config,
-    selected_sections_from_payload as _selected_sections_from_payload,
-    write_automation_config_from_scan as _write_automation_config_from_scan,
+    save_automation_courses as _save_automation_courses,
+    scan_automation_courses as _scan_automation_courses,
 )
 
 logger = setup_logging("webui")
@@ -72,20 +68,15 @@ logger = setup_logging("webui")
 APP_DIR = get_app_path()
 STATIC_DIR = get_bundled_app_path("web", "static")
 ALLOWED_MEDIA_SUFFIXES = {".mp4", ".ts", ".srt", ".vtt"}
-VIDEO_TYPE_CHOICES = {"both", "ppt", "teacher"}
 QR_CANCELLABLE_STATUSES = {"pending", "waiting"}
 DEFAULT_WEBUI_PORT = 5050
 PORT_SCAN_LIMIT = 100
-QUIET_ACCESS_LOG_PATHS = ("/api/settings/qr/", "/media/")
+QUIET_ACCESS_LOG_PATHS = ("/api/settings/qr/", "/api/download/jobs", "/media/")
 
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
 app.config.from_mapping(TESTING=False)
 app.secret_key = os.urandom(32)
 WEBUI_UPDATE_INFO: Optional[Dict[str, Any]] = None
-
-_run_single_download = run_single_download
-_run_batch_download = run_batch_download
-
 
 def _index_local_library() -> Dict[str, Any]:
     return index_local_library(APP_DIR)
@@ -237,34 +228,8 @@ def _default_term() -> Tuple[int, int]:
     return default_term()
 
 
-def _download_stream_url(job_id: str) -> str:
-    return f"/api/download/jobs/{job_id}/stream"
-
-
 def _qr_image_url(job_id: str) -> str:
     return f"/api/settings/qr/{job_id}/image"
-
-
-def _start_single_download_from_payload(payload: Dict[str, Any]) -> DownloadJob:
-    live_id = str(payload.get("live_id", "")).strip()
-    single = int(payload.get("single", 0))
-    video_type = str(payload.get("video_type", "both"))
-    validate_download_parameters(live_id, single, video_type)
-    skip_weeks = str(payload.get("skip_weeks", "")).strip()
-    if skip_weeks:
-        parse_week_ranges(skip_weeks)
-    merge = bool(payload.get("merge", True))
-    return jobs.start(_run_single_download, (live_id, single, merge, video_type, skip_weeks))
-
-
-def _start_batch_download_from_payload(payload: Dict[str, Any]) -> DownloadJob:
-    selected_sections = _selected_sections_from_payload(payload)
-    if not selected_sections:
-        raise ValueError("请至少选择一门课程")
-    video_type = str(payload.get("video_type", "both"))
-    if video_type not in VIDEO_TYPE_CHOICES:
-        raise ValueError("视频类型无效")
-    return jobs.start(_run_batch_download, (selected_sections, video_type))
 
 
 def _webui_password_enabled() -> bool:
@@ -395,125 +360,105 @@ def webui_access_login() -> ResponseReturnValue:
         return _json_error(str(exc), 400)
 
 
-@app.route("/api/automation/config", methods=["GET"])
-def get_automation_config() -> ResponseReturnValue:
+@app.route("/api/automation/config", methods=["GET", "POST"])
+def automation_config() -> ResponseReturnValue:
     term_year, term_id = _default_term()
-    path = Path(AUTOMATION_CONFIG_FILE)
-    if not path.exists():
-        return _json_ok(
-            exists=False,
-            defaults={"term_year": term_year, "term_id": term_id, "video_type": "both"},
-            courses=[],
-        )
-
     try:
-        config = _read_automation_config()
-        if request.args.get("refresh") == "1":
-            user_id = request.args.get("uid") or config["DEFAULT"].get("user_id", "")
-            refresh_year = int(request.args.get("year") or config["DEFAULT"].get("term_year", term_year))
-            refresh_term = int(request.args.get("term") or config["DEFAULT"].get("term_id", term_id))
-            video_type = request.args.get("video_type") or config["DEFAULT"].get("video_type", "both")
-            config = _refresh_automation_config(config, user_id, refresh_year, refresh_term, video_type)
-        return _json_ok(**_automation_config_payload(config, term_year, term_id))
-    except Exception as exc:
-        return _json_error(str(exc), 500)
+        if request.method == "POST":
+            payload = _request_json(require_body=True)
+            _save_automation_courses(
+                AUTOMATION_CONFIG_FILE, str(payload.get("uid", "")).strip(),
+                int(payload["year"]), int(payload["term"]), str(payload["video_type"]), payload["courses"],
+            )
+            return _json_ok()
+
+        if not Path(AUTOMATION_CONFIG_FILE).exists():
+            return _json_ok(defaults={"term_year": term_year, "term_id": term_id, "video_type": "both"},
+                            courses=[])
+        return _json_ok(**_automation_config_payload(_read_automation_config(AUTOMATION_CONFIG_FILE), term_year, term_id))
+    except (ValueError, KeyError, TypeError, OSError, configparser.Error) as exc:
+        return _json_error(str(exc), 400)
 
 
-@app.route("/api/automation/config/init", methods=["POST"])
-def init_automation_config() -> ResponseReturnValue:
+@app.route("/api/download/courses", methods=["POST"])
+def scan_download_courses() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
-        term_year, term_id = _default_term()
-        config = _write_automation_config_from_scan(
-            str(payload.get("uid", "")).strip(),
-            int(payload.get("year") or term_year),
-            int(payload.get("term") or term_id),
-            str(payload.get("video_type") or "both"),
+        courses = _scan_automation_courses(
+            str(payload.get("uid", "")).strip(), int(payload["year"]), int(payload["term"]),
+            str(payload.get("video_type", "both")),
         )
-        return _json_ok(**_automation_config_payload(config, term_year, term_id))
-    except Exception as exc:
+        return _json_ok(courses=courses)
+    except (ValueError, KeyError, TypeError) as exc:
         return _json_error(str(exc), 400)
+    except Exception:
+        logger.exception("WebUI course scan failed")
+        return _json_error("扫描失败，请检查网络连接和登录状态", 502)
 
 
-@app.route("/api/automation/config/selection", methods=["POST"])
-def save_automation_selection() -> ResponseReturnValue:
-    try:
-        payload = _request_json(require_body=True)
-        selected = set(_selected_sections_from_payload(payload))
-        video_type = str(payload.get("video_type") or "both")
-        if video_type not in VIDEO_TYPE_CHOICES:
-            raise ValueError("视频类型无效")
-    except ValueError as exc:
-        return _json_error(str(exc), 400)
-
-    try:
-        config = _read_automation_config()
-        config["DEFAULT"]["video_type"] = video_type
-        for section_name in config.sections():
-            config[section_name]["download"] = "yes" if section_name in selected else "no"
-        safe_write_config(config, AUTOMATION_CONFIG_FILE, backup=True)
-        term_year, term_id = _default_term()
-        return _json_ok(**_automation_config_payload(config, term_year, term_id))
-    except Exception as exc:
-        return _json_error(str(exc), 400)
+def _course_options(payload: Dict[str, Any]) -> CourseDownloadOptions:
+    live_id = str(payload.get("live_id", "")).strip()
+    single = int(payload.get("single", 0))
+    video_type = str(payload.get("video_type", "both"))
+    validate_download_parameters(live_id, single, video_type)
+    skip_weeks = str(payload.get("skip_weeks", "")).strip()
+    parse_week_ranges(skip_weeks)
+    return CourseDownloadOptions(live_id, single, bool(payload.get("merge", True)), video_type, skip_weeks)
 
 
 @app.route("/api/download/start", methods=["POST"])
 def start_download() -> ResponseReturnValue:
     try:
         payload = _request_json(require_body=True)
-        mode = str(payload.get("mode", "single"))
+        mode = payload.get("mode", "single")
         if mode == "single":
-            job = _start_single_download_from_payload(payload)
+            requests = [(_course_options(payload), "")]
         elif mode == "batch":
-            job = _start_batch_download_from_payload(payload)
+            courses = payload.get("courses")
+            if not isinstance(courses, list) or not courses:
+                raise ValueError("请至少选择一门课程")
+            requests = [
+                (_course_options({"live_id": course["live_id"], "video_type": payload.get("video_type", "both")}),
+                 str(course.get("course_name", "")))
+                for course in courses if isinstance(course, dict)
+            ]
+            if len(requests) != len(courses):
+                raise ValueError("课程数据无效")
         else:
             raise ValueError("下载模式无效")
-        return _json_ok(job_id=job.id, stream_url=_download_stream_url(job.id))
-    except Exception as exc:
+        job_ids = jobs.enqueue(requests)
+        return _json_ok(job_id=job_ids[0], job_ids=job_ids)
+    except (ValueError, TypeError, KeyError) as exc:
         return _json_error(str(exc), 400)
 
 
-@app.route("/api/download/jobs/<job_id>/stream", methods=["GET"])
-def stream_download_job(job_id: str) -> ResponseReturnValue:
+@app.route("/api/download/jobs", methods=["GET", "DELETE"])
+def download_jobs() -> ResponseReturnValue:
+    if request.method == "DELETE":
+        jobs.clear_completed()
+    paused, snapshots = jobs.queue_state()
+    return _json_ok(jobs=snapshots, paused=paused)
+
+
+@app.route("/api/download/jobs/<job_id>/retry", methods=["POST"])
+def retry_download(job_id: str) -> ResponseReturnValue:
     job = jobs.get(job_id)
-    if not job:
+    if job is None:
         return _json_error("任务不存在", 404)
-
-    def generate() -> Iterable[str]:
-        yield "event: status\ndata: " + json.dumps({"status": job.status}, ensure_ascii=False) + "\n\n"
-        index = 0
-        while True:
-            with job.condition:
-                if index >= len(job.history) and job.status in DOWNLOAD_ACTIVE_STATUSES:
-                    job.condition.wait(timeout=1)
-                items = job.history[index:]
-                index = len(job.history)
-                done = job.status not in DOWNLOAD_ACTIVE_STATUSES
-
-            for item in items:
-                yield "data: " + json.dumps({"text": item}, ensure_ascii=False) + "\n\n"
-
-            if done:
-                yield "event: done\ndata: " + json.dumps(
-                    {"status": job.status, "success": job.success, "error": job.error}, ensure_ascii=False
-                ) + "\n\n"
-                break
-
-    return Response(generate(), mimetype="text/event-stream")
+    if job.status not in {"failed", "stopped"}:
+        return _json_error("只能重试失败或已停止的任务", 400)
+    return _json_ok(job_id=jobs.enqueue([(job.options, job.name)])[0])
 
 
-@app.route("/api/download/active", methods=["GET"])
-def active_download_job() -> ResponseReturnValue:
-    job = jobs.active()
-    if not job:
-        return _json_ok(active=False)
-    return _json_ok(
-        active=True,
-        job_id=job.id,
-        status=job.status,
-        stream_url=_download_stream_url(job.id),
-    )
+
+@app.route("/api/download/jobs/control", methods=["POST"])
+def control_download() -> ResponseReturnValue:
+    try:
+        payload = _request_json(require_body=True)
+        jobs.control(payload.get("action"))
+    except ValueError as exc:
+        return _json_error(str(exc), 400)
+    return _json_ok()
 
 
 @app.route("/api/library", methods=["GET"])

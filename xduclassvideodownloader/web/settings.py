@@ -1,19 +1,19 @@
 """Automation configuration helpers used by WebUI routes."""
 
 import configparser
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Mapping
 
-from ..core.config import AUTOMATION_CONFIG_FILE, safe_read_config, safe_write_config
-from ..core.courses import default_term
+from ..core.auth import get_auth_cookies
+from ..core.config import CaseSensitiveConfigParser, safe_read_config, safe_write_config
 from ..core.services import scan_term_courses
 from ..core.utils import remove_invalid_chars
-from ..core.validator import validate_term_params, validate_user_id
+from ..core.validator import validate_live_id, validate_term_params, validate_user_id
 
 
 VIDEO_TYPE_CHOICES = {"both", "ppt", "teacher"}
 
 
-def config_to_courses(config: configparser.ConfigParser) -> List[Dict[str, str]]:
+def config_to_courses(config: configparser.ConfigParser) -> List[Dict[str, Any]]:
     courses = []
     for section_name in config.sections():
         section = config[section_name]
@@ -35,7 +35,6 @@ def automation_config_payload(
 ) -> Dict[str, Any]:
     default = config["DEFAULT"]
     return {
-        "exists": True,
         "defaults": {
             "user_id": default.get("user_id", ""),
             "term_year": default.get("term_year", str(term_year)),
@@ -55,15 +54,8 @@ def validate_scan_params(user_id: str, term_year: int, term_id: int, video_type:
         raise ValueError("视频类型无效")
 
 
-def selected_sections_from_payload(payload: Mapping[str, Any]) -> List[str]:
-    selected_sections = payload.get("selected_sections") or []
-    if not isinstance(selected_sections, list):
-        raise ValueError("课程选择格式无效")
-    return [str(section) for section in selected_sections]
-
-
-def read_automation_config():
-    return safe_read_config(AUTOMATION_CONFIG_FILE)
+def read_automation_config(filename):
+    return safe_read_config(filename)
 
 
 def _course_config_section(course: Mapping[str, Any], download: str = "yes") -> Dict[str, str]:
@@ -75,71 +67,38 @@ def _course_config_section(course: Mapping[str, Any], download: str = "yes") -> 
     }
 
 
-def write_automation_config_from_scan(
-    user_id: str,
-    term_year: int,
-    term_id: int,
-    video_type: str,
-    *,
-    auth_cookies: Optional[Mapping[str, str]] = None,
-) -> configparser.ConfigParser:
+def scan_automation_courses(user_id, term_year, term_id, video_type):
     validate_scan_params(user_id, term_year, term_id, video_type)
-    courses = scan_term_courses(user_id, term_year, term_id, auth_cookies=auth_cookies)
-    if not courses:
-        raise ValueError("没有找到任何课程，请检查用户 ID 和学期参数")
+    courses = scan_term_courses(user_id, term_year, term_id, auth_cookies=get_auth_cookies(interactive=False))
+    return [
+        dict(section=str(course_id), selected=False, **_course_config_section(course, "no"))
+        for course_id, course in courses.items()
+    ]
 
-    config = configparser.ConfigParser()
+
+def save_automation_courses(filename, user_id, term_year, term_id, video_type, courses):
+    validate_scan_params(user_id, term_year, term_id, video_type)
+    config = CaseSensitiveConfigParser()
     config["DEFAULT"] = {
-        "user_id": user_id,
-        "term_year": str(term_year),
-        "term_id": str(term_id),
-        "video_type": video_type,
+        "user_id": user_id, "term_year": str(term_year),
+        "term_id": str(term_id), "video_type": video_type,
     }
-    for course_id, course in courses.items():
-        config[str(course_id)] = _course_config_section(course)
-    safe_write_config(config, AUTOMATION_CONFIG_FILE)
-    return config
-
-
-def refresh_automation_config(
-    base_config: configparser.ConfigParser,
-    user_id: str,
-    term_year: int,
-    term_id: int,
-    video_type: str,
-    *,
-    auth_cookies: Optional[Mapping[str, str]] = None,
-) -> configparser.ConfigParser:
-    validate_scan_params(user_id, term_year, term_id, video_type)
-    courses = scan_term_courses(user_id, term_year, term_id, auth_cookies=auth_cookies)
-    if not courses:
-        raise ValueError("没有找到任何课程，请检查用户 ID 和学期参数")
-
-    existing = {name: dict(base_config[name]) for name in base_config.sections()}
-    new_config = configparser.ConfigParser()
-    new_config["DEFAULT"] = {
-        "user_id": user_id,
-        "term_year": str(term_year),
-        "term_id": str(term_id),
-        "video_type": video_type,
-    }
-    for course_id, course in courses.items():
-        section_name = str(course_id)
-        old = existing.get(section_name, {})
-        new_config[section_name] = _course_config_section(course, old.get("download", "yes"))
-    safe_write_config(new_config, AUTOMATION_CONFIG_FILE)
-    return new_config
-
-
-__all__ = [
-    "AUTOMATION_CONFIG_FILE",
-    "VIDEO_TYPE_CHOICES",
-    "automation_config_payload",
-    "config_to_courses",
-    "default_term",
-    "read_automation_config",
-    "refresh_automation_config",
-    "selected_sections_from_payload",
-    "validate_scan_params",
-    "write_automation_config_from_scan",
-]
+    if not isinstance(courses, list) or not courses:
+        raise ValueError("请先读取配置或扫描课程")
+    for course in courses:
+        if not isinstance(course, dict):
+            raise ValueError("课程数据无效")
+        section = str(course["section"])
+        live_id = str(course["live_id"])
+        if not section or section == "DEFAULT" or any(char in section for char in "\r\n[]"):
+            raise ValueError("课程数据无效")
+        validate_live_id(live_id)
+        course_name = str(course.get("course_name", ""))
+        course_code = str(course.get("course_code", ""))
+        if any(char in course_name or char in course_code for char in "\r\n"):
+            raise ValueError("课程数据无效")
+        config[section] = {
+            "live_id": live_id, "course_name": course_name, "course_code": course_code,
+            "download": "yes" if course.get("selected") is True else "no",
+        }
+    safe_write_config(config, filename, backup=True)

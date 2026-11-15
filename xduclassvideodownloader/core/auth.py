@@ -234,7 +234,7 @@ def _get_auth_info_interactively(
 
 
 def get_auth_cookies(
-    force_refresh: bool = False, fid: Optional[str] = None
+    force_refresh: bool = False, fid: Optional[str] = None, *, interactive: bool = True
 ) -> Dict[str, str]:
     """Resolve cookies from cache, persisted settings, configured login, or interactive setup."""
 
@@ -282,9 +282,13 @@ def get_auth_cookies(
                     set_runtime_auth_cookies(result)
                     return result
             except Exception as exc:
+                if not interactive:
+                    raise ValueError("登录失败，请在设置中重新登录") from exc
                 print(f"使用保存的认证信息登录失败: {exc}")
                 print("将要求重新输入认证信息")
 
+    if not interactive:
+        raise ValueError("请先在设置中配置登录信息")
     return _get_auth_info_interactively(config, fid)
 
 

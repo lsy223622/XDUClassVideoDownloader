@@ -17,11 +17,6 @@ const state = {
   lastAudioTrack: null,
   progressDragging: false,
   suppressMediaEventsUntil: 0,
-  outputSource: null,
-  terminalLines: [""],
-  terminalRow: 0,
-  terminalCol: 0,
-  pendingAnsi: "",
   programmaticSeekUntil: new WeakMap(),
   programmaticPlayUntil: new WeakMap(),
   lastPlayAttempt: new WeakMap(),
@@ -55,139 +50,6 @@ function setStatus(text, kind = "") {
   const el = $("globalStatus");
   el.textContent = text;
   el.dataset.kind = kind;
-}
-
-function appendOutput(text) {
-  const out = $("terminalOutput");
-  if (out.textContent === "等待任务启动...") out.textContent = "";
-  const value = state.pendingAnsi + String(text);
-  state.pendingAnsi = "";
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index];
-    const ansi = consumeAnsiSequence(value, index);
-    if (ansi.incomplete) {
-      state.pendingAnsi = value.slice(index);
-      break;
-    }
-    if (ansi.length > 0) {
-      index += ansi.length - 1;
-      continue;
-    }
-    if (char === "\r") {
-      state.terminalCol = 0;
-    } else if (char === "\n") {
-      state.terminalRow += 1;
-      state.terminalCol = 0;
-      ensureTerminalLine();
-    } else if (char === "\b") {
-      state.terminalCol = Math.max(0, state.terminalCol - 1);
-    } else {
-      writeTerminalChar(char);
-    }
-  }
-  renderOutput();
-  out.scrollTop = out.scrollHeight;
-}
-
-function consumeAnsiSequence(value, index) {
-  const esc = value[index];
-  if (esc !== "\x1b" && esc !== "\uFFFD") return { length: 0, incomplete: false };
-  if (index + 1 >= value.length) return { length: 0, incomplete: true };
-  if (value[index + 1] !== "[") return { length: 1, incomplete: false };
-  let end = index + 2;
-  while (end < value.length && !/[\x40-\x7E]/.test(value[end])) end += 1;
-  if (end >= value.length) return { length: 0, incomplete: true };
-  const command = value[end];
-  const params = value.slice(index + 2, end);
-  const numbers = params
-    .replace(/^\?/, "")
-    .split(";")
-    .map((part) => Number.parseInt(part, 10));
-  const amount = numbers[0] || 1;
-  if (command === "A" || command === "F") {
-    state.terminalRow = Math.max(0, state.terminalRow - amount);
-    if (command === "F") state.terminalCol = 0;
-    ensureTerminalLine();
-  } else if (command === "B" || command === "E") {
-    state.terminalRow += amount;
-    if (command === "E") state.terminalCol = 0;
-    ensureTerminalLine();
-  } else if (command === "K") {
-    eraseTerminalLine(params);
-  } else if (command === "G") {
-    state.terminalCol = Math.max(0, amount - 1);
-  } else if (command === "C") {
-    state.terminalCol += amount;
-  } else if (command === "D") {
-    state.terminalCol = Math.max(0, state.terminalCol - amount);
-  } else if (command === "H" || command === "f") {
-    state.terminalRow = Math.max(0, (numbers[0] || 1) - 1);
-    state.terminalCol = Math.max(0, (numbers[1] || 1) - 1);
-    ensureTerminalLine();
-  } else if (command === "J") {
-    eraseTerminalScreen(amount);
-  }
-  return { length: end - index + 1, incomplete: false };
-}
-
-function ensureTerminalLine() {
-  while (state.terminalLines.length <= state.terminalRow) state.terminalLines.push("");
-}
-
-function writeTerminalChar(char) {
-  ensureTerminalLine();
-  const line = state.terminalLines[state.terminalRow];
-  const padded = line.padEnd(state.terminalCol, " ");
-  state.terminalLines[state.terminalRow] = padded.slice(0, state.terminalCol) + char + padded.slice(state.terminalCol + 1);
-  state.terminalCol += 1;
-}
-
-function eraseTerminalLine(params) {
-  ensureTerminalLine();
-  const mode = Number.parseInt(params.replace(/^\?/, ""), 10) || 0;
-  const line = state.terminalLines[state.terminalRow];
-  if (mode === 2) {
-    state.terminalLines[state.terminalRow] = "";
-    state.terminalCol = 0;
-  } else if (mode === 1) {
-    state.terminalLines[state.terminalRow] = " ".repeat(Math.min(state.terminalCol, line.length)) + line.slice(state.terminalCol);
-  } else {
-    state.terminalLines[state.terminalRow] = line.slice(0, state.terminalCol);
-  }
-}
-
-function eraseTerminalScreen(mode) {
-  if (mode === 2) {
-    state.terminalLines = [""];
-    state.terminalRow = 0;
-    state.terminalCol = 0;
-  } else if (mode === 1) {
-    for (let row = 0; row < state.terminalRow; row += 1) state.terminalLines[row] = "";
-    eraseTerminalLine("1");
-  } else {
-    eraseTerminalLine("0");
-    for (let row = state.terminalRow + 1; row < state.terminalLines.length; row += 1) state.terminalLines[row] = "";
-  }
-}
-
-function renderOutput() {
-  let lines = state.terminalLines.slice(-1200);
-  while (lines.length > 1 && lines[lines.length - 1].trim() === "") lines.pop();
-  $("terminalOutput").textContent = lines.join("\n");
-}
-
-function resetOutput() {
-  state.terminalLines = [""];
-  state.terminalRow = 0;
-  state.terminalCol = 0;
-  state.pendingAnsi = "";
-  $("terminalOutput").textContent = "";
-}
-
-function setStreamIndicator(status) {
-  const el = $("streamIndicator");
-  el.classList.toggle("streaming", status === "streaming");
-  el.classList.toggle("broken", status === "broken");
 }
 
 async function apiJson(url, options = {}) {
@@ -291,174 +153,302 @@ async function loadAppInfo() {
   }
 }
 
-function renderAutomation(data) {
-  if (data.defaults?.user_id && (!state.batchUidTouched || !$("batchUid").value.trim())) {
-    $("batchUid").value = data.defaults.user_id;
-  }
-  if (!data.exists) {
-    setHidden("automationMissing", false);
-    setHidden("automationReady", true);
-    if (data.defaults) {
-      if (data.defaults.user_id && (!state.batchUidTouched || !$("batchUid").value.trim())) {
-        $("batchUid").value = data.defaults.user_id;
-      }
-      $("batchYear").value = data.defaults.term_year || "";
-      $("batchTerm").value = data.defaults.term_id || "1";
-      $("batchInitVideoType").value = data.defaults.video_type || "both";
-    }
-    return;
-  }
-  setHidden("automationMissing", true);
-  setHidden("automationReady", false);
-  state.automationCourses = data.courses || [];
-  if (data.defaults?.video_type) $("batchVideoType").value = data.defaults.video_type;
-  const list = $("courseList");
-  list.innerHTML = "";
-  for (const course of state.automationCourses) {
+
+function downloadNotice(message = "", error = false) {
+  $("downloadNotice").textContent = message;
+  $("downloadNotice").dataset.error = String(error);
+  setHidden("downloadNotice", !message);
+}
+
+function batchParameters() {
+  return {uid: $("batchUid").value.trim(), year: $("batchYear").value,
+    term: $("batchTerm").value, video_type: $("batchVideoType").value};
+}
+
+function renderCourses(courses) {
+  state.automationCourses = courses;
+  $("courseList").replaceChildren(...courses.map((course, index) => {
     const row = document.createElement("label");
     row.className = "course-row";
-    row.innerHTML = `
-      <input type="checkbox" data-section="${course.section}" ${course.selected ? "checked" : ""}>
-      <span>
-        <span class="course-name">${escapeHtml(course.course_name || "未命名课程")}</span>
-        <span class="course-meta">${escapeHtml(course.course_code || "")} · LiveID ${escapeHtml(course.live_id || "")}</span>
-      </span>
-      <span class="course-meta">${course.download === "yes" ? "配置: 下载" : "配置: 不下载"}</span>
-    `;
-    list.appendChild(row);
-  }
+    row.innerHTML = '<input type="checkbox"><span class="download-course-line"><span class="course-name"></span> <span class="course-meta"></span></span>';
+    const checkbox = row.querySelector("input");
+    checkbox.checked = course.selected;
+    checkbox.dataset.index = index;
+    row.querySelector(".course-name").textContent = course.course_name || "未命名课程";
+    row.querySelector(".course-meta").textContent = [course.course_code, "LiveID " + course.live_id].filter(Boolean).join(" · ");
+    row.title = row.querySelector(".download-course-line").textContent;
+    return row;
+  }));
+  $("courseList").scrollTop = 0;
+  setText("courseCount", courses.length + " 门课程");
+  updateCourseSelection();
+}
+
+function selectedCourses() {
+  return $$("input:checked", $("courseList")).map(box => state.automationCourses[Number(box.dataset.index)]);
+}
+
+function updateCourseSelection() {
+  const count = selectedCourses().length;
+  setText("selectedCount", "已选 " + count + " 门");
+  $("startBatch").disabled = count === 0;
+  $("saveCourseSelection").disabled = !state.automationCourses.length;
 }
 
 async function loadAutomation() {
-  setStatus("读取配置");
   try {
     const data = await apiJson("/api/automation/config");
-    renderAutomation(data);
-    setStatus("空闲");
-  } catch (err) {
-    appendOutput(`读取批量配置失败: ${err.message}\n`);
-    setStatus("配置错误", "error");
+    const defaults = data.defaults;
+    for (const [field, value] of Object.entries({
+      batchUid: defaults.user_id, batchYear: defaults.term_year,
+      batchTerm: defaults.term_id, batchVideoType: defaults.video_type,
+    })) {
+      if (value && (field !== "batchUid" || !state.batchUidTouched)) $(field).value = value;
+    }
+    state.scannedTerm = {
+      uid: defaults.user_id || $("batchUid").value, year: defaults.term_year, term: defaults.term_id,
+    };
+    renderCourses(data.courses);
+    downloadNotice();
+  } catch (error) {
+    downloadNotice("读取配置失败：" + error.message, true);
   }
 }
 
-async function refreshAutomation() {
-  setStatus("刷新课程");
+async function scanCourses(event) {
+  event.preventDefault();
+  const params = batchParameters();
+  const button = $("scanButton");
+  button.disabled = true;
+  $("reloadAutomation").disabled = true;
+  button.textContent = "扫描中…";
+  downloadNotice();
   try {
-    const data = await apiJson("/api/automation/config?refresh=1");
-    renderAutomation(data);
-    setStatus("空闲");
-  } catch (err) {
-    appendOutput(`刷新课程失败: ${err.message}\n`);
-    setStatus("刷新失败", "error");
-  }
-}
-
-async function initAutomation() {
-  setStatus("扫描课程");
-  setInitLoading(true);
-  try {
-    const data = await apiJson("/api/automation/config/init", {
-      method: "POST",
-      body: JSON.stringify({
-        uid: $("batchUid").value.trim(),
-        year: $("batchYear").value,
-        term: $("batchTerm").value,
-        video_type: $("batchInitVideoType").value,
-      }),
+    const data = await apiJson("/api/download/courses", {
+      method: "POST", body: JSON.stringify(params),
     });
-    renderAutomation(data);
-    setStatus("空闲");
-  } catch (err) {
-    appendOutput(`生成 automation_config.ini 失败: ${err.message}\n`);
-    setStatus("生成失败", "error");
+    state.scannedTerm = params;
+    renderCourses(data.courses);
+  } catch (error) {
+    downloadNotice("扫描课程失败：" + error.message, true);
   } finally {
-    setInitLoading(false);
-  }
-}
-
-function setInitLoading(loading) {
-  $("initAutomation").disabled = loading;
-  setHidden("initAutomationSpinner", !loading);
-}
-
-async function startDownload(payload) {
-  resetOutput();
-  setStreamIndicator("");
-  setStatus("启动任务");
-  try {
-    const data = await apiJson("/api/download/start", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    connectDownloadStream(data.stream_url, true);
-  } catch (err) {
-    appendOutput(`启动失败: ${err.message}\n`);
-    setStatus("启动失败", "error");
-    setStreamIndicator("broken");
-  }
-}
-
-function connectDownloadStream(streamUrl, resetOutput = false) {
-  if (state.outputSource) state.outputSource.close();
-  if (resetOutput) $("terminalOutput").textContent = "";
-  setStatus("运行中", "running");
-  setStreamIndicator("streaming");
-  const source = new EventSource(streamUrl);
-  state.outputSource = source;
-  source.onmessage = (event) => {
-    const item = JSON.parse(event.data);
-    appendOutput(item.text || "");
-  };
-  source.addEventListener("done", (event) => {
-    const item = JSON.parse(event.data);
-    appendOutput(`\n任务结束：${item.status}\n`);
-    setStatus(item.success ? "完成" : "失败", item.success ? "success" : "error");
-    setStreamIndicator("");
-    source.close();
-    if (state.outputSource === source) state.outputSource = null;
-    loadLibrary();
-  });
-  source.onerror = () => {
-    appendOutput("\n输出流连接中断\n");
-    source.close();
-    if (state.outputSource === source) state.outputSource = null;
-    setStatus("输出中断", "error");
-    setStreamIndicator("broken");
-  };
-}
-
-async function restoreActiveDownloadStream() {
-  try {
-    const data = await apiJson("/api/download/active");
-    if (!data.active) return;
-    appendOutput("检测到正在运行的下载任务，已恢复输出串流。\n");
-    connectDownloadStream(data.stream_url, false);
-  } catch (err) {
-    appendOutput(`恢复下载输出失败: ${err.message}\n`);
+    button.disabled = false;
+    $("reloadAutomation").disabled = false;
+    button.textContent = "扫描课程";
   }
 }
 
 async function saveCourseSelection() {
-  setStatus("保存选择");
+  const selection = new Set(selectedCourses());
+  const courses = state.automationCourses.map(course => ({...course, selected: selection.has(course)}));
   try {
-    const data = await apiJson("/api/automation/config/selection", {
-      method: "POST",
-      body: JSON.stringify({
-        selected_sections: selectedCourseSections(),
-        video_type: $("batchVideoType").value,
-      }),
+    await apiJson("/api/automation/config", {
+      method: "POST", body: JSON.stringify({...state.scannedTerm, video_type: $("batchVideoType").value, courses}),
     });
-    renderAutomation(data);
-    appendOutput("已保存当前课程选择到 automation_config.ini\n");
-    setStatus("配置已保存", "success");
-  } catch (err) {
-    appendOutput(`保存课程选择失败: ${err.message}\n`);
-    setStatus("保存失败", "error");
+    downloadNotice("已保存配置");
+  } catch (error) {
+    downloadNotice("保存配置失败：" + error.message, true);
   }
 }
 
-function selectedCourseSections() {
-  return $$("input[type=checkbox]:checked", $("courseList")).map((box) => box.dataset.section);
+const trackLabels = {pptVideo: "课件画面", teacherTrack: "教师画面", subtitle: "字幕"};
+const lessonStatus = {waiting: "未下载", omitted: "未选择", unavailable: "无可用字幕", downloading: "下载中", done: "已下载", failed: "失败"};
+const jobStatus = {pending: "排队中", running: "下载中", paused: "已暂停", stopping: "正在停止", stopped: "已停止", success: "已完成", failed: "失败"};
+const downloadCards = new Map();
+const mergeAnimations = new Map();
+
+function lessonLabel(lesson, start = lesson.period, end = start) {
+  const periods = start === end ? start : start + "-" + end;
+  return lesson.year + "年" + lesson.month + "月" + lesson.day + "日 第" + lesson.week +
+    "周 星期" + lesson.weekday + " 第" + periods + "节";
+}
+
+function matchesMerge(lesson, merge) {
+  const day = merge.lesson;
+  return lesson.year === day.year && lesson.month === day.month && lesson.day === day.day &&
+    lesson.week === day.week && lesson.weekday === day.weekday &&
+    lesson.period >= merge.start && lesson.period <= merge.end;
+}
+
+function makeDownloadCard(id) {
+  const card = document.createElement("article");
+  card.className = "download-job";
+  card.innerHTML = '<div class="download-job-title"><strong></strong><span class="download-job-state"></span></div>' +
+    '<div class="download-tracks"><div class="download-track-labels"><span>课件</span><span>教师</span><span>字幕</span></div>' +
+    '<div class="download-track-rows"><div class="download-track" aria-label="课件画面" role="group"></div>' +
+    '<div class="download-track" aria-label="教师画面" role="group"></div>' +
+    '<div class="download-track download-track-subtitle" aria-label="字幕" role="group"></div></div></div>' +
+    '<div class="download-job-foot"><span></span><span class="download-speed"></span>' +
+    '<button class="ghost-btn" type="button" hidden>重试</button></div>' +
+    '<details class="download-errors" hidden><summary></summary><ul></ul></details>';
+  card.querySelector("button").onclick = async () => {
+    try {
+      await updateJobs("/api/download/jobs/" + id + "/retry", "POST");
+    } catch (error) {
+      downloadNotice("重试失败：" + error.message, true);
+    }
+  };
+  $("downloadJobs").append(card);
+  downloadCards.set(id, card);
+  return card;
+}
+
+function lessonIdentity(lesson) {
+  return [lesson.year, lesson.month, lesson.day, lesson.week, lesson.weekday, lesson.period].join("/");
+}
+
+function renderTrack(row, job, track) {
+  const oldTiles = new Map([...row.children].map(tile => [tile.dataset.lesson, tile]));
+  const merges = job.merges.filter(item => item.track === track).reverse();
+  const tiles = job.lessons.map((lesson, index) => {
+    const id = lessonIdentity(lesson);
+    let tile = oldTiles.get(id);
+    if (!tile) {
+      tile = document.createElement("span");
+      tile.className = "download-lesson";
+      tile.dataset.lesson = id;
+      tile.setAttribute("role", "img");
+      tile.innerHTML = '<span class="download-lesson-shape"><span class="download-lesson-fill"></span></span>';
+    }
+    const merge = merges.find(item => matchesMerge(lesson, item));
+    const progress = lesson.tracks[track] || {};
+    const status = merge ? "done" : progress.status || (track === "subtitle" || job.tracks.includes(track) ? "waiting" : "omitted");
+    const fraction = status === "done" || status === "failed" ? 1 :
+      (progress.total ? Math.min(1, progress.completed / progress.total) : 0);
+    const percent = progress.total && status === "downloading" ? " " + Math.floor(fraction * 100) + "%" : "";
+    tile.dataset.state = status;
+    tile.classList.toggle("unknown-size", status === "downloading" && !progress.total && progress.completed > 0);
+    tile.style.setProperty("--fill", fraction);
+    tile.title = lessonLabel(lesson, merge?.start, merge?.end) + " · " +
+      (progress.message || (merge ? "已合并" : lessonStatus[status])) + percent;
+    tile.setAttribute("aria-label", trackLabels[track] + " · " + tile.title);
+    const joins = (other, step) => Boolean(merge && other && other.period === lesson.period + step && matchesMerge(other, merge));
+    tile.classList.toggle("join-next", joins(job.lessons[index + 1], 1));
+    tile.classList.toggle("join-prev", joins(job.lessons[index - 1], -1));
+    return tile;
+  });
+  if (tiles.length !== row.children.length || tiles.some((tile, index) => row.children[index] !== tile)) {
+    row.replaceChildren(...tiles);
+  }
+}
+
+function renderJobTracks(card, job, merges) {
+  const rows = $$(".download-track", card);
+  Object.keys(trackLabels).forEach((track, index) => renderTrack(rows[index], {...job, merges}, track));
+}
+
+function updateJobTracks(card, job) {
+  let animation = mergeAnimations.get(job.id);
+  if (!animation) {
+    animation = {job, count: job.merges.length, timer: null};
+    mergeAnimations.set(job.id, animation);
+  }
+  animation.job = job;
+  const advance = () => {
+    const current = animation.job;
+    const merges = current.merges;
+    while (merges[animation.count]?.existing) animation.count++;
+    if (animation.count < merges.length) {
+      animation.count++;
+      animation.timer = window.setTimeout(() => {
+        animation.timer = null;
+        advance();
+      }, 560);
+    }
+    renderJobTracks(card, current, merges.slice(0, animation.count));
+  };
+  if (animation.timer === null) advance();
+  else renderJobTracks(card, job, job.merges.slice(0, animation.count));
+}
+
+function renderDownloadJobs(jobs, paused) {
+  const active = jobs.some(job => ["running", "pending", "paused", "stopping"].includes(job.status));
+  const mayControl = jobs.some(job => ["running", "pending", "paused"].includes(job.status));
+  const pauseButton = $("pauseDownloads");
+  pauseButton.disabled = !mayControl && !paused;
+  $("stopDownloads").disabled = !mayControl && !paused;
+  const pauseLabel = paused ? "继续下载" : "暂停下载";
+  pauseButton.title = pauseLabel;
+  pauseButton.setAttribute("aria-label", pauseLabel);
+  pauseButton.firstElementChild.hidden = paused;
+  pauseButton.lastElementChild.hidden = !paused;
+  state.downloadPaused = paused;
+  const renderedIds = new Set(jobs.map(job => job.id));
+  for (const [id, card] of downloadCards) {
+    if (!renderedIds.has(id)) {
+      card.remove();
+      downloadCards.delete(id);
+      window.clearTimeout(mergeAnimations.get(id)?.timer);
+      mergeAnimations.delete(id);
+    }
+  }
+  $("downloadJobs").style.setProperty("--lesson-columns", Math.max(1, ...jobs.map(job => job.lessons.length)));
+  setHidden("emptyDownloadJobs", jobs.length > 0);
+  $("clearCompleted").disabled = !jobs.some(job => job.status === "success" || job.status === "stopped");
+  for (const job of jobs) {
+    const card = downloadCards.get(job.id) || makeDownloadCard(job.id);
+    card.dataset.state = job.status;
+    card.querySelector("strong").textContent = [job.code, job.name].filter(Boolean).join(" ");
+    card.querySelector(".download-job-state").textContent = (job.status === "running" && job.phase) || jobStatus[job.status];
+    updateJobTracks(card, job);
+    card.querySelector(".download-tracks").hidden = !job.lessons.length;
+    const complete = job.lessons.reduce((total, lesson) => total + job.tracks
+      .filter(track => lesson.tracks[track]?.status === "done").length, 0);
+    const total = job.lessons.length * job.tracks.length;
+    card.querySelector(".download-job-foot > span").textContent = total ? complete + " / " + total + " 个视频" : "";
+    card.querySelector(".download-speed").textContent = job.speed > 0
+      ? (job.speed >= 1e6 ? (job.speed / 1e6).toFixed(1) + " MB/s" : (job.speed / 1e3).toFixed(1) + " KB/s") : "";
+    card.querySelector("button").hidden = !["failed", "stopped"].includes(job.status);
+    const details = card.querySelector("details");
+    details.hidden = !job.errors.length;
+    details.querySelector("summary").textContent = job.errors.length + " 条错误";
+    const errors = details.querySelector("ul");
+    if (errors.children.length !== job.errors.length) {
+      errors.replaceChildren(...job.errors.map(error => {
+        const li = document.createElement("li");
+        li.textContent = (error.lesson ? lessonLabel(error.lesson, error.start, error.end) + " · " +
+          trackLabels[error.track] + " · " : "") + error.message;
+        return li;
+      }));
+    }
+  }
+  if (state.downloadActive && !active) loadLibrary();
+  if (active || state.downloadActive) setStatus(paused ? "下载已暂停" : active ? "下载中" : "空闲", active && !paused ? "running" : "");
+  state.downloadActive = active;
+}
+
+let downloadPoll;
+let downloadRequest = Promise.resolve();
+function updateJobs(url = "/api/download/jobs", method = "GET", payload) {
+  window.clearTimeout(downloadPoll);
+  const load = async () => {
+    if (method !== "GET") {
+      await apiJson(url, {method, body: payload && JSON.stringify(payload)});
+    }
+    const data = await apiJson("/api/download/jobs");
+    renderDownloadJobs(data.jobs, data.paused);
+  };
+  const request = downloadRequest.then(load);
+  downloadRequest = request.catch(() => {}).then(() => {
+    window.clearTimeout(downloadPoll);
+    downloadPoll = window.setTimeout(() => updateJobs().catch(error => {
+      downloadNotice("刷新下载任务失败：" + error.message, true);
+    }), state.downloadActive ? 400 : 2000);
+  });
+  return request;
+}
+
+async function startDownload(payload, button) {
+  button.disabled = true;
+  try {
+    await updateJobs("/api/download/start", "POST", payload);
+    downloadNotice();
+  } catch (error) {
+    downloadNotice("启动失败：" + error.message, true);
+  } finally {
+    button.disabled = false;
+    updateCourseSelection();
+  }
 }
 
 async function loadLibrary() {
@@ -1189,7 +1179,7 @@ async function loadAuth() {
     updateInitialSetupGuide();
     if (!data.auth_ready) switchPage("settings");
   } catch (err) {
-    appendOutput(`读取登录配置失败: ${err.message}\n`);
+    setStatus(`读取登录配置失败: ${err.message}`, "error");
   }
 }
 
@@ -1200,7 +1190,7 @@ async function loadWebuiPasswordSettings() {
     state.webuiPasswordChangeAllowed = data.allow_password_change !== false;
     updateWebuiPasswordState();
   } catch (err) {
-    appendOutput(`读取 WebUI 访问密码设置失败: ${err.message}\n`);
+    setStatus(`读取 WebUI 访问密码设置失败: ${err.message}`, "error");
   }
 }
 
@@ -1230,7 +1220,7 @@ async function saveWebuiPassword() {
     setStatus("访问密码已保存", "success");
   } catch (err) {
     setStatus("保存失败", "error");
-    appendOutput(`保存 WebUI 访问密码失败: ${err.message}\n`);
+    setStatus(`保存 WebUI 访问密码失败: ${err.message}`, "error");
   }
 }
 
@@ -1251,7 +1241,7 @@ async function clearWebuiPassword() {
     setStatus("访问密码已清除", "success");
   } catch (err) {
     setStatus("清除失败", "error");
-    appendOutput(`清除 WebUI 访问密码失败: ${err.message}\n`);
+    setStatus(`清除 WebUI 访问密码失败: ${err.message}`, "error");
   }
 }
 
@@ -1285,7 +1275,7 @@ async function saveAuth() {
     setStatus("配置已保存", "success");
   } catch (err) {
     setStatus("保存失败", "error");
-    appendOutput(`保存登录配置失败: ${err.message}\n`);
+    setStatus(`保存登录配置失败: ${err.message}`, "error");
   }
 }
 
@@ -1479,33 +1469,52 @@ on("menuToggle", "click", () => {
   document.querySelector(".app-shell").classList.toggle("sidebar-collapsed");
   setTimeout(updateVideoLayout, 240);
 });
-on("reloadAutomation", "click", loadAutomation);
-on("refreshAutomation", "click", refreshAutomation);
-on("initAutomation", "click", initAutomation);
-on("batchUid", "input", () => {
-  state.batchUidTouched = true;
+
+function switchDownloadMode(batch) {
+  setHidden("batchDownload", !batch);
+  setHidden("singleDownload", batch);
+  $("batchMode").setAttribute("aria-pressed", String(batch));
+  $("liveMode").setAttribute("aria-pressed", String(!batch));
+}
+
+on("batchMode", "click", () => switchDownloadMode(true));
+on("liveMode", "click", () => switchDownloadMode(false));
+on("reloadAutomation", "click", () => { state.batchUidTouched = false; loadAutomation(); });
+on("scanCourses", "submit", scanCourses);
+on("batchUid", "input", () => { state.batchUidTouched = true; });
+on("singleDownload", "submit", event => {
+  event.preventDefault();
+  startDownload({
+    mode: "single",
+    live_id: $("singleLiveId").value.trim(),
+    single: Number($("singleMode").value),
+    merge: $("singleMerge").checked,
+    video_type: $("singleVideoType").value,
+    skip_weeks: $("singleSkipWeeks").value.trim(),
+  }, $("startSingle"));
 });
-on("startSingle", "click", () => startDownload({
-  mode: "single",
-  live_id: $("singleLiveId").value.trim(),
-  single: Number($("singleMode").value),
-  merge: $("singleMerge").checked,
-  video_type: $("singleVideoType").value,
-  skip_weeks: $("singleSkipWeeks").value.trim(),
-}));
 on("startBatch", "click", () => startDownload({
-  mode: "batch",
-  selected_sections: selectedCourseSections(),
-  video_type: $("batchVideoType").value,
-}));
-on("selectAllCourses", "click", () => {
-  $$("input[type=checkbox]", $("courseList")).forEach((box) => { box.checked = true; });
-});
-on("selectNoCourses", "click", () => {
-  $$("input[type=checkbox]", $("courseList")).forEach((box) => { box.checked = false; });
-});
+  mode: "batch", courses: selectedCourses(), video_type: $("batchVideoType").value,
+}, $("startBatch")));
+on("courseList", "change", updateCourseSelection);
+for (const [id, checked] of [["selectAllCourses", true], ["selectNoCourses", false]]) {
+  on(id, "click", () => {
+    $$("input[type=checkbox]", $("courseList")).forEach(box => { box.checked = checked; });
+    updateCourseSelection();
+  });
+}
 on("saveCourseSelection", "click", saveCourseSelection);
-on("clearOutput", "click", resetOutput);
+function controlDownloads(action) {
+  return updateJobs("/api/download/jobs/control", "POST", {action}).catch(error => {
+    downloadNotice("下载操作失败：" + error.message, true);
+  });
+}
+on("pauseDownloads", "click", () => controlDownloads(state.downloadPaused ? "resume" : "pause"));
+on("stopDownloads", "click", () => controlDownloads("stop"));
+on("clearCompleted", "click", () => updateJobs("/api/download/jobs", "DELETE").catch(error => {
+  downloadNotice("清除任务失败：" + error.message, true);
+}));
+
 on("reloadLibrary", "click", loadLibrary);
 on("maximizePlayer", "click", () => {
   const panel = document.querySelector(".player-panel");
@@ -1540,7 +1549,7 @@ function initializeApp() {
   loadLibrary();
   loadAuth();
   loadWebuiPasswordSettings();
-  restoreActiveDownloadStream();
+  updateJobs().catch(error => downloadNotice("读取下载任务失败：" + error.message, true));
 }
 
 checkWebuiAccess();

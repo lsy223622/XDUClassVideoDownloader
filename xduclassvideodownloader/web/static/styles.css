@@ -26,20 +26,13 @@
   --success-border: rgba(21, 128, 61, 0.35);
   --success-glow-off: rgba(21, 128, 61, 0);
   --success-glow: rgba(21, 128, 61, 0.45);
-  --stream-success-glow-off: rgba(22, 163, 74, 0);
-  --stream-success-glow: rgba(22, 163, 74, 0.8);
   --danger: #b42318;
   --danger-bright: #dc2626;
-  --stream-danger-glow-off: rgba(220, 38, 38, 0);
-  --stream-danger-glow: rgba(220, 38, 38, 0.8);
   --focus-ring: rgba(37, 99, 235, 0.18);
   --sidebar-bg: #101828;
   --sidebar-hover: #1d2939;
   --sidebar-text: #e5e7eb;
   --sidebar-muted: #cbd5e1;
-  --terminal-bg: #0b1220;
-  --terminal-text: #d1e7ff;
-  --stream-idle: #cbd5e1;
   --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
 }
 
@@ -72,20 +65,13 @@
     --success-border: rgba(134, 239, 172, 0.35);
     --success-glow-off: rgba(134, 239, 172, 0);
     --success-glow: rgba(134, 239, 172, 0.35);
-    --stream-success-glow-off: rgba(34, 197, 94, 0);
-    --stream-success-glow: rgba(34, 197, 94, 0.65);
     --danger: #fca5a5;
     --danger-bright: #f87171;
-    --stream-danger-glow-off: rgba(248, 113, 113, 0);
-    --stream-danger-glow: rgba(248, 113, 113, 0.65);
     --focus-ring: rgba(96, 165, 250, 0.28);
     --sidebar-bg: #020617;
     --sidebar-hover: #1e293b;
     --sidebar-text: #e5e7eb;
     --sidebar-muted: #94a3b8;
-    --terminal-bg: #020617;
-    --terminal-text: #bfdbfe;
-    --stream-idle: #64748b;
     --shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
   }
 }
@@ -560,14 +546,6 @@ select:focus {
   margin-bottom: 18px;
 }
 
-.batch-toolbar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 12px;
-}
-
 .inline-actions {
   display: flex;
   gap: 8px;
@@ -582,13 +560,6 @@ select:focus {
   border-radius: 8px;
   padding: 8px;
   margin-bottom: 14px;
-}
-
-.batch-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .course-row {
@@ -620,66 +591,82 @@ select:focus {
   margin-top: 2px;
 }
 
-.terminal-panel {
-  margin-top: 18px;
-}
 
-.terminal-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.download-grid { align-items: start; }
+.download-form, .download-jobs { display: grid; gap: 12px; min-width: 0; }
+.download-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.download-submit { align-items: end; }
+.download-submit select { display: block; }
+.download-term { grid-template-columns: minmax(0, 1fr) minmax(0, .65fr) minmax(0, .85fr); }
+.download-toolbar > .primary-btn { margin-left: auto; }
+#downloadPage button[aria-pressed="true"] { background: var(--surface-accent-strong); color: var(--accent-soft-text); }
+#downloadNotice { margin-bottom: 12px; }
+#downloadNotice[data-error="true"] { color: var(--danger); }
+#courseList { max-height: 240px; margin: 0; }
+#courseList:empty { display: none; }
+#courseList .course-row { grid-template-columns: auto minmax(0, 1fr); }
+.download-course-line { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-.stream-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--stream-idle);
-}
+.download-controls { align-items: center; }
+.download-icon-btn { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; }
+.download-icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.download-icon-btn svg[hidden] { display: none; }
+.download-track-labels { grid-template-rows: 18px 18px 18px; }
+.download-track-subtitle .download-lesson { height: 5px; aspect-ratio: auto; }
+.download-track-subtitle .download-lesson-shape { border-radius: 2px; }
+.download-track-subtitle .download-lesson-fill { transition: none; }
+.download-track-subtitle .download-lesson.join-next .download-lesson-shape { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.download-track-subtitle .download-lesson.join-prev .download-lesson-shape { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
-.stream-indicator.streaming {
-  background: var(--success-bright);
-  animation: stream-green-pulse 1.2s ease-in-out infinite;
+.download-job { border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 0; }
+.download-job-title, .download-job-foot { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.download-job-title strong { overflow-wrap: anywhere; }
+.download-job-state { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.download-job[data-state="failed"] .download-job-state, .download-errors { color: var(--danger); }
+.download-job[data-state="success"] .download-job-state, .download-speed { color: var(--success); }
+.download-job-foot { margin-top: 8px; color: var(--muted); font-size: 13px; }
+.download-speed { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.download-errors { margin-top: 8px; font-size: 13px; }
+.download-errors summary { cursor: pointer; }
+.download-errors ul { max-height: 160px; overflow: auto; margin: 6px 0 0; padding-inline-start: 22px; }
+.download-tracks { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 9px; margin-top: 9px; line-height: 18px; }
+.download-track-labels, .download-track-rows { display: grid; gap: 5px; }
+.download-track-labels { font-size: 12px; color: var(--muted); }
+.download-track-rows { overflow-x: auto; scrollbar-width: thin; }
+.download-track { --lesson-gap: 2px; display: flex; align-items: center; min-width: 0; height: var(--track-height, 18px); gap: var(--lesson-gap); }
+.download-lesson {
+  position: relative;
+  flex: 0 0 clamp(5px, calc((100% + var(--lesson-gap)) / var(--lesson-columns) - var(--lesson-gap)), 18px);
+  aspect-ratio: 1;
 }
-
-.stream-indicator.broken {
-  background: var(--danger-bright);
-  animation: stream-red-pulse 1.2s ease-in-out infinite;
+.download-lesson-shape {
+  position: absolute; inset: 0; border-radius: 3px; overflow: hidden; background: var(--range-track);
+  transition: left 560ms ease, right 560ms ease, border-radius 560ms ease;
 }
-
-@keyframes stream-green-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 var(--stream-success-glow-off);
-  }
-  50% {
-    box-shadow: 0 0 12px var(--stream-success-glow);
-  }
+.download-lesson-fill {
+  position: absolute; inset: 0; background: var(--success-bright); transform-origin: bottom;
+  transform: scaleY(var(--fill, 0)); transition: transform 250ms linear;
 }
-
-@keyframes stream-red-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 var(--stream-danger-glow-off);
-  }
-  50% {
-    box-shadow: 0 0 12px var(--stream-danger-glow);
-  }
+.download-lesson.unknown-size .download-lesson-fill { animation: download-unknown 1s ease-in-out infinite alternate; }
+@keyframes download-unknown { from { transform: scaleY(.15); } to { transform: scaleY(.55); } }
+.download-lesson[data-state="failed"] .download-lesson-fill { background: var(--danger-bright); }
+.download-lesson[data-state="omitted"] .download-lesson-shape { background: var(--surface-subtle); }
+.download-lesson.join-next .download-lesson-shape { right: calc(var(--lesson-gap) / -2 - .4px); border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.download-lesson.join-prev .download-lesson-shape { left: calc(var(--lesson-gap) / -2 - .4px); border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.download-lesson.join-next::after {
+  content: ""; position: absolute; inset: 0 auto 0 calc(100% - 1px);
+  width: calc(var(--lesson-gap) + 2px); background: var(--success-bright); pointer-events: none;
+  animation: download-join 560ms step-end both;
 }
-
-.terminal {
-  margin: 0;
-  min-height: 270px;
-  max-height: 430px;
-  overflow: auto;
-  background: var(--terminal-bg);
-  color: var(--terminal-text);
-  border-radius: 8px;
-  padding: 14px;
-  font-family: Consolas, "Cascadia Mono", monospace;
-  font-size: 13px;
-  line-height: 1.55;
-  white-space: pre;
+@keyframes download-join { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .download-lesson-shape, .download-lesson-fill { transition: none; }
+  .download-lesson.join-next::after { animation: none; }
+  .download-lesson.unknown-size .download-lesson-fill { animation: none; transform: scaleY(.33); }
+}
+@media (max-width: 520px) {
+  .download-term { grid-template-columns: 1fr 1fr; }
+  .download-term > :first-child { grid-column: 1 / -1; }
 }
 
 .viewer-layout {
@@ -1218,8 +1205,4 @@ input[type="range"]::-moz-range-thumb {
     grid-template-columns: 1fr;
   }
 
-  .batch-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }

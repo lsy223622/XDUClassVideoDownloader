@@ -61,119 +61,93 @@
       </header>
 
       <section id="downloadPage" class="page active">
-        <div class="grid two-col">
+        <p id="downloadNotice" class="notice hidden" role="status"></p>
+        <div class="grid two-col download-grid">
           <section class="panel">
             <div class="panel-header">
-              <h2>单课程下载</h2>
-            </div>
-            <div class="form-grid">
-              <label>
-                LiveID
-                <input id="singleLiveId" type="text" inputmode="numeric" placeholder="请输入课程 LiveID">
-              </label>
-              <label>
-                下载模式
-                <select id="singleMode">
-                  <option value="0">全部视频</option>
-                  <option value="1">单节课</option>
-                  <option value="2">半节课</option>
-                </select>
-              </label>
-              <label>
-                视频类型
-                <select id="singleVideoType">
-                  <option value="both">两种都下载</option>
-                  <option value="ppt">仅 pptVideo</option>
-                  <option value="teacher">仅 teacherTrack</option>
-                </select>
-              </label>
-              <label>
-                跳过周数（可选）
-                <input id="singleSkipWeeks" type="text" placeholder="如 1-3,7,9-11">
-              </label>
-              <label class="check-row">
-                <input id="singleMerge" type="checkbox" checked>
-                <span>自动合并相邻节次</span>
-              </label>
-            </div>
-            <button id="startSingle" class="primary-btn" type="button">开启单课程下载</button>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>批量下载</h2>
-              <div class="inline-actions">
-                <button id="reloadAutomation" class="ghost-btn" type="button">读取配置</button>
-                <button id="refreshAutomation" class="ghost-btn" type="button">刷新课程</button>
+              <h2>新建下载</h2>
+              <div class="inline-actions" aria-label="下载方式">
+                <button id="batchMode" class="secondary-btn" type="button" aria-pressed="true">按学期选课</button>
+                <button id="liveMode" class="secondary-btn" type="button" aria-pressed="false">按 LiveID</button>
               </div>
             </div>
-            <div id="automationMissing" class="hidden">
-              <div class="notice">未找到 automation_config.ini。请填写信息扫描课程并生成配置。</div>
-              <div class="form-grid compact">
-                <label>
-                  用户 ID
-                  <input id="batchUid" type="text" inputmode="numeric" placeholder="请输入 UID">
-                </label>
-                <label>
-                  学年
-                  <input id="batchYear" type="number">
-                </label>
-                <label>
-                  学期
-                  <select id="batchTerm">
+
+            <div id="batchDownload" class="download-form">
+              <form id="scanCourses" class="download-form">
+                <div class="form-grid download-term">
+                  <label>用户 ID<input id="batchUid" inputmode="numeric" placeholder="请输入 UID" required></label>
+                  <label>学年<input id="batchYear" type="number" required></label>
+                  <label>学期<select id="batchTerm">
                     <option value="1">第一学期</option>
                     <option value="2">第二学期</option>
-                  </select>
-                </label>
-                <label>
-                  视频类型
-                  <select id="batchInitVideoType">
-                    <option value="both">两种都下载</option>
-                    <option value="ppt">仅 pptVideo</option>
-                    <option value="teacher">仅 teacherTrack</option>
-                  </select>
-                </label>
-              </div>
-              <div class="button-with-loader">
-                <button id="initAutomation" class="secondary-btn" type="button">生成配置文件</button>
-                <span id="initAutomationSpinner" class="spinner hidden" aria-hidden="true"></span>
-              </div>
-            </div>
-
-            <div id="automationReady" class="hidden">
-              <div class="batch-toolbar">
-                <label>
-                  下载视频类型
-                  <select id="batchVideoType">
-                    <option value="both">两种都下载</option>
-                    <option value="ppt">仅 pptVideo</option>
-                    <option value="teacher">仅 teacherTrack</option>
-                  </select>
-                </label>
+                  </select></label>
+                </div>
+                <div class="download-toolbar">
+                  <button id="scanButton" class="secondary-btn" type="submit">扫描课程</button>
+                  <div class="inline-actions">
+                    <button id="reloadAutomation" class="ghost-btn" type="button">读取配置</button>
+                    <button id="saveCourseSelection" class="ghost-btn" type="button" disabled>保存配置</button>
+                  </div>
+                </div>
+              </form>
+              <div class="download-toolbar">
+                <div class="inline-actions"><strong id="courseCount">0 门课程</strong><span id="selectedCount" class="course-meta">已选 0 门</span></div>
                 <div class="inline-actions">
                   <button id="selectAllCourses" class="ghost-btn" type="button">全选</button>
                   <button id="selectNoCourses" class="ghost-btn" type="button">全不选</button>
                 </div>
               </div>
               <div id="courseList" class="course-list"></div>
-              <div class="batch-footer">
-                <button id="startBatch" class="primary-btn" type="button">开启批量下载</button>
-                <button id="saveCourseSelection" class="secondary-btn" type="button">保存当前选择到配置文件</button>
+              <div class="download-toolbar download-submit">
+                <label>视频类型<select id="batchVideoType">
+                  <option value="both">课件与教师画面</option>
+                  <option value="ppt">仅课件画面</option>
+                  <option value="teacher">仅教师画面</option>
+                </select></label>
+                <button id="startBatch" class="primary-btn" type="button" disabled>加入下载</button>
               </div>
             </div>
+
+            <form id="singleDownload" class="download-form hidden">
+              <div class="form-grid">
+                <label>LiveID<input id="singleLiveId" inputmode="numeric" pattern="[0-9]+" required></label>
+                <label>下载模式<select id="singleMode">
+                  <option value="0">全部视频</option>
+                  <option value="1">单节课</option>
+                  <option value="2">半节课</option>
+                </select></label>
+                <label>视频类型<select id="singleVideoType">
+                  <option value="both">课件与教师画面</option>
+                  <option value="ppt">仅课件画面</option>
+                  <option value="teacher">仅教师画面</option>
+                </select></label>
+                <label>跳过周数（可选）<input id="singleSkipWeeks" placeholder="如 1-3,7,9-11"></label>
+              </div>
+              <div class="download-toolbar">
+                <label class="check-row"><input id="singleMerge" type="checkbox" checked>自动合并相邻节次</label>
+                <button id="startSingle" class="primary-btn" type="submit">加入下载</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>下载任务</h2>
+              <div class="inline-actions download-controls">
+                <button id="pauseDownloads" class="ghost-btn download-icon-btn" type="button" title="暂停下载" aria-label="暂停下载" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14m6-14v14"/></svg>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M8 5v14l11-7z"/></svg>
+                </button>
+                <button id="stopDownloads" class="ghost-btn download-icon-btn" type="button" title="停止所有下载" aria-label="停止所有下载" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                </button>
+                <button id="clearCompleted" class="ghost-btn" type="button" disabled>清除已结束</button>
+              </div>
+            </div>
+            <p id="emptyDownloadJobs" class="notice">暂无下载任务</p>
+            <div id="downloadJobs" class="download-jobs"></div>
           </section>
         </div>
-
-        <section class="panel terminal-panel">
-          <div class="panel-header">
-            <div class="terminal-title">
-              <h2>命令行输出</h2>
-              <span id="streamIndicator" class="stream-indicator" title="输出流状态"></span>
-            </div>
-            <button id="clearOutput" class="ghost-btn" type="button">清空</button>
-          </div>
-          <pre id="terminalOutput" class="terminal">等待任务启动...</pre>
-        </section>
       </section>
 
       <section id="viewerPage" class="page">

@@ -72,9 +72,9 @@ XDUClassVideoDownloader 是一个在本机运行的课程录直播下载工具�
 | `core` | 认证、配置、平台请求、课程编排、下载、校验和叶子工具。 | 只依赖 Core 内部模块和外部平台/FFmpeg；不导入 Flask/Web。 |
 | `core/__init__.py` | 稳定的 `CourseDownloadOptions`、认证、扫描和下载 facade。 | CLI 与 Web 只从这里使用公共业务入口。 |
 | `cli` | argparse、交互提示、用户输出和退出码。 | 只调用 Core facade。 |
-| `web/app.py` | Flask 工厂、启动、路由注册和 JSON/SSE 编排。 | 依赖 Web 专用模块与 Core 公共接口。 |
+| `web/app.py` | Flask 工厂、启动、路由注册和 JSON 接口。 | 依赖 Web 专用模块与 Core 公共接口。 |
 | `web/access.py` / `web/auth.py` | 客户端 allowlist、WebUI 密码、认证设置 payload 与二维码任务生命周期。 | 不直接修改 Core 认证缓存；认证协议由 Core auth/session 负责。 |
-| `web/downloads.py` / `web/settings.py` | 下载任务、输出捕获、课程配置和选择路由所需的 Web 辅助逻辑。 | 批量/单课操作统一调用 Core facade。 |
+| `web/downloads.py` / `web/settings.py` | 下载队列、逐节状态、课程扫描和配置路由所需的 Web 辅助逻辑。 | 批量/单课操作统一调用 Core facade。 |
 | `web/library.py` / `web/static/` | 本地媒体库索引、路径安全和无构建链静态单页界面。 | 通过 `fetch` 调用 JSON API，通过 `EventSource` 接收下载输出。 |
 | 根目录 shim | 保留旧导入和 `python *.py` 工作流。 | 新代码不得反向依赖这些 shim。 |
 
@@ -207,22 +207,20 @@ download = yes
 
 WebUI 是一个由 Flask 提供静态文件和 JSON 接口的本地单页应用。`index.html` 提供下载、查看、设置三个页面骨架，`app.js` 用原生 DOM API 管理状态和事件，`styles.css` 负责布局、响应式显示与主题适配。前端不引入框架、Node.js 或构建步骤。
 
-普通数据交互使用 JSON：后端要求写操作使用 `application/json` 请求体，并以 `{ "ok": true/false, ... }` 返回。下载日志则使用 Server-Sent Events（SSE）：前端以 `EventSource` 连到任务的流地址，页面刷新后也会查询活动任务并重新连接输出流。
+后端通过 JSON 接口接收下载参数并返回任务快照。前端轮询排队状态、逐节进度、实时速度、合并区间和错误，并在刷新后恢复程序运行期间的任务列表。
 
 | 接口类别 | 代表路径 | 作用 |
 | --- | --- | --- |
 | 应用与访问控制 | `/api/app/info`、`/api/webui/access/*` | 读取版本提示、查询或提交 WebUI 访问密码。 |
-| 批量配置 | `/api/automation/config`、`/api/automation/config/init`、`/api/automation/config/selection` | 读取、扫描、刷新和保存批量课程选择。 |
-| 下载任务 | `/api/download/start`、`/api/download/active`、`/api/download/jobs/<id>/stream` | 创建下载任务、恢复状态并持续接收输出。 |
+| 批量配置 | `/api/automation/config`、`/api/download/courses` | 扫描学期课程，显式读取或保存批量配置。 |
+| 下载任务 | `/api/download/start`、`/api/download/jobs`、`/api/download/jobs/<id>/retry` | 加入队列、读取状态、清除已完成或重试失败任务。 |
 | 本地媒体库 | `/api/library`、`/media/<path>` | 索引已下载媒体并在受控路径下提供播放内容。 |
 | 认证与扫码 | `/api/settings/auth`、`/api/settings/qr/*` | 读写认证配置，启动、轮询和取消扫码任务。 |
 | WebUI 设置 | `/api/settings/webui-password` | 查询、设置或清除网页访问密码。 |
 
-### 下载任务和控制台输出桥接
+### 下载队列与状态
 
-已有下载核心会向标准输出打印进度，也会把错误写入项目日志。`DownloadJob` 因此在后台守护线程中运行实际下载函数，并使用 `QueueWriter` 收集该线程的标准输出与标准错误；`QueueLogHandler` 同时把错误级别日志转入相同队列。`ThreadBoundStream` 只劫持任务线程的输出，其他线程仍写向原来的控制台，避免全局替换 `sys.stdout` 时误捕获 Flask 或其他线程的内容。
-
-每个任务保留最近 5000 段输出并通过条件变量唤醒 SSE 生成器。`DownloadJobManager` 同一时间只允许一个 `pending` 或 `running` 下载任务，这一限制既避免两个任务同时改写同一课程目录，也避免多个任务竞争同一份认证和终端输出。
+每条任务以课程 LiveID 和下载选项调用 Core。后台线程依次执行队列中的课程，避免同时改写同一课程目录。Core 的观察回调提供节次、传输字节、合并范围和失败原因。WebUI 将这些事件保存为任务状态，CLI 入口继续使用现有终端反馈。
 
 ### 扫码、媒体库与播放器
 

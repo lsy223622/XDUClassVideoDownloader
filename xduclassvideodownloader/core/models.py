@@ -10,3 +10,7 @@ class CourseDownloadOptions:
     merge: bool = True
     video_type: str = "both"
     skip_weeks: str = ""
+
+
+class DownloadStopped(Exception):
+    """A download stopped at a cooperative checkpoint."""

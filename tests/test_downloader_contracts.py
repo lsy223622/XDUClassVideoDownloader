@@ -58,3 +58,46 @@ def test_merge_failure_keeps_source_segments(tmp_path, monkeypatch):
 
     assert downloader.merge_videos([str(first), str(second)], str(output)) is False
     assert first.exists() and second.exists()
+
+
+def test_stopping_mp4_mid_transfer_discards_partial_file(tmp_path, monkeypatch):
+    import pytest
+
+    from xduclassvideodownloader.core import downloader
+    from xduclassvideodownloader.core.models import DownloadStopped
+
+    read_chunks = []
+
+    class Response:
+        headers = {"content-length": "16384"}
+
+        def close(self):
+            pass
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            for chunk in range(2):
+                read_chunks.append(chunk)
+                yield b"x" * chunk_size
+
+    monkeypatch.setattr(downloader.requests, "head", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(downloader.requests, "get", lambda *args, **kwargs: Response())
+
+    can_write_first_chunk = True
+
+    def checkpoint():
+        nonlocal can_write_first_chunk
+        if read_chunks:
+            if not can_write_first_chunk:
+                raise DownloadStopped()
+            can_write_first_chunk = False
+
+    with pytest.raises(DownloadStopped):
+        downloader.download_mp4(
+            "https://example.com/video.mp4", "lesson.mp4", str(tmp_path),
+            auth_cookies={"_d": "a", "UID": "b", "vc3": "c"}, checkpoint=checkpoint,
+        )
+    assert read_chunks == [0]
+    assert list(tmp_path.iterdir()) == []

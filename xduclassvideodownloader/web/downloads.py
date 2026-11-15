@@ -1,203 +1,195 @@
-"""Background download jobs used by the WebUI."""
+"""Structured state for the WebUI's serial download queue."""
 
-import io
 import logging
-import sys
 import threading
-import time
 import uuid
-from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol, Tuple
+from dataclasses import asdict
+from typing import Dict, Optional
 
-from ..core import download_course, download_courses
-from ..core.config import AUTOMATION_CONFIG_FILE, safe_read_config
-from ..core.models import CourseDownloadOptions
-from ..core.utils import setup_logging
-
-
-logger = setup_logging("webui")
-DOWNLOAD_ACTIVE_STATUSES = {"pending", "running"}
+from ..core import download_course, get_auth_cookies
+from ..core.models import CourseDownloadOptions, DownloadStopped
+from ..core.platform import FID
 
 
-class QueueWriter(io.TextIOBase):
-    def __init__(self, emit: Callable[[str], None]) -> None:
-        self.emit = emit
-
-    def writable(self) -> bool:
-        return True
-
-    def write(self, value: str) -> int:
-        if not value:
-            return 0
-        self.emit(str(value))
-        return len(value)
-
-    def flush(self) -> None:
-        return None
+logger = logging.getLogger("xdu.webui.downloads")
+TRACKS = {"both": ("pptVideo", "teacherTrack"), "ppt": ("pptVideo",), "teacher": ("teacherTrack",)}
 
 
-class WritableTextStream(Protocol):
-    def write(self, text: str, /) -> int:
-        ...
-
-    def flush(self) -> None:
-        ...
-
-
-class ThreadBoundStream(io.TextIOBase):
-    def __init__(self, target_thread_id: int, target: WritableTextStream, fallback: WritableTextStream) -> None:
-        self.target_thread_id = target_thread_id
-        self.target = target
-        self.fallback = fallback
-
-    def _stream(self) -> WritableTextStream:
-        return self.target if threading.get_ident() == self.target_thread_id else self.fallback
-
-    def writable(self) -> bool:
-        return True
-
-    def write(self, value: str) -> int:
-        return self._stream().write(value)
-
-    def flush(self) -> None:
-        self._stream().flush()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.fallback, name)
-
-
-class QueueLogHandler(logging.Handler):
-    def __init__(self, emit: Callable[[str], None]) -> None:
-        super().__init__(logging.ERROR)
-        self.emit_output = emit
-        self.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            self.emit_output(self.format(record) + "\n")
-        except Exception:
-            pass
+def lesson_key(lesson):
+    return tuple(lesson[name] for name in ("year", "month", "day", "week", "weekday", "period"))
 
 
 class DownloadJob:
-    def __init__(self, target: Any, args: Tuple[Any, ...]) -> None:
+    def __init__(self, options: CourseDownloadOptions, name: str) -> None:
         self.id = uuid.uuid4().hex
-        self.target = target
-        self.args = args
-        self.history: List[str] = []
-        self.condition = threading.Condition()
+        self.options = options
+        self.name = name or f"LiveID {options.live_id}"
+        self.code = ""
         self.status = "pending"
-        self.success: Optional[bool] = None
-        self.error: Optional[str] = None
-        self.started_at: Optional[float] = None
-        self.finished_at: Optional[float] = None
-        self.thread = threading.Thread(target=self._run, name=f"webui-download-{self.id}", daemon=True)
+        self.phase = ""
+        self.errors = []
+        self.lessons = {}
+        self.merges = []
+        self.speed = 0
+        self.condition = threading.Condition()
+        self.thread: Optional[threading.Thread] = None
 
-    def start(self) -> None:
-        self.thread.start()
 
-    def emit_output(self, text: str) -> None:
+    def control(self, action):
         with self.condition:
-            self.history.append(text)
-            if len(self.history) > 5000:
-                self.history = self.history[-5000:]
+            if action == "pause" and self.status == "running":
+                self.status = "paused"
+                self.speed = 0
+            elif action == "resume" and self.status == "paused":
+                self.status = "running"
+            elif action == "stop" and self.status == "pending":
+                self.status = "stopped"
+            elif action == "stop" and self.status in {"running", "paused"}:
+                self.status = "stopping"
+                self.speed = 0
+            else:
+                return
             self.condition.notify_all()
 
-    def finish(self) -> None:
+    def checkpoint(self):
         with self.condition:
-            self.condition.notify_all()
+            self.condition.wait_for(lambda: self.status != "paused")
+            if self.status in {"stopping", "stopped"}:
+                raise DownloadStopped()
 
-    def _run(self) -> None:
-        self.status = "running"
-        self.started_at = time.time()
-        writer = QueueWriter(self.emit_output)
-        handler = QueueLogHandler(self.emit_output)
-        root = logging.getLogger("xdu")
-        root.addHandler(handler)
-        stdout_proxy = ThreadBoundStream(threading.get_ident(), writer, sys.stdout)
-        stderr_proxy = ThreadBoundStream(threading.get_ident(), writer, sys.stderr)
-        original_stdout, original_stderr = sys.stdout, sys.stderr
+    def observe(self, kind, **event):
+        with self.condition:
+            if kind == "course":
+                self.name, self.code = event["name"], event["code"]
+                self.phase = "获取视频链接"
+            elif kind == "plan":
+                for lesson in event["lessons"]:
+                    self.lessons.setdefault(lesson_key(lesson), {**lesson, "tracks": {}})
+            elif kind == "error":
+                self.errors.append(event)
+            else:
+                lesson, track = event["lesson"], event["track"]
+                key = lesson_key(lesson)
+                if kind == "track":
+                    item = self.lessons.setdefault(key, {**lesson, "tracks": {}})
+                    item["tracks"][track] = {k: v for k, v in event.items() if k not in ("lesson", "track")}
+                    if track != "subtitle":
+                        self.speed = event.get("speed", 0) if self.status == "running" else 0
+                        self.phase = "下载中"
+                    if event["status"] == "failed":
+                        self.errors.append(event)
+                elif kind == "merging":
+                    self.phase = "合并中"
+                    self.speed = 0
+                elif kind == "merged":
+                    identity = (key[:-1], track, event["start"], event["end"])
+                    if not event.get("existing") or not any(key == identity for key, _ in self.merges):
+                        self.merges.append((identity, event))
+                    self.phase = "下载中"
+                elif kind == "merge_failed":
+                    self.errors.append(event)
+                    self.phase = "下载中"
+
+    def begin(self):
+        with self.condition:
+            self.status = "running"
+            self.phase = "读取课程"
+
+    def run(self):
         try:
-            sys.stdout = stdout_proxy
-            sys.stderr = stderr_proxy
-            self.success = bool(self.target(*self.args))
-            self.status = "success" if self.success else "failed"
-        except Exception as exc:
-            self.success = False
-            self.error = str(exc)
-            self.status = "failed"
-            self.emit_output(f"ERROR: {exc}\n")
-            logger.exception("WebUI download job failed")
-        finally:
-            if sys.stdout is stdout_proxy:
-                sys.stdout = original_stdout
-            if sys.stderr is stderr_proxy:
-                sys.stderr = original_stderr
-            writer.flush()
-            root.removeHandler(handler)
-            self.finished_at = time.time()
-            self.finish()
+            auth_cookies = get_auth_cookies(fid=FID, interactive=False)
+            self.checkpoint()
+            success = download_course(
+                self.options, auth_cookies=auth_cookies, observer=self.observe, checkpoint=self.checkpoint,
+            )
+        except DownloadStopped:
+            success = False
+        except Exception:
+            with self.condition:
+                if self.status != "stopping":
+                    self.errors.append({"message": "启动下载失败，请检查登录状态和网络连接"})
+            logger.exception("Download failed for LiveID %s", self.options.live_id)
+            success = False
+        with self.condition:
+            if self.status == "stopping":
+                self.status = "stopped"
+            else:
+                if not success and not self.errors:
+                    self.errors.append({"message": "下载任务未能完成"})
+                self.status = "success" if success and not self.errors else "failed"
+            self.phase = ""
+            self.speed = 0
+
+    def snapshot(self):
+        with self.condition:
+            return dict(
+                id=self.id, name=self.name, code=self.code, status=self.status, phase=self.phase,
+                options=asdict(self.options), tracks=TRACKS[self.options.video_type], speed=self.speed,
+                lessons=[{**item, "tracks": dict(item["tracks"])} for _, item in sorted(self.lessons.items())],
+                errors=list(self.errors), merges=[event for _, event in self.merges],
+            )
 
 
 class DownloadJobManager:
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._condition = threading.Condition()
+        self._paused = False
         self._jobs: Dict[str, DownloadJob] = {}
-        self._active_job_id: Optional[str] = None
+        self._worker: Optional[threading.Thread] = None
 
-    def start(self, target: Any, args: Tuple[Any, ...]) -> DownloadJob:
-        with self._lock:
-            if self._active_job_id:
-                active = self._jobs.get(self._active_job_id)
-                if active and active.status in DOWNLOAD_ACTIVE_STATUSES:
-                    raise RuntimeError("已有下载任务正在运行")
-                self._active_job_id = None
-            job = DownloadJob(target, args)
-            self._jobs[job.id] = job
-            self._active_job_id = job.id
-            job.start()
-            return job
-
-    def get(self, job_id: str) -> Optional[DownloadJob]:
-        return self._jobs.get(job_id)
-
-    def active(self) -> Optional[DownloadJob]:
-        with self._lock:
-            if not self._active_job_id:
-                return None
-            job = self._jobs.get(self._active_job_id)
-            if job and job.status in DOWNLOAD_ACTIVE_STATUSES:
-                return job
-            return None
+    def enqueue(self, requests):
+        with self._condition:
+            new_jobs = [DownloadJob(options, name) for options, name in requests]
+            self._jobs.update((job.id, job) for job in new_jobs)
+            if self._worker is None:
+                self._worker = threading.Thread(target=self._run, name="webui-downloads", daemon=True)
+                self._worker.start()
+            for job in new_jobs:
+                job.thread = self._worker
+            return [job.id for job in new_jobs]
 
 
-def run_single_download(
-    live_id: str, single: int, merge: bool, video_type: str, skip_weeks_text: str
-) -> bool:
-    return download_course(
-        CourseDownloadOptions(
-            live_id=live_id,
-            single=single,
-            merge=merge,
-            video_type=video_type,
-            skip_weeks=skip_weeks_text,
-        )
-    )
+    def _run(self):
+        while True:
+            with self._condition:
+                self._condition.wait_for(lambda: not self._paused)
+                job = next((item for item in self._jobs.values() if item.status == "pending"), None)
+                if job is None:
+                    self._worker = None
+                    return
+                job.begin()
+            job.run()
 
+    def control(self, action):
+        with self._condition:
+            active = [job for job in self._jobs.values() if job.status in {"running", "paused"}]
+            if action == "pause":
+                self._paused = True
+                for job in active:
+                    job.control("pause")
+            elif action == "resume":
+                self._paused = False
+                for job in active:
+                    job.control("resume")
+            elif action == "stop":
+                self._paused = False
+                for job in self._jobs.values():
+                    job.control("stop")
+            else:
+                raise ValueError("无效的下载操作")
+            self._condition.notify_all()
 
-def run_batch_download(selected_sections: Iterable[str], video_type: str) -> bool:
-    config = safe_read_config(AUTOMATION_CONFIG_FILE)
-    selected = {str(section) for section in selected_sections}
-    return download_courses(config, selected_sections=selected, video_type=video_type)
+    def queue_state(self):
+        with self._condition:
+            return self._paused, [job.snapshot() for job in self._jobs.values()]
+
+    def get(self, job_id):
+        with self._condition:
+            return self._jobs.get(job_id)
+
+    def clear_completed(self):
+        with self._condition:
+            self._jobs = {key: job for key, job in self._jobs.items() if job.status not in {"success", "stopped"}}
 
 
 jobs = DownloadJobManager()
-
-
-__all__ = [
-    "DOWNLOAD_ACTIVE_STATUSES",
-    "DownloadJob",
-    "DownloadJobManager",
-    "jobs",
-    "run_batch_download",
-    "run_single_download",
-]

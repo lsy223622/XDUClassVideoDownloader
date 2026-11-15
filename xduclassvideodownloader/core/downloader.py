@@ -19,6 +19,7 @@
 """
 
 # 标准库导入
+import builtins
 import concurrent.futures
 import configparser
 import csv
@@ -43,6 +44,7 @@ import requests
 from tqdm import tqdm
 
 # 本地模块导入
+from .models import DownloadStopped
 from .platform import (
     FID,
     REQUEST_TIMEOUT,
@@ -85,6 +87,93 @@ SUBTITLE_EXTENSION = ".srt"
 # ============================================================================
 # 字幕处理函数
 # ============================================================================
+
+
+
+def _emit(observer, kind: str, **data) -> None:
+    if observer is not None:
+        observer(kind, **data)
+
+
+def _lesson(row, year):
+    components = _get_row_filename_components(row)
+    if components is None:
+        return None
+    month, day, _, period, week, weekday = components
+    return dict(year=year, month=month, day=day, period=period, week=str(week), weekday=weekday)
+
+
+def _track_types(video_type):
+    return [track for choice, track in (("ppt", "pptVideo"), ("teacher", "teacherTrack"))
+            if video_type in ("both", choice)]
+
+
+class TransferProgress:
+    """Report actual transfer work without creating a terminal progress bar."""
+
+    def __init__(self, report, total=None, initial=0):
+        self.report = report
+        self.total = total or None
+        self.completed = initial
+        self.bytes = 0
+        self.last_bytes = 0
+        self.last_time = time.monotonic()
+
+    def __enter__(self):
+        self.report(self.completed, self.total, 0)
+        return self
+
+    def __exit__(self, *_):
+        if self.bytes != self.last_bytes:
+            self.publish(time.monotonic())
+
+    def update(self, amount, transferred=None):
+        self.completed += amount
+        self.bytes += amount if transferred is None else transferred
+        now = time.monotonic()
+        if now - self.last_time >= 0.25:
+            self.publish(now)
+
+    def publish(self, now):
+        rate = (self.bytes - self.last_bytes) / max(now - self.last_time, 0.001)
+        self.report(self.completed, self.total, rate)
+        self.last_bytes = self.bytes
+        self.last_time = now
+
+
+def _checkpoint(checkpoint):
+    if checkpoint is not None:
+        checkpoint()
+
+
+def _discard_stopped_files(paths):
+    for path in paths:
+        if path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("无法清理已停止任务的临时文件: %s", path)
+
+
+def _download_chunks(response, checkpoint):
+    chunks = response.iter_content(chunk_size=CHUNK_SIZE)
+    if checkpoint is None:
+        yield from chunks
+        return
+    while True:
+        checkpoint()
+        try:
+            chunk = next(chunks)
+        except StopIteration:
+            return
+        checkpoint()
+        yield chunk
+
+
+def _transfer_progress(report, **options):
+    if report is None:
+        return tqdm(**options)
+    return TransferProgress(report, options.get("total"), options.get("initial", 0))
 
 
 def _get_row_filename_components(row: List[Any]) -> Optional[Tuple[int, int, Any, int, Any, str]]:
@@ -372,6 +461,8 @@ def download_subtitle_for_row(
     year: int,
     save_dir: str,
     auth_cookies: Optional[Mapping[str, str]] = None,
+    *,
+    observer=None,
 ) -> Tuple[Optional[Path], bool]:
     """
     下载单个 liveId 的字幕并保存为 SRT。
@@ -398,6 +489,9 @@ def download_subtitle_for_row(
             merged_path, prefix, start, end = merged_subtitle
             _remove_segment_subtitles_for_range(save_dir, prefix, start, end)
             logger.info(f"合并后的字幕已存在，跳过单节字幕下载: {merged_path.name}")
+            if observer is not None:
+                _emit(observer, "merged", track="subtitle", lesson=_lesson(row, year),
+                      start=start, end=end, existing=True)
             return merged_path, False
 
         subtitle_path = Path(save_dir) / f"{base_filename}{SUBTITLE_EXTENSION}"
@@ -638,6 +732,9 @@ def download_mp4(
     save_dir: str,
     max_attempts: int = MAX_DOWNLOAD_RETRIES,
     auth_cookies: Optional[Mapping[str, str]] = None,
+    *,
+    progress=None,
+    checkpoint=None,
 ) -> bool:
     """
     下载 MP4 视频文件，支持断点续传和完整性验证。
@@ -699,7 +796,9 @@ def download_mp4(
     # 重试下载机制
     for attempt in range(max_attempts):
         temp_path = None
+        part_paths = []
         try:
+            _checkpoint(checkpoint)
             logger.info(f"开始下载 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
             # 首先发送HEAD请求获取文件信息
@@ -747,16 +846,19 @@ def download_mp4(
                     attempts_local = 0
                     while attempts_local < max_attempts:
                         try:
+                            _checkpoint(checkpoint)
                             logger.debug(f"GET {url} Range={start}-{end} (part {idx})")
                             with requests.get(url, headers=headers_local, stream=True, timeout=DOWNLOAD_TIMEOUT) as r:
                                 r.raise_for_status()
                                 with open(part_path, "wb") as pf:
-                                    for chunk in r.iter_content(chunk_size=CHUNK_SIZE):
+                                    for chunk in _download_chunks(r, checkpoint):
                                         if chunk:
                                             pf.write(chunk)
                                             with downloaded_lock:
                                                 downloaded_total["value"] += len(chunk)
                             return True
+                        except DownloadStopped:
+                            return False
                         except Exception as e:
                             attempts_local += 1
                             logger.warning(f"分片 {idx} 下载失败，重试 {attempts_local}/{max_attempts}: {e}")
@@ -773,7 +875,7 @@ def download_mp4(
                     t.start()
 
                 # show progress
-                with tqdm(total=total_size, desc=safe_filename, unit="B", unit_scale=True, leave=False) as pbar:
+                with _transfer_progress(progress, total=total_size, desc=safe_filename, unit="B", unit_scale=True, leave=False) as pbar:
                     prev = 0
                     while any(t.is_alive() for t in threads):
                         with downloaded_lock:
@@ -794,6 +896,8 @@ def download_mp4(
                 for t in threads:
                     if t.is_alive():
                         t.join()
+
+                _checkpoint(checkpoint)
 
                 # 如果有失败的分片，回退到单线程下载
                 if fail_parts:
@@ -820,17 +924,18 @@ def download_mp4(
                         downloaded_size = 0
                         with open(temp_path, "wb") as f:
                             if total_size > 0:
-                                with tqdm(
+                                with _transfer_progress(
+                                    progress,
                                     total=total_size, unit="B", unit_scale=True, desc=safe_filename, leave=False
                                 ) as pbar:
-                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                    for chunk in _download_chunks(response, checkpoint):
                                         if chunk:
                                             f.write(chunk)
                                             downloaded_size += len(chunk)
                                             pbar.update(len(chunk))
                             else:
-                                with tqdm(unit="B", unit_scale=True, desc=safe_filename, leave=False) as pbar:
-                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                with _transfer_progress(progress, unit="B", unit_scale=True, desc=safe_filename, leave=False) as pbar:
+                                    for chunk in _download_chunks(response, checkpoint):
                                         if chunk:
                                             f.write(chunk)
                                             downloaded_size += len(chunk)
@@ -877,7 +982,8 @@ def download_mp4(
                         downloaded_size = resume_pos
                         with open(temp_path, "ab" if resume_pos > 0 else "wb") as f:
                             if total_size > 0:
-                                with tqdm(
+                                with _transfer_progress(
+                                    progress,
                                     total=total_size,
                                     initial=downloaded_size,
                                     unit="B",
@@ -885,15 +991,15 @@ def download_mp4(
                                     desc=safe_filename,
                                     leave=False,
                                 ) as pbar:
-                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                    for chunk in _download_chunks(response, checkpoint):
                                         if chunk:
                                             f.write(chunk)
                                             downloaded_size += len(chunk)
                                             pbar.update(len(chunk))
                             else:
                                 # 如果无法获取文件大小，显示简单进度
-                                with tqdm(unit="B", unit_scale=True, desc=safe_filename, leave=False) as pbar:
-                                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                                with _transfer_progress(progress, unit="B", unit_scale=True, desc=safe_filename, leave=False) as pbar:
+                                    for chunk in _download_chunks(response, checkpoint):
                                         if chunk:
                                             f.write(chunk)
                                             downloaded_size += len(chunk)
@@ -901,6 +1007,8 @@ def download_mp4(
                 finally:
                     if added_range:
                         headers.pop("Range", None)
+
+            _checkpoint(checkpoint)
 
             # 验证下载的文件
             if not verify_file_integrity(str(temp_path), total_size if total_size > 0 else None):
@@ -910,6 +1018,10 @@ def download_mp4(
             shutil.move(str(temp_path), str(output_path))
             logger.info(f"下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})")
             return True
+
+        except DownloadStopped:
+            _discard_stopped_files([*part_paths, temp_path])
+            raise
 
         except requests.Timeout:
             error_msg = f"下载超时 ({attempt + 1}/{max_attempts}): {safe_filename}"
@@ -1224,6 +1336,9 @@ def process_rows(
     video_type: str = "both",
     api_version: str = "new",
     auth_cookies: Optional[Mapping[str, str]] = None,
+    *,
+    observer=None,
+    checkpoint=None,
 ) -> Dict[str, int]:
     """
     处理视频行数据，下载视频并可选择性地合并相邻节次的视频。
@@ -1302,7 +1417,7 @@ def process_rows(
         检查是否存在相关的文件（包括合并后的文件）。
 
         返回:
-            tuple: (single_exists, merged_exists)
+            tuple: (single_exists, merged_range)
         """
         single_files = [
             Path(save_dir) / f"{base_filename}-{track_type}.mp4",
@@ -1320,7 +1435,7 @@ def process_rows(
         except Exception:
             current_jie = None
 
-        merged_exists = False
+        merged_range = None
         save_path = Path(save_dir)
         # ===== 改进的合并存在判定逻辑 =====
         # 之前的实现：如果当前节号落在任意一个 “第A-B节” 文件的范围内就认定存在（忽略了“日期/周/星期”等前缀），
@@ -1368,22 +1483,19 @@ def process_rows(
                     f_end = int(m2.group("end") or m2.group("start"))
                     # 只要当前节次区间完全被文件区间覆盖即可判定已存在
                     if f_start <= cur_start and f_end >= cur_end and verify_file_integrity(str(f)):
-                        merged_exists = True
+                        merged_range = (f_start, f_end)
                         break
                     # 兼容用户需求：如果当前是单节 (7) 允许被 (6-7) 或 (7-8) 覆盖
                     if cur_start == cur_end and verify_file_integrity(str(f)):
                         if (f_start == cur_start - 1 and f_end == cur_end) or (
                             f_start == cur_start and f_end == cur_end + 1
                         ):
-                            merged_exists = True
+                            merged_range = (f_start, f_end)
                             break
                 except Exception:
                     continue
-        else:
-            # 如果无法解析（非常规命名），退回到严格的精确文件匹配（已在 single_files 中处理）
-            merged_exists = False
 
-        return single_exists, merged_exists
+        return single_exists, merged_range
 
     def process_single_video(video_url, track_type, row):
         """
@@ -1397,15 +1509,26 @@ def process_rows(
         返回:
             dict: 处理结果 {'downloaded': bool, 'merged': bool, 'skipped': bool, 'failed': bool}
         """
+        _checkpoint(checkpoint)
+        lesson = _lesson(row, year) if observer else None
+
+        def report(status, **data):
+            if lesson is not None:
+                _emit(observer, "track", track=track_type, lesson=lesson, status=status, **data)
+
+        def transfer(completed, total, speed):
+            report("downloading", completed=completed, total=total, speed=speed)
+
         result = {"downloaded": False, "merged": False, "skipped": False, "failed": False}
 
         # 验证 URL
-        if not video_url or not isinstance(video_url, str):
+        has_link = isinstance(video_url, str) and bool(video_url)
+        if not has_link and observer is None:
             logger.debug(f"跳过空 URL: {track_type}")
             result["skipped"] = True
             return result
 
-        if not is_valid_url(video_url):
+        if has_link and not is_valid_url(video_url):
             logger.warning(f"URL 格式可能无效: {video_url}")
 
         # 获取文件名组件
@@ -1426,46 +1549,66 @@ def process_rows(
         filepath = Path(save_dir) / filename
 
         # 检查文件是否已存在
-        single_exists, merged_exists = check_existing_files(base_filename, track_type, save_dir)
+        single_exists, merged_range = check_existing_files(base_filename, track_type, save_dir)
 
-        if merged_exists:
+        if merged_range:
+            report("done")
+            if lesson is not None:
+                _emit(observer, "merged", track=track_type, lesson=lesson,
+                      start=merged_range[0], end=merged_range[1], existing=True)
             logger.info(f"合并后的视频已存在，跳过: {filename}")
             result["skipped"] = True
             return result
 
+        if not single_exists and not has_link:
+            result["skipped"] = True
+            report("failed", message="获取不到视频链接")
+            return result
+
         if single_exists:
+            report("done")
             logger.info(f"文件已存在，跳过下载: {filename}")
             result["skipped"] = True
         else:
             # 根据 API 版本选择下载函数
             logger.info(f"开始下载: {filename}")
+            report("downloading")
+            progress_options = {"progress": transfer} if lesson is not None else {}
+            if checkpoint is not None:
+                progress_options["checkpoint"] = checkpoint
             try:
                 if api_version == "legacy":
                     # 旧版 API：下载 M3U8 格式
                     download_success = download_m3u8(
-                        video_url, filename, save_dir, auth_cookies=auth_cookies
+                        video_url, filename, save_dir, auth_cookies=auth_cookies, **progress_options
                     )
                 else:
                     # 新版 API：下载 MP4 格式
                     download_success = download_mp4(
-                        video_url, filename, save_dir, auth_cookies=auth_cookies
+                        video_url, filename, save_dir, auth_cookies=auth_cookies, **progress_options
                     )
 
                 if download_success:
                     result["downloaded"] = True
+                    report("done")
                     logger.info(f"下载成功: {filename}")
                 else:
                     # 使用 WARNING 级别避免打断进度条显示
                     logger.warning(f"下载失败: {filename}")
                     result["failed"] = True
+                    report("failed", message="视频下载失败")
                     return result
+            except DownloadStopped:
+                raise
             except Exception as e:
                 # 使用 WARNING 级别避免打断进度条显示
                 logger.warning(f"下载异常: {filename}, 错误: {e}")
                 result["failed"] = True
+                report("failed", message="视频下载失败")
                 return result
 
         # 合并逻辑
+        _checkpoint(checkpoint)
         if merge and filepath.exists():
             try:
                 merged_result = attempt_video_merge(
@@ -1526,17 +1669,27 @@ def process_rows(
         merged_filename = f"{prefix}第{start_jie}-{end_jie}节-{track_type}.mp4"
         merged_filepath = save_path / merged_filename
 
+        lesson = dict(year=year, month=month, day=date, week=str(days), weekday=day_chinese, period=jie)
+        event = dict(track=track_type, lesson=lesson, start=start_jie, end=end_jie)
+
         # 检查合并后的文件是否已存在
         if merged_filepath.exists() and verify_file_integrity(str(merged_filepath)):
             logger.info(f"合并后的文件已存在: {merged_filename}")
+            _emit(observer, "merged", **event, existing=True)
             return True
 
         # 执行合并
         video_durations = [_get_media_duration_seconds(video_file) for video_file in all_files]
         logger.info(f"合并视频文件: {[Path(f).name for f in all_files]} -> {merged_filename}")
+        _emit(observer, "merging", **event)
         merge_success = merge_videos(all_files, str(merged_filepath))
-        if merge_success and merge_subtitles_for_videos(all_files, track_type, merged_filepath, video_durations):
-            stats["subtitle_merged"] += 1
+        if merge_success:
+            _emit(observer, "merged", **event)
+            if merge_subtitles_for_videos(all_files, track_type, merged_filepath, video_durations):
+                stats["subtitle_merged"] += 1
+                _emit(observer, "merged", **{**event, "track": "subtitle"})
+        else:
+            _emit(observer, "merge_failed", **event, message="视频合并失败")
         return merge_success
 
     # 处理所有视频
@@ -1548,13 +1701,20 @@ def process_rows(
 
     stats["total_videos"] = total_tasks
 
-    with tqdm(total=total_tasks, desc="处理视频", unit="个") as pbar:
+    with tqdm(total=total_tasks, desc="处理视频", unit="个", disable=observer is not None) as pbar:
         for i, row in enumerate(rows):
             try:
+                _checkpoint(checkpoint)
                 logger.debug(f"处理第 {i+1}/{len(rows)} 行数据")
-                _subtitle_path, subtitle_downloaded = download_subtitle_for_row(
-                    row, course_code, course_name, year, save_dir, auth_cookies=auth_cookies
+                subtitle_path, subtitle_downloaded = download_subtitle_for_row(
+                    row, course_code, course_name, year, save_dir, auth_cookies=auth_cookies,
+                    **({"observer": observer} if observer is not None else {}),
                 )
+                if observer is not None:
+                    lesson = _lesson(row, year)
+                    if lesson is not None:
+                        _emit(observer, "track", track="subtitle", lesson=lesson,
+                              status="done" if subtitle_path else "unavailable")
                 if subtitle_downloaded:
                     stats["subtitles"] += 1
 
@@ -1584,6 +1744,8 @@ def process_rows(
                         stats["merged"] += 1
                     pbar.update(1)
 
+            except DownloadStopped:
+                raise
             except Exception as e:
                 logger.error(f"处理第 {i+1} 行数据时出错: {e}")
                 stats["failed"] += 1
@@ -1698,6 +1860,9 @@ def download_course_videos(
     video_type: str = "both",
     skip_weeks: Optional[Set[int]] = None,
     auth_cookies: Optional[Mapping[str, str]] = None,
+    *,
+    observer=None,
+    checkpoint=None,
 ) -> bool:
     """
     下载指定课程的视频，这是核心的下载逻辑函数。
@@ -1712,33 +1877,40 @@ def download_course_videos(
     返回:
         bool: 处理是否成功
     """
+    print = builtins.print if observer is None else lambda *args: None
+    show_status = overwrite_print if observer is None else lambda *args: None
+    clear_status = clear_overwrite_line if observer is None else lambda: None
     if skip_weeks is None:
         skip_weeks = set()
     try:
+        _checkpoint(checkpoint)
         logger.info(f"开始下载课程 {live_id} 的视频")
 
         # 获取课程的初始数据
-        overwrite_print(f"正在获取课程 {live_id} 的信息...")
+        show_status(f"正在获取课程 {live_id} 的信息...")
         try:
             data = get_initial_data(live_id, auth_cookies=auth_cookies)
         except Exception as e:
             error_msg = handle_exception(e, "获取课程信息失败")
             # 清除上一条临时状态行再打印多行信息
-            clear_overwrite_line()
+            clear_status()
             print(f"\n{error_msg}")
+            _emit(observer, "error", message="获取课程信息失败，请检查 LiveID、网络和登录状态")
             print("请检查：")
             print("1. 课程 ID 是否正确")
             print("2. 网络连接是否正常")
             print("3. 是否已正确配置认证信息")
             return False
 
+        _checkpoint(checkpoint)
         # 检查是否获取到有效数据
         if not data:
-            clear_overwrite_line()
+            clear_status()
             print(f"\n没有找到课程 {live_id} 的数据，请检查课程 ID 是否正确")
+            _emit(observer, "error", message="没有找到课程，请检查 LiveID")
             return False
 
-        clear_overwrite_line()
+        clear_status()
         print(f"成功获取到 {len(data)} 条课程记录")
 
         # 检测 API 版本
@@ -1758,6 +1930,7 @@ def download_course_videos(
             if not data:
                 logger.error(f"没有找到课程 ID {live_id} 对应的课程记录")
                 print(f"错误：没有找到课程 ID {live_id} 对应的课程记录")
+                _emit(observer, "error", message="没有找到该 LiveID 对应的节次")
                 return False
 
             if single == 1:
@@ -1779,9 +1952,10 @@ def download_course_videos(
         course_code = first_entry.get("courseCode", "未知课程")
         course_name = remove_invalid_chars(first_entry.get("courseName", "未知课程名"))
 
+        _emit(observer, "course", name=course_name, code=course_code)
         save_dir = f"{year}年{course_code}{course_name}"
 
-        clear_overwrite_line()
+        clear_status()
         print(f"年份：{year}")
         print(f"课程代码：{course_code}")
         print(f"课程名称：{course_name}")
@@ -1791,12 +1965,13 @@ def download_course_videos(
         try:
             create_directory(save_dir)
         except OSError as e:
+            _emit(observer, "error", message="创建保存目录失败")
             error_msg = handle_exception(e, "创建保存目录失败")
             print(f"\n{error_msg}")
             return False
 
         # 多线程获取所有视频链接
-        overwrite_print(f"正在获取视频链接...")
+        show_status(f"正在获取视频链接...")
         rows = []
         failed_entries = []  # 收集获取失败的课程条目
         lock = Lock()
@@ -1805,13 +1980,18 @@ def download_course_videos(
         valid_entries = [entry for entry in data if entry.get("endTime", {}).get("time", 0) / 1000 <= time.time()]
 
         if not valid_entries:
+            _emit(observer, "error", message="没有已结束的课程可以下载")
             print("没有找到已结束的课程，无法下载")
             return False
 
-        clear_overwrite_line()
+        clear_status()
         print(f"找到 {len(valid_entries)} 个可下载的课程片段")
 
-        with tqdm(total=len(valid_entries), desc="获取视频链接") as desc:
+        def fetch_entry(entry, desc):
+            _checkpoint(checkpoint)
+            return fetch_video_links(entry, lock, desc, api_version, auth_cookies)
+
+        with tqdm(total=len(valid_entries), desc="获取视频链接", disable=observer is not None) as desc:
             # 计算最佳线程数
             max_threads = calculate_optimal_threads()
             logger.info(f"使用 {max_threads} 个线程获取视频链接")
@@ -1819,14 +1999,7 @@ def download_course_videos(
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
                 # 提交所有任务，同时保存 entry 和 future 的对应关系
                 future_to_entry = {
-                    executor.submit(
-                        fetch_video_links,
-                        entry,
-                        lock,
-                        desc,
-                        api_version,
-                        auth_cookies,
-                    ): entry
+                    executor.submit(fetch_entry, entry, desc): entry
                     for entry in valid_entries
                 }
 
@@ -1840,16 +2013,47 @@ def download_course_videos(
                         else:
                             # 获取失败，记录失败的课程条目
                             failed_entries.append(entry)
+                    except DownloadStopped:
+                        raise
                     except Exception as e:
                         logger.error(f"获取视频链接时出错: {e}")
                         failed_entries.append(entry)
 
+        _checkpoint(checkpoint)
+        # 按时间排序：月、日、星期、节次、周数
+        rows.sort(key=lambda x: (x[0], x[1], x[2], int(x[3]), x[4]))
+
+
+        if observer is not None:
+            skipped = {str(week) for week in skip_weeks}
+            failed_lessons = []
+            for entry in failed_entries:
+                start_time = entry.get("startTime") or {}
+                try:
+                    when = time.gmtime(start_time["time"] / 1000)
+                    lesson = _lesson(
+                        [when.tm_mon, when.tm_mday, start_time.get("day"),
+                         entry.get("jie"), entry.get("days"), None, None], year
+                    )
+                except (TypeError, ValueError, KeyError, OverflowError, OSError):
+                    lesson = None
+                if lesson is None:
+                    _emit(observer, "error", message=f"获取不到视频链接（LiveID {entry.get('id', '未知')}）")
+                elif lesson["week"] not in skipped:
+                    failed_lessons.append(lesson)
+            planned_rows = [row for row in rows if str(row[4]) not in skipped]
+            if single == 2:
+                planned_rows = planned_rows[:1]
+            lessons = [lesson for lesson in (_lesson(row, year) for row in planned_rows) if lesson is not None]
+            _emit(observer, "plan", lessons=lessons + failed_lessons)
+            for lesson in failed_lessons:
+                for track in _track_types(video_type):
+                    _emit(observer, "track", lesson=lesson, track=track, status="failed",
+                          message="获取不到视频链接")
+
         if not rows:
             print("没有成功获取到任何视频链接")
             return False
-
-        # 按时间排序：月、日、星期、节次、周数
-        rows.sort(key=lambda x: (x[0], x[1], x[2], int(x[3]), x[4]))
 
         # 根据 skip_weeks 参数过滤掉指定周数的视频
         if skip_weeks:
@@ -1916,7 +2120,11 @@ def download_course_videos(
             download_rows = rows
             print(f"\n全部下载模式：准备下载 {len(download_rows)} 个视频片段")
 
-        if single == 2:
+        if not download_rows and observer is not None:
+            _emit(observer, "error", message="没有符合筛选条件的节次")
+            return False
+
+        if single == 2 and observer is None:
             # 半节课模式的特殊处理
             return download_single_video(
                 download_rows[0], course_code, course_name, year, save_dir, video_type, auth_cookies
@@ -1930,10 +2138,12 @@ def download_course_videos(
                     course_name,
                     year,
                     save_dir,
-                    merge,
+                    merge if single != 2 else False,
                     video_type,
-                    api_version,
+                    api_version if single != 2 else "new",
                     auth_cookies,
+                    **({"observer": observer} if observer else {}),
+                    **({"checkpoint": checkpoint} if checkpoint else {}),
                 )
 
                 print(f"\n下载任务完成！")
@@ -1948,12 +2158,18 @@ def download_course_videos(
 
                 return True
 
+            except DownloadStopped:
+                raise
             except Exception as e:
+                _emit(observer, "error", message="处理课程视频失败")
                 error_msg = handle_exception(e, "批量下载处理失败")
                 print(f"\n{error_msg}")
                 return False
 
+    except DownloadStopped:
+        raise
     except Exception as e:
+        _emit(observer, "error", message="处理课程失败")
         error_msg = handle_exception(e, f"下载课程 {live_id} 失败")
         logger.error(error_msg)
         print(f"\n{error_msg}")
@@ -2067,7 +2283,7 @@ def parse_m3u8_playlist(m3u8_content: str, base_url: str) -> List[str]:
 
 
 def download_m3u8_segment(
-    url: str, segment_index: int, auth_cookies: Mapping[str, str]
+    url: str, segment_index: int, auth_cookies: Mapping[str, str], *, checkpoint=None
 ) -> Optional[bytes]:
     """
     下载单个 M3U8 TS 分片。
@@ -2084,11 +2300,18 @@ def download_m3u8_segment(
 
     max_retries = 10
     for attempt in range(max_retries):
+        _checkpoint(checkpoint)
         try:
             logger.debug(f"下载 TS 分片 {segment_index}: {url}")
-            response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
-            response.raise_for_status()
-            return response.content
+            if checkpoint is None:
+                response = requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT)
+                response.raise_for_status()
+                return response.content
+            with closing(requests.get(url, headers=headers, timeout=DOWNLOAD_TIMEOUT, stream=True)) as response:
+                response.raise_for_status()
+                return b"".join(_download_chunks(response, checkpoint))
+        except DownloadStopped:
+            raise
         except Exception as e:
             if attempt < max_retries - 1:
                 logger.warning(f"下载 TS 分片 {segment_index} 失败（尝试 {attempt + 1}/{max_retries}）: {e}")
@@ -2105,6 +2328,9 @@ def download_m3u8(
     save_dir: str,
     max_attempts: int = MAX_DOWNLOAD_RETRIES,
     auth_cookies: Optional[Mapping[str, str]] = None,
+    *,
+    progress=None,
+    checkpoint=None,
 ) -> bool:
     """
     下载M3U8视频文件，自动解析播放列表并下载所有 TS 分片，最后合并为完整视频。
@@ -2159,6 +2385,7 @@ def download_m3u8(
     for attempt in range(max_attempts):
         temp_path = None
         try:
+            _checkpoint(checkpoint)
             logger.info(f"开始下载 M3U8 视频 ({attempt + 1}/{max_attempts}): {safe_filename}")
 
             # 1. 下载 M3U8 播放列表
@@ -2184,14 +2411,16 @@ def download_m3u8(
             downloaded_segments = 0
             failed_segments = []
 
+            _checkpoint(checkpoint)
             with open(temp_path, "wb") as f:
-                with tqdm(total=len(segment_urls), desc=safe_filename, unit="片段", leave=False) as pbar:
+                with _transfer_progress(progress, total=len(segment_urls), desc=safe_filename, unit="片段", leave=False) as pbar:
                     # 使用多线程下载分片
                     max_workers = min(8, len(segment_urls))
                     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                         # 提交所有下载任务
                         future_to_index = {
-                            executor.submit(download_m3u8_segment, url, idx, auth_cookies): idx
+                            executor.submit(download_m3u8_segment, url, idx, auth_cookies,
+                                            **({"checkpoint": checkpoint} if checkpoint else {})): idx
                             for idx, url in enumerate(segment_urls)
                         }
 
@@ -2206,10 +2435,15 @@ def download_m3u8(
                                     downloaded_segments += 1
                                 else:
                                     failed_segments.append(idx)
+                            except DownloadStopped:
+                                raise
                             except Exception as e:
                                 logger.error(f"下载 TS 分片 {idx} 时出错: {e}")
                                 failed_segments.append(idx)
-                            pbar.update(1)
+                            if progress is None:
+                                pbar.update(1)
+                            else:
+                                pbar.update(1, len(segments_data[idx] or b""))
 
                     # 按顺序写入分片
                     for idx, segment_data in enumerate(segments_data):
@@ -2218,6 +2452,7 @@ def download_m3u8(
                         else:
                             logger.warning(f"TS 分片 {idx} 缺失，可能导致视频不完整")
 
+            _checkpoint(checkpoint)
             # 5. 检查下载完整性
             if failed_segments:
                 logger.warning(
@@ -2237,6 +2472,10 @@ def download_m3u8(
                 f"M3U8 视频下载完成: {safe_filename} ({format_file_size(output_path.stat().st_size)})，成功下载 {downloaded_segments}/{len(segment_urls)} 个分片"
             )
             return True
+
+        except DownloadStopped:
+            _discard_stopped_files([temp_path])
+            raise
 
         except requests.Timeout:
             error_msg = f"下载 M3U8 超时 ({attempt + 1}/{max_attempts}): {safe_filename}"

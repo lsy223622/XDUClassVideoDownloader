@@ -41,6 +41,8 @@ def download_course(
     options: CourseDownloadOptions,
     *,
     auth_cookies: Optional[Mapping[str, str]] = None,
+    observer=None,
+    checkpoint=None,
 ) -> bool:
     validated_live_id, validated_single, validated_video_type = validate_download_parameters(
         options.live_id, options.single, options.video_type
@@ -53,6 +55,8 @@ def download_course(
         validated_video_type,
         skip_weeks,
         auth_cookies=_resolve_auth(auth_cookies),
+        **({"observer": observer} if observer else {}),
+        **({"checkpoint": checkpoint} if checkpoint else {}),
     )
 
 
