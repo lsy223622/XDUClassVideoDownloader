@@ -21,12 +21,10 @@
   <div class="app-shell">
     <aside class="sidebar">
       <button id="menuToggle" class="menu-toggle" type="button" aria-label="展开或折叠菜单" title="展开或折叠菜单">
-        <span></span>
-        <span></span>
-        <span></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
       </button>
-      <nav class="nav">
-        <button class="nav-item active" type="button" data-page="download" title="下载">
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-item active" type="button" data-page="download" title="下载" aria-current="page">
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 20h14"/></svg>
           </span>
@@ -47,32 +45,32 @@
       </nav>
     </aside>
 
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <div class="title-row">
-            <h1>XDUClassVideoDownloader WebUI</h1>
-            <a id="versionBadge" class="version-badge" href="https://github.com/lsy223622/XDUClassVideoDownloader/releases" target="_blank" rel="noreferrer">v--</a>
-          </div>
-          <p id="pageHint">欢迎使用！如有问题请联系作者。</p>
-          <a id="updateNotice" class="update-notice hidden" href="https://github.com/lsy223622/XDUClassVideoDownloader/releases" target="_blank" rel="noreferrer"></a>
+    <header class="topbar">
+      <div>
+        <div class="title-row">
+          <h1 lang="en">XDUClassVideoDownloader WebUI</h1>
+          <a id="versionBadge" class="version-badge" href="https://github.com/lsy223622/XDUClassVideoDownloader/releases" target="_blank" rel="noreferrer">v--</a>
         </div>
-        <div id="globalStatus" class="status-dot">空闲</div>
-      </header>
+        <p id="updateError" class="hidden" role="status"></p>
+        <a id="updateNotice" class="update-notice hidden" href="https://github.com/lsy223622/XDUClassVideoDownloader/releases" target="_blank" rel="noreferrer"></a>
+      </div>
+      <div id="globalStatus" class="status-dot" role="status">空闲</div>
+    </header>
 
+    <main class="main">
       <section id="downloadPage" class="page active">
         <p id="downloadNotice" class="notice hidden" role="status"></p>
-        <div class="grid two-col download-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <h2>新建下载</h2>
-              <div class="inline-actions" aria-label="下载方式">
-                <button id="batchMode" class="secondary-btn" type="button" aria-pressed="true">按学期选课</button>
-                <button id="liveMode" class="secondary-btn" type="button" aria-pressed="false">按 LiveID</button>
+        <div class="bento-grid download-grid">
+          <div class="download-compose">
+            <section class="panel download-source" aria-labelledby="downloadSourceTitle">
+              <div class="panel-header">
+                <h2 id="downloadSourceTitle">新建下载</h2>
+                <div class="mode-switch" role="group" aria-label="下载方式">
+                  <button id="batchMode" class="secondary-btn" type="button" aria-pressed="true">按学期选课</button>
+                  <button id="liveMode" class="secondary-btn" type="button" aria-pressed="false">按 LiveID</button>
+                </div>
               </div>
-            </div>
 
-            <div id="batchDownload" class="download-form">
               <form id="scanCourses" class="download-form">
                 <div class="form-grid download-term">
                   <label>用户 ID<input id="batchUid" inputmode="numeric" placeholder="请输入 UID" required></label>
@@ -90,8 +88,35 @@
                   </div>
                 </div>
               </form>
+
+              <form id="singleDownload" class="download-form hidden">
+                <div class="form-grid">
+                  <label>LiveID<input id="singleLiveId" inputmode="numeric" pattern="[0-9]+" required></label>
+                  <label>下载模式<select id="singleMode">
+                    <option value="0">全部视频</option>
+                    <option value="1">单节课</option>
+                    <option value="2">半节课</option>
+                  </select></label>
+                  <label>视频类型<select id="singleVideoType">
+                    <option value="both">课件与教师画面</option>
+                    <option value="ppt">仅课件画面</option>
+                    <option value="teacher">仅教师画面</option>
+                  </select></label>
+                  <label>跳过周数（可选）<input id="singleSkipWeeks" placeholder="如 1-3,7,9-11"></label>
+                </div>
+                <div class="download-toolbar">
+                  <label class="check-row"><input id="singleMerge" type="checkbox" checked>自动合并相邻节次</label>
+                  <button id="startSingle" class="primary-btn" type="submit">加入下载</button>
+                </div>
+              </form>
+            </section>
+
+            <section id="courseSelection" class="panel download-form" aria-labelledby="courseCount">
               <div class="download-toolbar">
-                <div class="inline-actions"><strong id="courseCount">0 门课程</strong><span id="selectedCount" class="course-meta">已选 0 门</span></div>
+                <div class="inline-actions">
+                  <h2 id="courseCount">0 门课程</h2>
+                  <span id="selectedCount" class="selection-badge">已选 0 门</span>
+                </div>
                 <div class="inline-actions">
                   <button id="selectAllCourses" class="ghost-btn" type="button">全选</button>
                   <button id="selectNoCourses" class="ghost-btn" type="button">全不选</button>
@@ -106,33 +131,12 @@
                 </select></label>
                 <button id="startBatch" class="primary-btn" type="button" disabled>加入下载</button>
               </div>
-            </div>
+            </section>
+          </div>
 
-            <form id="singleDownload" class="download-form hidden">
-              <div class="form-grid">
-                <label>LiveID<input id="singleLiveId" inputmode="numeric" pattern="[0-9]+" required></label>
-                <label>下载模式<select id="singleMode">
-                  <option value="0">全部视频</option>
-                  <option value="1">单节课</option>
-                  <option value="2">半节课</option>
-                </select></label>
-                <label>视频类型<select id="singleVideoType">
-                  <option value="both">课件与教师画面</option>
-                  <option value="ppt">仅课件画面</option>
-                  <option value="teacher">仅教师画面</option>
-                </select></label>
-                <label>跳过周数（可选）<input id="singleSkipWeeks" placeholder="如 1-3,7,9-11"></label>
-              </div>
-              <div class="download-toolbar">
-                <label class="check-row"><input id="singleMerge" type="checkbox" checked>自动合并相邻节次</label>
-                <button id="startSingle" class="primary-btn" type="submit">加入下载</button>
-              </div>
-            </form>
-          </section>
-
-          <section class="panel">
+          <section class="panel download-queue" aria-labelledby="downloadQueueTitle">
             <div class="panel-header">
-              <h2>下载任务</h2>
+              <h2 id="downloadQueueTitle">下载任务</h2>
               <div class="inline-actions download-controls">
                 <button id="pauseDownloads" class="ghost-btn download-icon-btn" type="button" title="暂停下载" aria-label="暂停下载" disabled>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14m6-14v14"/></svg>
@@ -144,7 +148,12 @@
                 <button id="clearCompleted" class="ghost-btn" type="button" disabled>清除已结束</button>
               </div>
             </div>
-            <p id="emptyDownloadJobs" class="notice">暂无下载任务</p>
+            <div id="emptyDownloadJobs" class="queue-empty">
+              <span class="queue-empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+              </span>
+              <p>暂无下载任务</p>
+            </div>
             <div id="downloadJobs" class="download-jobs"></div>
           </section>
         </div>
@@ -186,7 +195,7 @@
                       <input id="playbackSpeedInput" type="number" min="0.25" max="4" step="0.05" value="1">
                     </div>
                     <div class="range-wrap">
-                      <input id="playbackSpeedRange" type="range" min="0.5" max="3" step="0.05" value="1" data-default-value="1">
+                      <input id="playbackSpeedRange" aria-label="播放速度" type="range" min="0.5" max="3" step="0.05" value="1" data-default-value="1">
                       <span class="range-default-dot" aria-hidden="true"></span>
                     </div>
                   </div>
@@ -201,7 +210,7 @@
                       <input id="pptOffsetInput" type="number" step="0.01" value="0">
                     </div>
                     <div class="range-wrap">
-                      <input id="pptOffsetRange" type="range" min="-10" max="10" step="0.1" value="0" data-default-value="0">
+                      <input id="pptOffsetRange" aria-label="课件时间偏移" type="range" min="-10" max="10" step="0.1" value="0" data-default-value="0">
                       <span class="range-default-dot" aria-hidden="true"></span>
                     </div>
                   </div>
@@ -216,7 +225,7 @@
                       <input id="subtitleOffsetInput" type="number" step="0.01" value="0">
                     </div>
                     <div class="range-wrap">
-                      <input id="subtitleOffsetRange" type="range" min="-10" max="10" step="0.1" value="0" data-default-value="0">
+                      <input id="subtitleOffsetRange" aria-label="字幕时间偏移" type="range" min="-10" max="10" step="0.1" value="0" data-default-value="0">
                       <span class="range-default-dot" aria-hidden="true"></span>
                     </div>
                     <div class="control-row">
@@ -227,7 +236,7 @@
                       </div>
                     </div>
                     <div class="range-wrap">
-                      <input id="subtitleFontRange" type="range" min="12" max="36" step="1" value="18" data-default-value="18">
+                      <input id="subtitleFontRange" aria-label="字幕字号" type="range" min="12" max="36" step="1" value="18" data-default-value="18">
                       <span class="range-default-dot" aria-hidden="true"></span>
                     </div>
                   </div>
@@ -235,7 +244,7 @@
               </div>
               <div class="player-progress">
                 <span id="playerCurrentTime">0:00</span>
-                <input id="playerProgress" type="range" min="0" max="1000" step="1" value="0">
+                <input id="playerProgress" aria-label="播放进度" type="range" min="0" max="1000" step="1" value="0">
                 <span id="playerDuration">0:00</span>
               </div>
             </div>
@@ -248,12 +257,12 @@
 
       <section id="settingsPage" class="page">
         <div id="initialSetupGuide" class="notice setup-guide hidden">
-          尚未检测到可用的登录信息。请选择一种登录方式完成初始设置，推荐使用右侧的“学在西电扫码登录”，点击“生成二维码”后用学在西电 App 扫码确认。
+          尚未检测到可用的登录信息。请选择一种登录方式完成初始设置，推荐使用“学在西电扫码登录”，点击“生成二维码”后用学在西电 App 扫码确认。
         </div>
-        <div class="grid two-col">
-          <section class="panel">
+        <div class="bento-grid settings-grid">
+          <section class="panel auth-panel" aria-labelledby="authTitle">
             <div class="panel-header">
-              <h2>登录配置</h2>
+              <h2 id="authTitle">登录配置</h2>
               <button id="reloadAuth" class="ghost-btn" type="button">重新读取</button>
             </div>
             <div class="form-grid">
@@ -287,40 +296,42 @@
             <button id="saveAuth" class="primary-btn" type="button">保存登录配置</button>
           </section>
 
-          <section class="panel">
-            <div class="panel-header">
-              <h2>学在西电扫码登录</h2>
-            </div>
-            <button id="startQr" class="secondary-btn" type="button">生成二维码</button>
-            <div id="qrBox" class="qr-box hidden">
-              <div id="qrLoading" class="qr-placeholder hidden" aria-live="polite">
-                <span class="spinner" aria-hidden="true"></span>
+          <div class="settings-side">
+            <section class="panel qr-panel">
+              <div class="panel-header">
+                <h2>学在西电扫码登录</h2>
+                <button id="startQr" class="secondary-btn" type="button">生成二维码</button>
               </div>
-              <img id="qrImage" class="hidden" alt="二维码">
-              <div id="qrStatus" class="notice">等待扫码</div>
-            </div>
-          </section>
+              <div id="qrBox" class="qr-box hidden">
+                <div id="qrLoading" class="qr-placeholder hidden" aria-live="polite">
+                  <span class="spinner" aria-hidden="true"></span>
+                </div>
+                <img id="qrImage" class="hidden" alt="二维码">
+                <div id="qrStatus" class="notice">等待扫码</div>
+              </div>
+            </section>
 
-          <section id="webuiPasswordPanel" class="panel">
-            <div class="panel-header">
-              <h2>WebUI 访问密码</h2>
-              <span id="webuiPasswordState" class="muted-text">未设置</span>
-            </div>
-            <div class="form-grid">
-              <label>
-                新密码
-                <input id="webuiPassword" type="password" autocomplete="new-password" placeholder="留空不保存">
-              </label>
-              <label>
-                确认密码
-                <input id="webuiPasswordConfirm" type="password" autocomplete="new-password">
-              </label>
-            </div>
-            <div class="inline-actions">
-              <button id="saveWebuiPassword" class="primary-btn" type="button">保存访问密码</button>
-              <button id="clearWebuiPassword" class="ghost-btn" type="button">清除密码</button>
-            </div>
-          </section>
+            <section id="webuiPasswordPanel" class="panel">
+              <div class="panel-header">
+                <h2>WebUI 访问密码</h2>
+                <span id="webuiPasswordState" class="muted-text">未设置</span>
+              </div>
+              <div class="form-grid">
+                <label>
+                  新密码
+                  <input id="webuiPassword" type="password" autocomplete="new-password" placeholder="留空不保存">
+                </label>
+                <label>
+                  确认密码
+                  <input id="webuiPasswordConfirm" type="password" autocomplete="new-password">
+                </label>
+              </div>
+              <div class="inline-actions">
+                <button id="saveWebuiPassword" class="primary-btn" type="button">保存访问密码</button>
+                <button id="clearWebuiPassword" class="ghost-btn" type="button">清除密码</button>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
     </main>

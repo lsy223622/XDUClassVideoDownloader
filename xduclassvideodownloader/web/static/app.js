@@ -1,5 +1,4 @@
 const state = {
-  appMessage: "欢迎使用！如有问题请联系作者。",
   automationCourses: [],
   subtitles: [],
   activeVideos: [],
@@ -48,7 +47,7 @@ function setText(id, text) {
 
 function setStatus(text, kind = "") {
   const el = $("globalStatus");
-  el.textContent = text;
+  if (el.textContent !== text) el.textContent = text;
   el.dataset.kind = kind;
 }
 
@@ -117,23 +116,24 @@ function switchPage(pageName) {
   if (pageName !== "viewer") pauseAllVideos(false);
   if (pageName !== "settings") stopQrPolling(true);
   $$(".nav-item").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.page === pageName);
+    const active = btn.dataset.page === pageName;
+    btn.classList.toggle("active", active);
+    if (active) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
   });
   $$(".page").forEach((page) => page.classList.remove("active"));
   $(`${pageName}Page`).classList.add("active");
-  setText("pageHint", state.appMessage);
 }
 
 async function loadAppInfo() {
   try {
     const data = await apiJson("/api/app/info");
     const version = data.version || "--";
-    const message = data.message || "欢迎使用！如有问题请联系作者。检查更新失败。";
     const releasesUrl = data.releases_url || "https://github.com/lsy223622/XDUClassVideoDownloader/releases";
-    state.appMessage = message;
     $("versionBadge").textContent = `v${version}`;
     $("versionBadge").href = releasesUrl;
-    $("pageHint").textContent = message;
+    setText("updateError", "检查更新失败");
+    setHidden("updateError", data.update_check_ok !== false);
 
     const notice = $("updateNotice");
     if (data.update_available && data.latest_version) {
@@ -145,9 +145,8 @@ async function loadAppInfo() {
       setHidden(notice, true);
     }
   } catch (error) {
-    const message = "欢迎使用！如有问题请联系作者。检查更新失败。";
-    state.appMessage = message;
-    setText("pageHint", message);
+    setText("updateError", "检查更新失败");
+    setHidden("updateError", false);
     setText("versionBadge", "v--");
     setHidden("updateNotice", true);
   }
@@ -1471,7 +1470,8 @@ on("menuToggle", "click", () => {
 });
 
 function switchDownloadMode(batch) {
-  setHidden("batchDownload", !batch);
+  setHidden("scanCourses", !batch);
+  setHidden("courseSelection", !batch);
   setHidden("singleDownload", batch);
   $("batchMode").setAttribute("aria-pressed", String(batch));
   $("liveMode").setAttribute("aria-pressed", String(!batch));
